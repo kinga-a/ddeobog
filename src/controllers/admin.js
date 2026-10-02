@@ -10,6 +10,58 @@ import { escapeHtml as esc, renderMarkdown, plainExcerpt } from '../render/markd
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
 import { JOE_DEFAULTS } from '../render/theme-joe.js';
 
+/**
+ * 登录失败限流 —— 按「用户名 + 客户端 IP」维度计数。
+ * 连续失败达到阈值后锁定一段时间，防止在线爆破。
+ */
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+function clientIp(request) {
+  const cf = request.headers.get('cf-connecting-ip')
+    || request.headers.get('x-forwarded-for')
+    || request.headers.get('x-real-ip');
+  if (cf) return String(cf).split(',')[0].trim();
+  return 'unknown';
+}
+
+async function loginThrottleKey(db, request, name) {
+  const ip = clientIp(request);
+  const raw = `${name || ''}|${ip}`;
+  // 简单哈希，避免把原始 IP 作为 KV key 暴露
+  let h = 5381;
+  for (let i = 0; i < raw.length; i++) h = ((h * 33) ^ raw.charCodeAt(i)) >>> 0;
+  return `login_fail:${h.toString(16)}`;
+}
+
+async function checkLoginLocked(db, request, name) {
+  const key = await loginThrottleKey(db, request, name);
+  const rec = await db.kv.getJSON(key);
+  if (!rec || !rec.count) return { locked: false, key };
+  if (Date.now() - (rec.at || 0) > LOGIN_WINDOW_MS) {
+    await db.kv.delete(key);
+    return { locked: false, key };
+  }
+  return { locked: rec.count >= LOGIN_MAX_ATTEMPTS, key, count: rec.count };
+}
+
+async function recordLoginFailure(db, key) {
+  const rec = (await db.kv.getJSON(key)) || { count: 0, at: Date.now() };
+  if (Date.now() - (rec.at || 0) > LOGIN_WINDOW_MS) {
+    rec.count = 0;
+    rec.at = Date.now();
+  }
+  rec.count = (rec.count || 0) + 1;
+  rec.at = Date.now();
+  await db.kv.putJSON(key, rec);
+  return rec.count;
+}
+
+async function clearLoginFailures(db, key) {
+  await db.kv.delete(key);
+}
+
 export async function handleAdmin(ctx) {
   const { db, request, url, path } = ctx;
   const sub = path.slice('/admin'.length).replace(/^\/+|\/+$/g, '') || '';
@@ -129,10 +181,23 @@ async function doLogin(ctx) {
   // 第一步：密码
   const name = String(form.get('name') || '').trim();
   const password = String(form.get('password') || '');
+
+  // 限流检查：失败过多时拒绝本次尝试
+  const throttle = await checkLoginLocked(db, request, name);
+  if (throttle.locked) {
+    const mins = Math.ceil(LOGIN_LOCK_MS / 60000);
+    return loginPage(ctx, { error: `尝试次数过多，请 ${mins} 分钟后再试`, name });
+  }
+
   const user = (await db.getUserByName(name)) || (await db.getUserByMail(name));
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
-    return loginPage(ctx, { error: '用户名或密码错误', name });
+    const n = await recordLoginFailure(db, throttle.key);
+    const left = Math.max(0, LOGIN_MAX_ATTEMPTS - n);
+    const extra = left > 0 ? `（还可尝试 ${left} 次）` : '';
+    return loginPage(ctx, { error: `用户名或密码错误${extra}`, name });
   }
+  // 登录成功，清除失败计数
+  await clearLoginFailures(db, throttle.key);
   if (user.totpEnabled && user.totpSecret) {
     // 进入 TOTP 二次验证
     const { randomHex } = await import('../auth/password.js');

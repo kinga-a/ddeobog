@@ -16,6 +16,15 @@ let blobStorePromise = null;
  */
 const getStoreRef = () => import('@edgeone/pages-blob');
 
+/**
+ * 取得 Blob store，任何异常都降级为 null（走 KV 通道）。
+ *
+ * 注意两点：
+ * 1. getStore() 在未配置 Blob 时会**同步**抛出 MISSING_ENVIRONMENT，
+ *    必须在 try 内调用；
+ * 2. promise 被 reject 后必须清空缓存，否则这个失败会被永久记忆下来，
+ *    后续所有请求都直接失败 —— 站点会在配置就绪后仍然一直报错。
+ */
 async function getBlobStore() {
   if (!blobStorePromise) {
     blobStorePromise = (async () => {
@@ -24,12 +33,17 @@ async function getBlobStore() {
         const getStore = mod.getStore || mod.default?.getStore;
         if (getStore) return getStore(CONFIG.BLOB_STORE);
       } catch (e) {
-        // SDK 不可用（未安装或运行时不支持）
+        // SDK 不可用 / Blob 未绑定（MISSING_ENVIRONMENT）等，降级到 KV
       }
       return null;
-    })();
+    })().catch(() => null);
   }
-  return blobStorePromise;
+  try {
+    return await blobStorePromise;
+  } catch (e) {
+    blobStorePromise = null;
+    return null;
+  }
 }
 
 export class BlobStorage {

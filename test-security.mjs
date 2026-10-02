@@ -162,6 +162,31 @@ await test('[安全] 评论内容 XSS 转义', async () => {
   console.log('    → 评论作者名与正文均已转义');
 });
 
+await test('[安全] 登录失败限流：连续错误后锁定', async () => {
+  // 先退出登录态
+  const saved = cookie;
+  cookie = '';
+  await call('POST', '/admin/login', { form: { name: 'admin', password: 'password123', step: 'password' } });
+  cookie = saved;
+
+  // 退出并连续爆破
+  cookie = '';
+  const errs = [];
+  for (let i = 0; i < 7; i++) {
+    const r = await call('POST', '/admin/login', { form: { name: 'admin', password: 'wrongpass', step: 'password' } });
+    const t = await r.text();
+    errs.push(t.includes('尝试次数过多') ? 'LOCKED' : 'fail');
+  }
+  console.log(`    → 7 次错误尝试: ${errs.join(',')}`);
+  assert.ok(errs.includes('LOCKED'), '连续爆破未触发锁定');
+
+  // 锁定后即使密码正确也应被拒
+  const ok = await call('POST', '/admin/login', { form: { name: 'admin', password: 'password123', step: 'password' } });
+  const okText = await ok.text();
+  console.log(`    → 锁定后用正确密码: ${okText.includes('尝试次数过多') ? '已拒绝 ✓' : '未被拒绝'}`);
+  assert.ok(okText.includes('尝试次数过多'), '锁定状态下正确密码仍可登录！');
+});
+
 console.log('\n========== 安全/健壮性探测 ==========');
 results.forEach((r) => console.log(r));
 console.log(`\n共 ${results.length} 项，失败 ${results.filter((r) => r.startsWith('✗')).length} 项`);

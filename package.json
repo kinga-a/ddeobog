@@ -1,17 +1,16 @@
 {
   "name": "typecho-edgeone",
   "version": "1.0.0",
-  "description": "Typecho-compatible blog engine running on Tencent EdgeOne Pages (Edge Functions + KV + Blob storage)",
+  "private": true,
   "type": "module",
+  "description": "运行在腾讯 EdgeOne Makers 上的 Typecho 兼容博客",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node dev-server.mjs"
+    "test": "node test.mjs && node test-bundle.mjs && node test-security.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "^0.0.16",
+    "esbuild": "^0.28.2",
     "qrcode-generator": "^2.0.4"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.2"
   }
 }

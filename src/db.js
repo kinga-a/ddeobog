@@ -522,6 +522,12 @@ export async function createDatabase(env) {
   const { getKV } = await import('./storage/kv.js');
   const kv = getKV(env);
   const blob = new BlobStorage(kv);
-  await blob.init();
+  // 附件存储初始化失败不能拖垮整个站点：降级为 KV 通道即可。
+  // 未绑定 Blob 时 getStore 会抛 MISSING_ENVIRONMENT，这里兜住。
+  try {
+    await blob.init();
+  } catch (e) {
+    blob.mode = 'kv';
+  }
   return new Database(kv, blob);
 }
