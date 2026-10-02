@@ -10,8 +10,11 @@
  * 结构完全按主题自带 CSS 的期望：
  *   .result .item > .sort(排名徽标) + .text(标题) + .views(阅读量)
  *   .joe_header__searchout-inner .search > input + button
+ *
+ * 注意：本脚本由 theme-joe.js 在 <head> 里同步引入，页头元素此时还没解析，
+ * 必须像 joe.global.js 一样等 DOMContentLoaded，否则 querySelector 拿到 null 直接失效。
  */
-(function () {
+function initJoeSearch() {
   'use strict';
 
   var above = document.querySelector('.joe_header__above-search');
@@ -193,4 +196,10 @@
       if (ev.target.closest('.item')) ev.stopPropagation();
     });
   }
-})();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initJoeSearch);
+} else {
+  initJoeSearch();
+}
