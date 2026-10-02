@@ -37,6 +37,13 @@ export default async function onRequest(context) {
       return (await handleInstall({ db, request, url, path })) || new Response('Not Found', { status: 404 });
     }
 
+    // /usr/ 下的真实静态资源由平台的静态资源层先行响应，不会走到函数；
+    // 能落到这里的都是不存在的文件（JS/CSS/图片路径写错等），直接 404，
+    // 否则会继续往下走渲染逻辑并抛 500。
+    if (path.startsWith('/usr/')) {
+      return new Response('Not Found', { status: 404 });
+    }
+
     // ---- 组装全局上下文 ----
     const optionsRaw = await db.getOptions();
     const options = {

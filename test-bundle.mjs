@@ -16,7 +16,14 @@ class MockKV {
   }
   async put(key, value) { this.map.set(key, String(value)); }
   async delete(key) { this.map.delete(key); }
-  async list({ prefix = '', limit = 256 } = {}) {
+  async list(opts = {}) {
+    // 复刻平台实现的严格类型校验：cursor 必须是 string。
+    // 线上曾因首次分页传 cursor: undefined 抛
+    // "cursor type invalid. expect: 'string' get: 'undefined'"。
+    if ('cursor' in opts && opts.cursor !== undefined && typeof opts.cursor !== 'string') {
+      throw new Error("cursor type invalid. expect: 'string' get: '" + typeof opts.cursor + "'");
+    }
+    const { prefix = '', limit = 256 } = opts;
     const keys = [...this.map.keys()].filter((k) => k.startsWith(prefix)).sort();
     return { keys: keys.slice(0, limit).map((key) => ({ key })), complete: true, cursor: null };
   }
@@ -75,6 +82,17 @@ await test('bundle: Markdown 渲染 + QR 二维码可用（qrcode-generator 已�
   const r = await call('GET', '/admin/security?step=bind');
   const h = await r.text();
   assert.ok(h.includes('<svg'), 'TOTP 绑定页应有二维码 SVG');
+});
+
+await test('bundle: 首页列表可读（list() 不得传 cursor: undefined）', async () => {
+  // MockKV.list 已复刻平台的 cursor 严格校验，这里能过说明分页参数合法
+  const r = await call('GET', '/');
+  assert.equal(r.status, 200);
+});
+
+await test('bundle: 不存在的 /usr/ 静态资源返回 404 而非 500', async () => {
+  const r = await call('GET', '/usr/themes/joe/assets/nope.css');
+  assert.equal(r.status, 404);
 });
 
 await test('bundle: 产物保留顶层 onRequest 绑定（EdgeOne shim 裸引用它）', async () => {

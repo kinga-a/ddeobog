@@ -30,7 +30,11 @@ export class KV {
     let cursor;
     let complete = false;
     while (!complete && out.length < limit) {
-      const res = await this.binding.list({ prefix, cursor, limit: 256 });
+      // cursor 必须是 string 或干脆不传：平台实现对 undefined 做严格类型校验，
+      // 首次分页传 cursor: undefined 会抛 "cursor type invalid. expect: 'string'"。
+      const opts = { prefix, limit: 256 };
+      if (cursor) opts.cursor = cursor;
+      const res = await this.binding.list(opts);
       if (!res) break;
       for (const k of res.keys || []) out.push(k.key);
       complete = res.complete !== false;
