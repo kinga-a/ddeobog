@@ -59,14 +59,40 @@ await test('[安全] 安装完成后 /install 不可再次 POST（否则可任�
   const after = [...globalThis.BLOG_KV.map.keys()].filter((k) => k.startsWith('user:')).length;
   console.log(`    → 二次安装 POST 返回 ${res.status}，用户数 ${before} → ${after}`);
   assert.equal(after, before, '二次安装竟然创建了新用户！');
-  assert.equal(res.status, 302, '已安装时应拒绝而非重定向到 /admin');
+  assert.equal(res.status, 403, `已安装时应返回 403，实际 ${res.status}`);
 });
 
 await test('[安全] 安装完成后 GET /install 应不可访问', async () => {
   const res = await call('GET', '/install');
   const html = await res.text();
   console.log(`    → GET /install 返回 ${res.status}，含安装表单: ${html.includes('name="password"')}`);
+  assert.equal(res.status, 403, `已安装时应返回 403，实际 ${res.status}`);
   assert.ok(!html.includes('name="password"'), '已安装后仍暴露安装表单');
+});
+
+await test('[安全] 修复后未安装状态仍可正常安装（防误锁）', async () => {
+  // 用全新 KV 模拟未安装站点，确保修复没有把正常安装流程一起挡掉
+  const saved = globalThis.BLOG_KV;
+  globalThis.BLOG_KV = new MockKV();
+  const fresh = await onRequest({
+    request: new Request('https://blog.example.com/install'), env: {}, params: {}, waitUntil: () => {},
+  });
+  const freshHtml = await fresh.text();
+  assert.equal(fresh.status, 200, '未安装时 /install 应可访问');
+  assert.ok(freshHtml.includes('name="password"'), '未安装时应显示安装表单');
+
+  const done = await onRequest({
+    request: new Request('https://blog.example.com/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ title: 'T', description: 'd', name: 'admin', mail: 'a@b.c',
+        password: 'password123', password2: 'password123' }).toString(),
+      redirect: 'manual',
+    }), env: {}, params: {}, waitUntil: () => {},
+  });
+  assert.equal(done.status, 302, '未安装时正常安装应成功');
+  globalThis.BLOG_KV = saved;
+  console.log('    → 未安装站点安装流程正常');
 });
 
 await test('[安全] 后台 POST 拒绝跨域 Origin（CSRF）', async () => {

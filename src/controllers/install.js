@@ -9,6 +9,17 @@ export async function handleInstall(ctx) {
   const { db, request, path } = ctx;
 
   if (path.startsWith('/install')) {
+    // 安装完成后必须彻底关闭安装向导，否则任何人都能 POST /install
+    // 创建新的管理员账号并直接进入后台。
+    if (await db.isInstalled()) {
+      return new Response(
+        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>已安装</title></head>' +
+          '<body style="font-family:sans-serif;padding:40px;color:#333">' +
+          '<h2>站点已安装</h2><p>安装向导已关闭。如需重新安装，请在 EdgeOne 控制台清空 KV 命名空间中的 <code>opt:installed</code> 配置。</p>' +
+          '</body></html>',
+        { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+      );
+    }
     if (request.method === 'POST') {
       return await doInstall(ctx);
     }
