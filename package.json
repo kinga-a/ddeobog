@@ -6,7 +6,7 @@
   "description": "运行在腾讯 EdgeOne Makers 上的 Typecho 兼容博客",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test.mjs && node test-bundle.mjs && node test-security.mjs && node test-e2e.mjs"
+    "test": "node test.mjs && node test-bundle.mjs && node test-security.mjs && node test-e2e.mjs && node tools/edge-runtime-check.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "^0.0.16",

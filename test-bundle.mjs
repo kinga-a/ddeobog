@@ -77,10 +77,22 @@ await test('bundle: Markdown 渲染 + QR 二维码可用（qrcode-generator 已�
   assert.ok(h.includes('<svg'), 'TOTP 绑定页应有二维码 SVG');
 });
 
-await test('bundle: 两份产物内容一致', async () => {
+await test('bundle: 产物保留顶层 onRequest 绑定（EdgeOne shim 裸引用它）', async () => {
+  const fs = await import('node:fs');
+  const code = fs.readFileSync('./edge-functions/[[default]].js', 'utf8');
+  // 一旦标识符被压缩，CLI 内联后的 shim 会抛 ReferenceError → 线上 545
+  assert.ok(
+    /\bfunction\s+onRequest\b/.test(code),
+    '产物中缺少顶层 onRequest 绑定，构建配置可能又开启了标识符压缩'
+  );
+});
+
+await test('bundle: 根路径入口 index.js 存在且与 catch-all 一致', async () => {
   const fs = await import('node:fs');
   const a = fs.readFileSync('./edge-functions/[[default]].js', 'utf8');
-  const b = fs.readFileSync('./functions/[[path]].js', 'utf8');
+  // 官方路由表：edge-functions/index.js → example.com/
+  // 缺了它 `/` 不匹配任何函数路由，落到静态层后因无 index.html 而 404
+  const b = fs.readFileSync('./edge-functions/index.js', 'utf8');
   assert.equal(a, b);
 });
 
