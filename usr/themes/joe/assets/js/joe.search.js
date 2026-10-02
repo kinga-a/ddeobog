@@ -190,6 +190,16 @@ function initJoeSearch() {
     });
   }
 
+  // 桌面端输入框右侧的箭头（.joe_header__above-search .icon）是唯一可见的提交入口。
+  // 移动端才显示 .joe_header__above-searchicon 去开搜索面板，所以这里要单独绑一次。
+  var inlineIcon = above.querySelector('.icon');
+  if (inlineIcon) {
+    inlineIcon.style.cursor = 'pointer';
+    inlineIcon.addEventListener('click', function () {
+      go(aboveInput ? aboveInput.value : '');
+    });
+  }
+
   // 联想项点击：阻止 joe.global.js 的 document click 关闭逻辑抢跑
   if (result) {
     result.addEventListener('click', function (ev) {
