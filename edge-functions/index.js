@@ -270,8 +270,8 @@ ${await pe(p)}
         </ul>
         ${await commentsBlock(ctx,post)}
       </div>
-      ${await asideBlock(ctx)}
     </div>
+    ${await asideBlock(ctx)}
   </div>`;let desc=post.fields?.description||plainExcerpt(post.text,120);return layout(ctx,{title:`${escapeHtml(post.title)} - ${escapeHtml(ctx.options.title)}`,meta:`<meta name="description" content="${escapeHtml(desc)}" />${post.fields?.keywords||tags.length?`<meta name="keywords" content="${escapeHtml(post.fields?.keywords||tags.map(t=>t.name).join(","))}" />`:""}`,css:[a("assets/lib/prism/prism.min.css"),a("assets/css/joe.post.min.css")],js:[a("assets/lib/clipboard@2.0.11/clipboard.min.js"),a("assets/lib/prism/prism.min.js"),a("assets/js/joe.post_page.min.js")]})}async function commentsBlock(ctx,post){if(!post.allowComment||ctx.options.joe.JCommentStatus==="off")return'<div class="joe_comment"><h3 class="joe_comment__title">\u8BC4\u8BBA</h3><div class="joe_comment__close"><span>\u535A\u4E3B\u5173\u95ED\u4E86\u8BC4\u8BBA</span></div></div>';let{db,csrfToken,user}=ctx,all=await db.listComments(post.cid),byParent=new Map;for(let c of all)byParent.has(c.parent)||byParent.set(c.parent,[]),byParent.get(c.parent).push(c);let renderComment=__name((c,depth=0)=>{let children=byParent.get(c.coid)||[];return`<li class="comment-list__item">
       <div class="comment-list__item-contain" id="comment-${c.coid}">
         <div class="term">

@@ -213,9 +213,23 @@ await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点�
       new RegExp(`class="joe_container joe_body"[\\s\\S]{0,120}?class="joe_main[^"]*">[\\s\\S]{0,200}?${marker}`).test(html),
       `${path} 未套用 .joe_body 两栏容器`
     );
+
+    // 关键回归点：侧栏必须是 .joe_body 的**直接子节点**。
+    // 曾因 post 模板少闭合一层 </div>，侧栏被塞进 .joe_main 内部，
+    // 于是 .joe_body > .joe_aside 匹配不到，两栏布局整个失效。
     const bodyAt = html.indexOf('class="joe_container joe_body"');
+    const bodyTag = html.indexOf('>', bodyAt) + 1;
     const asideAt = html.indexOf('<aside class="joe_aside">');
     assert.ok(bodyAt >= 0 && asideAt > bodyAt, `${path} 的侧栏不在 .joe_body 容器内`);
+
+    const before = html.slice(bodyTag, asideAt);
+    const open = (before.match(/<div\b/g) || []).length;
+    const close = (before.match(/<\/div>/g) || []).length;
+    assert.equal(
+      open - close,
+      0,
+      `${path} 的 .joe_main 没有在侧栏之前闭合（div 多 ${open - close} 个），侧栏被嵌进了正文列`
+    );
   }
 });
 

@@ -469,8 +469,8 @@ export async function renderPost(ctx) {
         </ul>
         ${await commentsBlock(ctx, post)}
       </div>
-      ${await asideBlock(ctx)}
     </div>
+    ${await asideBlock(ctx)}
   </div>`;
 
   const desc = post.fields?.description || plainExcerpt(post.text, 120);
