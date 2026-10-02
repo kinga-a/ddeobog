@@ -69,6 +69,28 @@ export async function handleJoeApi({ db, request, url }) {
     case 'baidu_record':
     case 'baidu_push':
       return json({ record: false, push: false });
+    // 顶栏搜索下拉的联想结果（assets/js/joe.search.js 消费）
+    case 'search': {
+      const kw = (get('s') || get('keywords') || '').trim();
+      if (!kw) return json({ total: 0, data: [] });
+      const pageSize = Math.min(parseInt(get('pageSize') || '8', 10), 20);
+      const { items, total } = await db.listContents({
+        type: 'post',
+        page: 1,
+        pageSize,
+        keywords: kw,
+      });
+      const data = await Promise.all(
+        items.map(async (p) => ({
+          cid: p.cid,
+          title: p.title,
+          permalink: `/archives/${p.cid}/`,
+          views: await db.getStat(p.cid, 'views'),
+          time: fmt(p.created, 'YYYY-MM-DD'),
+        }))
+      );
+      return json({ total, data });
+    }
     default:
       return json(null, 0);
   }

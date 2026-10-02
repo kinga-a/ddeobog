@@ -142,6 +142,47 @@ await test('Joe API: handle_views 计数', async () => {
   assert.equal(data.data.views, 1);
 });
 
+await test('Joe API: search 联想返回标题/permalink/阅读量', async () => {
+  const res = await call('POST', '/joe/api', { form: { routeType: 'search', s: 'Hello', pageSize: 8 } });
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.code, 1);
+  assert.ok(data.data.total >= 1);
+  assert.ok(data.data.data.length >= 1);
+  const hit = data.data.data[0];
+  assert.ok(hit.title.includes('Hello'));
+  assert.ok(hit.permalink.startsWith('/archives/'));
+  assert.ok(typeof hit.views === 'number');
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(hit.time));
+});
+
+await test('Joe API: search 空关键字返回空列表而非报错', async () => {
+  const res = await call('POST', '/joe/api', { form: { routeType: 'search', s: '   ' } });
+  const data = await res.json();
+  assert.equal(data.code, 1);
+  assert.equal(data.data.total, 0);
+  assert.deepEqual(data.data.data, []);
+});
+
+await test('主题：搜索面板结构与脚本齐备', async () => {
+  const res = await call('GET', '/');
+  const html = await res.text();
+  // CSS 期望 .joe_header__searchout-inner > .search > input + button
+  assert.ok(
+    /class="joe_header__searchout-inner"\s*>\s*<div class="search">/.test(html),
+    '搜索面板缺少 .search 包裹层，主题 CSS 的 input/button 布局不会生效'
+  );
+  assert.ok(html.includes('class="submit search-btn"'));
+  // 联想渲染脚本必须被引入
+  assert.ok(html.includes('assets/js/joe.search.js'), '未引入 joe.search.js，搜索框点了没反应');
+  // 下拉容器（联想结果挂载点）必须落在 .joe_header__above-search 之内
+  const aboveAt = html.indexOf('class="joe_header__above-search"');
+  const resultAt = html.indexOf('class="result"');
+  assert.ok(aboveAt >= 0 && resultAt > aboveAt, '联想结果挂载点 .result 不在 .joe_header__above-search 内');
+  // 键盘高亮样式
+  assert.ok(html.includes('.joe_header__above-search .result .item.active'));
+});
+
 await test('评论提交（存 KV，Joe 协议响应）', async () => {
   const res = await call('POST', '/comment/1', {
     form: { author: '张三', mail: 'zhang@test.com', text: '你好呀 ::(呵呵)', parent: 0, _: 'x' },

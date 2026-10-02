@@ -66,6 +66,8 @@ function headBlock(ctx, extra = {}) {
 </script>
 <style>
   body { font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif; }
+  /* 搜索联想的键盘高亮项（assets/js/joe.search.js 切换 .active，主题 CSS 只定义了 :hover） */
+  .joe_header__above-search .result .item.active { background: var(--classD); }
 </style>`;
 }
 
@@ -99,6 +101,7 @@ function scripts(ctx, extra = []) {
     a('assets/lib/qmsg/qmsg.min.js'),
     a('assets/js/joe.global.min.js'),
     a('assets/js/joe.short.min.js'),
+    a('assets/js/joe.search.js'),
     ...extra,
   ];
   return list.map((s) => `<script src="${s}"></script>`).join('\n');
@@ -145,8 +148,10 @@ function headerBlock(ctx) {
   <div class="joe_header__searchout">
     <div class="joe_container">
       <div class="joe_header__searchout-inner">
-        <input type="text" class="input search-input" placeholder="搜索内容..." autocomplete="off" />
-        <button class="submit search-btn">搜索</button>
+        <div class="search">
+          <input type="text" class="input" placeholder="搜索内容..." autocomplete="off" />
+          <button class="submit search-btn">搜索</button>
+        </div>
       </div>
     </div>
   </div>
