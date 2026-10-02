@@ -6,6 +6,7 @@
  * 运行：node test.mjs
  */
 import assert from 'node:assert';
+import { readFile } from 'node:fs/promises';
 
 // ---- mock KV binding ----
 class MockKV {
@@ -188,8 +189,34 @@ await test('主题：搜索面板结构与脚本齐备', async () => {
   const aboveAt = html.indexOf('class="joe_header__above-search"');
   const resultAt = html.indexOf('class="result"');
   assert.ok(aboveAt >= 0 && resultAt > aboveAt, '联想结果挂载点 .result 不在 .joe_header__above-search 内');
-  // 键盘高亮样式
-  assert.ok(html.includes('.joe_header__above-search .result .item.active'));
+  // 布局补丁样式表必须被引入
+  assert.ok(html.includes('assets/css/joe.layout.css'), '未引入 joe.layout.css');
+});
+
+await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点）', async () => {
+  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
+  // 侧栏在左：order:-1 + flex 固定宽度，正文 flex:1
+  assert.ok(/\.joe_body\s*\{[^}]*display:\s*flex/.test(css), 'joe_body 未启用 flex');
+  assert.ok(/\.joe_body > \.joe_aside\s*\{[^}]*order:\s*-1/.test(css), '侧栏未置于左侧');
+  assert.ok(/\.joe_body > \.joe_main\s*\{[^}]*flex:\s*1 1 auto/.test(css), '正文列未占据剩余宽度');
+  // 搜索高亮样式已从内联 <style> 迁到该文件
+  assert.ok(css.includes('.joe_header__above-search .result .item.active'));
+
+  for (const [path, marker] of [
+    ['/', 'joe_index'],
+    ['/archives/1/', 'joe_detail'],
+    ['/search/Hello/', 'joe_archive__title'],
+  ]) {
+    const res = await call('GET', path);
+    const html = await res.text();
+    assert.ok(
+      new RegExp(`class="joe_container joe_body"[\\s\\S]{0,120}?class="joe_main[^"]*">[\\s\\S]{0,200}?${marker}`).test(html),
+      `${path} 未套用 .joe_body 两栏容器`
+    );
+    const bodyAt = html.indexOf('class="joe_container joe_body"');
+    const asideAt = html.indexOf('<aside class="joe_aside">');
+    assert.ok(bodyAt >= 0 && asideAt > bodyAt, `${path} 的侧栏不在 .joe_body 容器内`);
+  }
 });
 
 await test('评论提交（存 KV，Joe 协议响应）', async () => {

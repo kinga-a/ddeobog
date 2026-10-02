@@ -66,8 +66,6 @@ function headBlock(ctx, extra = {}) {
 </script>
 <style>
   body { font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif; }
-  /* 搜索联想的键盘高亮项（assets/js/joe.search.js 切换 .active，主题 CSS 只定义了 :hover） */
-  .joe_header__above-search .result .item.active { background: var(--classD); }
 </style>`;
 }
 
@@ -83,6 +81,8 @@ function cssLinks(ctx, extra = []) {
     a('assets/lib/animate.css@4.1.1/animate.min.css'),
     a('assets/lib/font-awesome@4.7.0/font-awesome.min.css'),
     a('assets/lib/APlayer@1.10.1/APlayer.min.css'),
+    // 本移植版补的主题缺失样式（侧栏两栏布局、搜索高亮），放在最后以覆盖主题自带规则
+    a('assets/css/joe.layout.css'),
     ...extra,
   ];
   return links.map((h) => `<link href="${h}" rel="stylesheet" />`).join('\n');
@@ -346,7 +346,7 @@ export async function renderIndex(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page } = ctx;
   const itemsHtml = list.items.map((p) => indexItem(ctx, p)).join('');
-  ctx.contentBody = `<div class="joe_container">
+  ctx.contentBody = `<div class="joe_container joe_body">
     <div class="joe_main">
       <div class="joe_index">
         <div class="joe_index__title">
@@ -420,7 +420,7 @@ export async function renderPost(ctx) {
       <li class="item">正文</li>
     </ul>
   </div>
-  <div class="joe_container">
+  <div class="joe_container joe_body">
     <div class="joe_main joe_post">
       <div class="joe_detail" data-cid="${post.cid}">
         ${catHtml}
@@ -609,7 +609,7 @@ export async function renderArchive(ctx) {
       <li class="item">${escapeHtml(archiveTitle)}</li>
     </ul>
   </div>
-  <div class="joe_container">
+  <div class="joe_container joe_body">
     <div class="joe_main joe_archive">
       <div class="joe_archive__title">${escapeHtml(archiveTitle)}</div>
       <div class="joe_archive__list">

@@ -28,9 +28,7 @@ ${await pe(p)}
 <\/script>
 <style>
   body { font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '\u5FAE\u8F6F\u96C5\u9ED1', Arial, sans-serif; }
-  /* \u641C\u7D22\u8054\u60F3\u7684\u952E\u76D8\u9AD8\u4EAE\u9879\uFF08assets/js/joe.search.js \u5207\u6362 .active\uFF0C\u4E3B\u9898 CSS \u53EA\u5B9A\u4E49\u4E86 :hover\uFF09 */
-  .joe_header__above-search .result .item.active { background: var(--classD); }
-</style>`}function cssLinks(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/css/joe.mode.min.css"),a("assets/css/joe.normalize.min.css"),a("assets/css/joe.global.min.css"),a("assets/css/joe.responsive.min.css"),a("assets/lib/qmsg/qmsg.min.css"),a("assets/lib/fancybox@3.5.7/fancybox.min.css"),a("assets/lib/animate.css@4.1.1/animate.min.css"),a("assets/lib/font-awesome@4.7.0/font-awesome.min.css"),a("assets/lib/APlayer@1.10.1/APlayer.min.css"),...extra].map(h=>`<link href="${h}" rel="stylesheet" />`).join(`
+</style>`}function cssLinks(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/css/joe.mode.min.css"),a("assets/css/joe.normalize.min.css"),a("assets/css/joe.global.min.css"),a("assets/css/joe.responsive.min.css"),a("assets/lib/qmsg/qmsg.min.css"),a("assets/lib/fancybox@3.5.7/fancybox.min.css"),a("assets/lib/animate.css@4.1.1/animate.min.css"),a("assets/lib/font-awesome@4.7.0/font-awesome.min.css"),a("assets/lib/APlayer@1.10.1/APlayer.min.css"),a("assets/css/joe.layout.css"),...extra].map(h=>`<link href="${h}" rel="stylesheet" />`).join(`
 `)}function scripts(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/lib/jquery@3.6.1/jquery.min.js"),a("assets/lib/scroll/scroll.min.js"),a("assets/lib/lazysizes@5.3.2/lazysizes.min.js"),a("assets/lib/APlayer@1.10.1/APlayer.min.js"),a("assets/lib/sketchpad/sketchpad.min.js"),a("assets/lib/fancybox@3.5.7/fancybox.min.js"),a("assets/lib/extend/extend.min.js"),a("assets/lib/qmsg/qmsg.min.js"),a("assets/js/joe.global.min.js"),a("assets/js/joe.short.min.js"),a("assets/js/joe.search.js"),...extra].map(s=>`<script src="${s}"><\/script>`).join(`
 `)}function headerBlock(ctx){let{options,pages,path}=ctx,navMax=parseInt(options.joe.JNavMaxNum||"6",10),navPages=pages.slice(0,navMax),morePages=pages.slice(navMax),isIndex=path==="/";return`<header class="joe_header${ctx.isPost?" current":""}">
   <div class="joe_header__above">
@@ -177,7 +175,7 @@ ${await pe(p)}
     ${footerBlock(ctx)}
   </div>
 </body>
-</html>`}function permalink(content){return content.type==="page"?`/${content.slug}/`:content.type==="attachment"?`/attachment/${content.cid}/`:`/archives/${content.cid}/`}async function contentMetas(db,content){let cats=[],tags=[];for(let mid of content.categories||[]){let m=await db.getMeta(mid);m&&cats.push({...m,permalink:`/category/${encodeURIComponent(m.slug)}/`})}for(let mid of content.tags||[]){let m=await db.getMeta(mid);m&&tags.push({...m,permalink:`/tag/${encodeURIComponent(m.slug)}/`})}return{cats,tags}}async function renderIndex(ctx){let a=__name(p=>assetsUrl(ctx.options,p),"a"),{list,page}=ctx,itemsHtml=list.items.map(p=>indexItem(ctx,p)).join("");return ctx.contentBody=`<div class="joe_container">
+</html>`}function permalink(content){return content.type==="page"?`/${content.slug}/`:content.type==="attachment"?`/attachment/${content.cid}/`:`/archives/${content.cid}/`}async function contentMetas(db,content){let cats=[],tags=[];for(let mid of content.categories||[]){let m=await db.getMeta(mid);m&&cats.push({...m,permalink:`/category/${encodeURIComponent(m.slug)}/`})}for(let mid of content.tags||[]){let m=await db.getMeta(mid);m&&tags.push({...m,permalink:`/tag/${encodeURIComponent(m.slug)}/`})}return{cats,tags}}async function renderIndex(ctx){let a=__name(p=>assetsUrl(ctx.options,p),"a"),{list,page}=ctx,itemsHtml=list.items.map(p=>indexItem(ctx,p)).join("");return ctx.contentBody=`<div class="joe_container joe_body">
     <div class="joe_main">
       <div class="joe_index">
         <div class="joe_index__title">
@@ -223,7 +221,7 @@ ${await pe(p)}
       <li class="item">\u6B63\u6587</li>
     </ul>
   </div>
-  <div class="joe_container">
+  <div class="joe_container joe_body">
     <div class="joe_main joe_post">
       <div class="joe_detail" data-cid="${post.cid}">
         ${catHtml}
@@ -331,7 +329,7 @@ ${await pe(p)}
       <li class="item">${escapeHtml(archiveTitle)}</li>
     </ul>
   </div>
-  <div class="joe_container">
+  <div class="joe_container joe_body">
     <div class="joe_main joe_archive">
       <div class="joe_archive__title">${escapeHtml(archiveTitle)}</div>
       <div class="joe_archive__list">

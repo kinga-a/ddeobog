@@ -1,0 +1,43 @@
+/*!
+ * Joe 主题布局补丁（本移植版自带 CSS 缺失的部分）
+ *
+ * 1) 侧栏两栏布局
+ *    主题自带的 joe.global.min.css 只给了 .joe_aside 的 padding/margin-left，
+ *    没有任何浮动或宽度规则；.joe_main 也没有布局规则。两者同在 .joe_container
+ *    下，于是竖排堆叠——文章详情页侧栏掉到文章下方，占满整行。
+ *    这里用 flex 补上：侧栏在左，正文在右。
+ *    窄屏不用管：主题 joe.responsive.min.css 的 @media(max-width:992px) 里
+ *    已有 `html .joe_aside{display:none}`，display:none 的子项不参与 flex 布局，
+ *    .joe_main 的 flex:1 会自动占满整行。
+ *
+ * 2) 搜索联想的键盘高亮项
+ *    joe.search.js 切换 .active，主题 CSS 只定义了 :hover，键盘上下键选中没有视觉反馈。
+ */
+
+/* ---------- 侧栏两栏布局 ---------- */
+.joe_body {
+  display: flex;
+  align-items: flex-start;
+  column-gap: 15px;
+}
+
+.joe_body > .joe_main {
+  flex: 1 1 auto;
+  /* 正文里的长代码块/长单词不能把这一列撑破 */
+  min-width: 0;
+}
+
+.joe_body > .joe_aside {
+  /* DOM 里侧栏排在正文之后，用 order 把它挪到左边 */
+  order: -1;
+  flex: 0 0 250px;
+  width: 250px;
+  /* 主题原值 margin-left:15px 改由 column-gap 统一控制间距 */
+  margin-left: 0;
+  padding-bottom: 15px;
+}
+
+/* ---------- 搜索联想键盘高亮 ---------- */
+.joe_header__above-search .result .item.active {
+  background: var(--classD);
+}
