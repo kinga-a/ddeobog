@@ -17,6 +17,7 @@ import { CONFIG } from '../config.js';
 import * as theme from '../render/theme-joe.js';
 import { renderMarkdown, plainExcerpt } from '../render/markdown.js';
 import { escapeHtml } from '../render/html.js';
+import { sameOrigin } from '../auth/session.js';
 import { handleJoeApi } from './joe-api.js';
 import { runHooks } from '../plugins.js';
 
@@ -232,6 +233,8 @@ function html(body, init = {}) {
 /** 评论提交（POST /comment/[cid]） */
 async function handleCommentPost(ctx) {
   const { db, request, url, path } = ctx;
+  // CSRF：拒绝跨站来源的评论提交（表单可被任意站点诱导提交）
+  if (!sameOrigin(request)) return commentError('非法来源');
   const cid = parseInt(path.split('/')[2], 10);
   const post = await db.getContent(cid);
   if (!post || !post.allowComment) return commentError('当前页面不可评论');
