@@ -732,6 +732,10 @@ console.log('Hello from EdgeOne Edge Functions!');
       <div class="item"><label>\u8BC4\u8BBA\u529F\u80FD</label><select name="j_JCommentStatus"><option value="on" ${theme.JCommentStatus!=="off"?"selected":""}>\u5F00\u542F</option><option value="off" ${theme.JCommentStatus==="off"?"selected":""}>\u5173\u95ED</option></select></div>
     </div>
     <div class="row">
+      <div class="item"><label>\u8214\u72D7\u65E5\u8BB0\u4FA7\u680F</label><select name="j_JAside_Flatterer"><option value="on" ${theme.JAside_Flatterer!=="off"?"selected":""}>\u5F00\u542F</option><option value="off" ${theme.JAside_Flatterer==="off"?"selected":""}>\u5173\u95ED</option></select></div>
+      <div class="item"><label>3D \u6807\u7B7E\u4E91\u4FA7\u680F</label><select name="j_JAside_3DTag"><option value="on" ${theme.JAside_3DTag==="on"?"selected":""}>\u5F00\u542F</option><option value="off" ${theme.JAside_3DTag!=="on"?"selected":""}>\u5173\u95ED</option></select></div>
+    </div>
+    <div class="row">
       <div class="item"><label>\u5BFC\u822A\u6700\u591A\u663E\u793A\u9875\u9762\u6570</label><input type="number" name="j_JNavMaxNum" value="${escapeHtml(theme.JNavMaxNum||"6")}" min="1" max="20"></div>
       <div class="item"><label>ICP \u5907\u6848\u53F7</label><input type="text" name="j_JICP" value="${escapeHtml(theme.JICP||"")}"></div>
       <div class="item"><label>\u9875\u811A\u81EA\u5B9A\u4E49\u5185\u5BB9</label><input type="text" name="j_JFooter_Custom" value="${escapeHtml(theme.JFooter_Custom||"")}"></div>

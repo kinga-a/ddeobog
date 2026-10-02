@@ -399,6 +399,43 @@ await test('站点设置保存（含 Joe 主题配置）', async () => {
   assert.ok(home.includes('边缘君'), 'Joe 主题侧栏昵称生效');
 });
 
+const setJoeOption = async (patch) => {
+  const cur = (await globalThis.BLOG_KV.get('opt:theme:joe', 'json')) || {};
+  await globalThis.BLOG_KV.put('opt:theme:joe', JSON.stringify({ ...cur, ...patch }));
+};
+
+await test('主题：舔狗日记 / 3D 标签云 可在后台开关', async () => {
+  // 此前 JAside_Flatterer / JAside_3DTag 只有默认值，admin.js 的设置表单里没有对应字段，
+  // 而 saveSettings 只写 form 中出现的 j_ 前缀字段，用户根本改不了。
+  // 表单字段本身的断言放在已登录的「站点设置保存」用例里（需管理员会话）。
+  const adminSrc = await readFile('src/controllers/admin.js', 'utf8');
+  assert.ok(adminSrc.includes('name="j_JAside_Flatterer"'), '设置表单缺少「舔狗日记侧栏」开关');
+  assert.ok(adminSrc.includes('name="j_JAside_3DTag"'), '设置表单缺少「3D 标签云侧栏」开关');
+
+  const { JOE_DEFAULTS } = await import('./src/render/theme-joe.js');
+  assert.equal(JOE_DEFAULTS.JAside_Flatterer, 'on', '舔狗日记默认应为开启');
+  assert.equal(JOE_DEFAULTS.JAside_3DTag, 'off', '3D 标签云默认应为关闭');
+
+  const has = (html, cls) => html.includes(`joe_aside__item ${cls}"`);
+
+  await setJoeOption({ JAside_Flatterer: 'on' });
+  assert.ok(has(await (await call('GET', '/')).text(), 'flatterer'), 'JAside_Flatterer=on 时侧栏缺舔狗日记');
+  await setJoeOption({ JAside_Flatterer: 'off' });
+  assert.ok(!has(await (await call('GET', '/')).text(), 'flatterer'), 'JAside_Flatterer=off 时舔狗日记仍在渲染');
+
+  await setJoeOption({ JAside_3DTag: 'off', JAside_Flatterer: 'on' });
+  assert.ok(!has(await (await call('GET', '/')).text(), 'tags'), 'JAside_3DTag=off 时标签云仍在渲染');
+
+  // 渲染条件是 `=== 'on' && tags.length`；本用例排在"后台撰写文章"之后，库里已有标签
+  assert.ok((await (await call('GET', '/tag/测试/')).status) === 200, '前置条件：库里应已有标签');
+
+  await setJoeOption({ JAside_3DTag: 'on' });
+  const onHtml = await (await call('GET', '/')).text();
+  assert.ok(has(onHtml, 'tags'), 'JAside_3DTag=on 且有标签时，标签云没渲染');
+
+  await setJoeOption({ JAside_Flatterer: 'on', JAside_3DTag: 'off' });
+});
+
 await test('友链插件：mode=links 页面渲染', async () => {
   await call('POST', '/admin/post', {
     form: { type: 'page', title: '友情链接', slug: 'links', text: '腾讯||https://qq.com||\nEdgeOne||https://edgeone.ai||', status: 'publish', allowComment: '1', field_mode: 'links' },
