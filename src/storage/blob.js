@@ -1,16 +1,26 @@
 /**
  * Blob 存储封装 —— 用于附件（上传的图片/文件）
  * 优先使用 @edgeone/pages-blob SDK；运行时不可用时自动降级为 KV 存储（value ≤ 25MB）。
+ *
+ * 注意：SDK 采用惰性引用（getStoreRef），不能写成模块顶层的动态 import()。
+ * Edge Functions 的 iife 输出格式不支持 top-level await，顶层 await 会让
+ * esbuild 打包失败、平台判定"No server-handler detected"而部署成纯静态站点。
  */
 import { CONFIG } from '../config.js';
 
 let blobStorePromise = null;
 
+/**
+ * 惰性取得 blob SDK 的 getStore 函数。
+ * 用回调包装而非顶层 await：init() 是 async，await 发生在函数体内而非模块顶层。
+ */
+const getStoreRef = () => import('@edgeone/pages-blob');
+
 async function getBlobStore() {
   if (!blobStorePromise) {
     blobStorePromise = (async () => {
       try {
-        const mod = await import('@edgeone/pages-blob');
+        const mod = await getStoreRef();
         const getStore = mod.getStore || mod.default?.getStore;
         if (getStore) return getStore(CONFIG.BLOB_STORE);
       } catch (e) {
