@@ -143,7 +143,9 @@ await test('Joe API: handle_views 计数', async () => {
 });
 
 await test('Joe API: search 联想返回标题/permalink/阅读量', async () => {
-  const res = await call('POST', '/joe/api', { form: { routeType: 'search', s: 'Hello', pageSize: 8 } });
+  // 走 GET + query string：边缘运行时的 request.formData() 在无 Content-Type 时
+  // 是同步抛错，用 .catch() 接不住，会直接 500
+  const res = await call('GET', '/joe/api?routeType=search&s=Hello&pageSize=8');
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.code, 1);
@@ -154,6 +156,13 @@ await test('Joe API: search 联想返回标题/permalink/阅读量', async () =>
   assert.ok(hit.permalink.startsWith('/archives/'));
   assert.ok(typeof hit.views === 'number');
   assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(hit.time));
+});
+
+await test('Joe API: GET 无参数不 500', async () => {
+  for (const p of ['/joe/api', '/joe/api?routeType=handle_views&cid=1', '/joe/api?routeType=baidu_push']) {
+    const res = await call('GET', p);
+    assert.equal(res.status, 200, `GET ${p} 返回 ${res.status}`);
+  }
 });
 
 await test('Joe API: search 空关键字返回空列表而非报错', async () => {

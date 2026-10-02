@@ -2,7 +2,16 @@
  * Joe 主题开放 API（/joe/api）—— 兼容 Joe 原版 routeType 协议
  */
 export async function handleJoeApi({ db, request, url }) {
-  const form = await request.formData().catch(() => new URLSearchParams(url.search));
+  // 注意：不能用 `request.formData().catch(...)`。
+  // EdgeOne 边缘运行时的 Request 在没有 Content-Type 时是**同步抛错**
+  // （"Content-Type header is empty"），此时 .catch 还没挂上，异常会直接
+  // 冒泡到上层变成 500。必须用 try/catch 包住整个调用。
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    form = new URLSearchParams(url.search);
+  }
   const get = (k) => form.get(k) || url.searchParams.get(k) || '';
   const routeType = get('routeType');
 
