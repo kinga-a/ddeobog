@@ -8,7 +8,7 @@ import { currentUser, sessionCookie, clearSessionCookie, parseCookies, sameOrigi
 import { CONFIG } from '../config.js';
 import { escapeHtml as esc, renderMarkdown, plainExcerpt } from '../render/markdown.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
-import { JOE_DEFAULTS } from '../render/theme-joe.js';
+import { JOE_DEFAULTS, HOT_POST_MAX } from '../render/theme-joe.js';
 
 /**
  * 登录失败限流 —— 按「用户名 + 客户端 IP」维度计数。
@@ -748,7 +748,7 @@ async function settingsPage(ctx) {
     <div class="row">
       <div class="item"><label>博主栏背景图 URL</label><input type="text" name="j_JAside_Author_Image" value="${esc(theme.JAside_Author_Image || '')}"></div>
       <div class="item"><label>博主格言（Motto）</label><input type="text" name="j_JAside_Author_Motto" value="${esc(theme.JAside_Author_Motto || '')}"></div>
-      <div class="item"><label>热门文章侧栏数量</label><input type="number" name="j_JAside_Hot_Num" value="${esc(theme.JAside_Hot_Num || '5')}" min="0" max="10"></div>
+      <div class="item"><label>热门文章侧栏数量（最多 ${HOT_POST_MAX}）</label><input type="number" name="j_JAside_Hot_Num" value="${esc(theme.JAside_Hot_Num || HOT_POST_MAX)}" min="0" max="${HOT_POST_MAX}"></div>
     </div>
     <div class="row">
       <div class="item"><label>最新回复侧栏</label><select name="j_JAside_Newreply_Status"><option value="on" ${theme.JAside_Newreply_Status !== 'off' ? 'selected' : ''}>开启</option><option value="off" ${theme.JAside_Newreply_Status === 'off' ? 'selected' : ''}>关闭</option></select></div>

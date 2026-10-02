@@ -193,6 +193,38 @@ await test('主题：搜索面板结构与脚本齐备', async () => {
   assert.ok(html.includes('assets/css/joe.layout.css'), '未引入 joe.layout.css');
 });
 
+const setJoeOption = async (patch) => {
+  const cur = (await globalThis.BLOG_KV.get('opt:theme:joe', 'json')) || {};
+  await globalThis.BLOG_KV.put('opt:theme:joe', JSON.stringify({ ...cur, ...patch }));
+};
+
+await test('主题：侧栏热门文章最多 3 条', async () => {
+  const { HOT_POST_MAX } = await import('./src/render/theme-joe.js');
+  assert.equal(HOT_POST_MAX, 3, 'HOT_POST_MAX 应为 3');
+
+  // 测试库里文章数远多于 3，才能验证是"截断"而不是"恰好只有 3 篇"
+  const countHot = (html) => {
+    const m = html.match(/<section class="joe_aside__item hot">[\s\S]*?<\/section>/);
+    if (!m) return 0;
+    return (m[0].match(/<li class="item">/g) || []).length;
+  };
+
+  for (const cfg of ['10', '3', '1', '0']) {
+    await setJoeOption({ JAside_Hot_Num: cfg });
+    const html = await (await call('GET', '/')).text();
+    const n = countHot(html);
+    if (cfg === '0') {
+      assert.equal(n, 0, 'JAside_Hot_Num=0 时不该渲染热门文章栏');
+    } else {
+      assert.ok(n > 0, `JAside_Hot_Num=${cfg} 时热门文章栏整个消失了`);
+      assert.ok(n <= HOT_POST_MAX, `JAside_Hot_Num=${cfg} 时渲染了 ${n} 条，超过上限 ${HOT_POST_MAX}`);
+    }
+  }
+
+  // 恢复默认，避免影响后续用例
+  await setJoeOption({ JAside_Hot_Num: '3' });
+});
+
 await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点）', async () => {
   const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
   // 侧栏在左：order:-1 + flex 固定宽度，正文 flex:1

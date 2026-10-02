@@ -8,6 +8,9 @@ import { pageNav, avatarUrl, formatDate, thumbnail } from './html.js';
 export const THEME_NAME = 'joe';
 const LAZYLOAD = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 
+/** 侧栏「热门文章」最多显示几条（硬上限，后台填更大也只显示这么多） */
+export const HOT_POST_MAX = 3;
+
 /** Joe 主题配置默认值（后台可改，存于 option theme:joe） */
 export const JOE_DEFAULTS = {
   JFavicon: '/usr/themes/joe/assets/img/link.png',
@@ -20,7 +23,7 @@ export const JOE_DEFAULTS = {
   JAside_Author_Link: '#',
   JAside_Author_Motto: '有钱终成眷属，没钱亲眼目睹',
   JAside_Author_Nav: 'on',
-  JAside_Hot_Num: '5',
+  JAside_Hot_Num: String(HOT_POST_MAX),
   JAside_Newreply_Status: 'on',
   JAside_Timelife_Status: 'on',
   JAside_3DTag: 'off',
@@ -169,7 +172,13 @@ async function asideBlock(ctx) {
     posts: postsIdx.total,
     comments: (await db.listAllComments({ status: 'approved', pageSize: 1 })).total,
   };
-  const hot = await db.listContents({ type: 'post', pageSize: parseInt(options.joe.JAside_Hot_Num || '5', 10) || 5, order: 'views' });
+  // 数量取后台配置，但硬性截到 HOT_POST_MAX 条；填 0 视为不显示该栏。
+  // 用 Number.isFinite 而非 `parseInt(x) || 默认值`，否则填 0 会被当成"没填"。
+  const hotNumCfg = parseInt(options.joe.JAside_Hot_Num, 10);
+  const hotNum = Number.isFinite(hotNumCfg)
+    ? Math.min(HOT_POST_MAX, Math.max(0, hotNumCfg))
+    : HOT_POST_MAX;
+  const hot = hotNum ? await db.listContents({ type: 'post', pageSize: hotNum, order: 'views' }) : { items: [] };
   const hotViews = await Promise.all(hot.items.map(async (p) => ({ ...p, views: await db.getStat(p.cid, 'views') })));
   const recentComments = await db.recentComments(5);
   const tags = await db.listMetas('tag');
