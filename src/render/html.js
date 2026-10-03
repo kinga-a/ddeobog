@@ -1,7 +1,6 @@
 /** HTML 辅助：分页、日期、头像等 */
 import { escapeHtml } from './markdown.js';
 
-/** Joe 风格分页（ul.joe_pagination） */
 /** Joe 风格分页（ul.joe_pagination）
  * 链接必须是路径式，不能用 ?page=N —— 前端路由只认 /page/N/ 与
  * /<归档>/N/（见 src/controllers/frontend.js 的各条正则），从不读 page
@@ -35,17 +34,8 @@ export function pageNav(page, pages, baseUrl, edge = 2) {
 
 /** Cravatar/WeAvatar/Gravatar 兼容头像（国内可用） */
 export function avatarUrl(mail, size = 100, avatarSource = 'weavatar') {
-  const m = String(mail || '').trim().toLowerCase();
-  if (!m) return `https://cravatar.cn/avatar/?d=mp&s=${size}`;
-  switch (avatarSource) {
-    case 'gravatar':
-      return `https://www.gravatar.com/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
-    case 'cravatar':
-      return `https://cravatar.cn/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
-    case 'weavatar':
-    default:
-      return `https://weavatar.com/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
-  }
+  // 直接返回 Cravatar 默认头像（不使用 MD5），侧栏博主头像可通过 options.joe.JAside_Author_Avatar 设置
+  return `https://cravatar.cn/avatar/?d=mp&s=${size}`;
 }
 
 export function formatDate(ts, fmt = 'Y-m-d') {
