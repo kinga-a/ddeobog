@@ -233,7 +233,7 @@ await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', asyn
   assert.ok(html.includes('class="joe_header__above-search" method="get"'),
     '顶栏搜索未使用 form，回车无法走原生提交');
   // 主题 CSS 靠 .submit / .icon / .result .item 的形状出效果，缺一样就散架
-  assert.ok(html.includes('class="submit">Search</button>'), '缺少 .submit 按钮');
+  assert.ok(html.includes('class="submit">搜索</button>'), '缺少 .submit 按钮（文案应为中文「搜索」）');
   assert.ok(/<span class="icon"><\/span>/.test(html), '.icon 应为主题自带的 <span>（含聚焦翻转动画）');
   assert.ok(html.includes('class="result"'), '缺少联想/热门下拉面板');
   assert.ok(/<span class="sort">\d+<\/span>/.test(html), '.result 条目缺少 .sort 排名徽标');

@@ -253,7 +253,7 @@ async function headerBlock(ctx) {
       </nav>
       <form class="joe_header__above-search" method="get" action="/search">
         <input maxlength="16" autocomplete="off" placeholder="请输入关键字..." name="s" value="" class="input" type="text" />
-        <button type="submit" class="submit">Search</button>
+        <button type="submit" class="submit">搜索</button>
         <span class="icon"></span>
         <nav class="result">
           ${suggestHtml}
@@ -268,7 +268,7 @@ async function headerBlock(ctx) {
       <div class="joe_header__searchout-inner">
         <form class="search" method="get" action="/search">
           <input maxlength="16" autocomplete="off" placeholder="请输入关键字..." name="s" value="" class="input" type="text" />
-          <button type="submit" class="submit">Search</button>
+          <button type="submit" class="submit">搜索</button>
         </form>
       </div>
     </div>
@@ -571,11 +571,11 @@ export async function renderIndex(ctx) {
         </div>
         <div class="joe_index__list" data-wow="off">
           <ul class="joe_list">${itemsHtml}</ul>
-          <ul class="joe_list__loading" style="display:none"></ul>
+          <ul class="joe_list__loading" style="display:none">${skeletonItem.repeat(2)}</ul>
         </div>
         ${pageNav(page, list.pages, '/')}
-        <div class="joe_load" style="display:none">查看更多</div>
       </div>
+      <div class="joe_load" style="display:none">查看更多</div>
     </div>
     ${await asideBlock(ctx)}
   </div>`;
@@ -585,6 +585,18 @@ export async function renderIndex(ctx) {
     js: [a('assets/lib/swiper@5.4.5/swiper.min.js'), a('assets/lib/wowjs@1.1.3/wow.min.js'), a('assets/js/joe.index.min.js')],
   });
 }
+
+/** 「查看更多」加载时的骨架占位，结构对齐 5i.ink 原版的 .joe_list__loading */
+const skeletonItem = `<li class="item">
+                  <div class="thumbnail"></div>
+                  <div class="information">
+                    <div class="title"></div>
+                    <div class="abstract">
+                      <p></p>
+                      <p></p>
+                    </div>
+                  </div>
+                </li>`;
 
 function indexItem(ctx, p) {
   const a = (path) => assetsUrl(ctx.options, path);
