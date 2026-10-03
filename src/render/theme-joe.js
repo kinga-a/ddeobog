@@ -146,11 +146,14 @@ async function slideoutBlock(ctx) {
 
   const postsIdx = await db.listContents({ type: 'post', pageSize: 1 });
   const commentsIdx = await db.listAllComments({ status: 'approved', pageSize: 1 });
-  const categories = (await db.listMetas('category')).map((m) => ({
-    ...m,
-    // listMetas 返回的是 { name, slug, ... }，没有 permalink，得自己拼
-    permalink: `/category/${encodeURIComponent(m.slug)}/`,
-  }));
+  // listMetas 返回的是 { name, slug, ... }，没有 permalink，得自己拼
+  const metaLinks = async (type, prefix) =>
+    (await db.listMetas(type)).map((m) => ({
+      ...m,
+      permalink: `${prefix}/${encodeURIComponent(m.slug)}/`,
+    }));
+  const categories = await metaLinks('category', '/category');
+  const tags = await metaLinks('tag', '/tag');
 
   const icon = (svg, size) =>
     `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${svg}</svg>`;
@@ -188,7 +191,8 @@ async function slideoutBlock(ctx) {
     </ul>
     <ul class="joe_header__slideout-menu panel-box">
       <li><a class="link${isIndex ? ' current' : ''}" href="/" title="首页"><span>首页</span></a></li>
-      ${group('栏目', categories)}
+      ${group('分类', categories)}
+      ${group('标签', tags)}
       ${group('页面', pages)}
     </ul>
   </div>`;

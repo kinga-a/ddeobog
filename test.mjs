@@ -302,10 +302,26 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
     '菜单首项应为首页');
   // 手风琴分组：有子项才渲染，且 .icon 是 13x13
   const groups = [...menu.matchAll(/<a class="link panel" href="#" rel="nofollow"><span>([^<]+)<\/span><svg class="icon"[^>]*width="13" height="13">/g)];
-  assert.ok(groups.length >= 1, '应有「栏目」或「页面」手风琴分组');
-  for (const g of groups) {
-    const label = g[1];
-    assert.ok(menu.includes('>' + label + '</span>'), `分组 ${label} 缺标题`);
+  assert.ok(groups.length >= 1, '应至少有手风琴分组');
+  const labels = groups.map((g) => g[1]);
+
+  // 分组名称与顺序：分类 → 标签 → 页面（原来的「栏目」已更名为「分类」）
+  assert.ok(!labels.includes('栏目'), '「栏目」应更名为「分类」');
+  const expected = ['分类', '标签', '页面'].filter((x) => labels.includes(x));
+  assert.deepEqual(labels, expected, `分组顺序应为 分类/标签/页面，实际 ${labels.join('/')}`);
+  // 只渲染有子项的分组，且每组子项 href 要指向真实路由
+  for (const label of labels) {
+    const re = new RegExp(`<span>${label}</span>[\\s\\S]*?<ul class="slides panel-body">([\\s\\S]*?)</ul>`);
+    const body = re.exec(menu);
+    assert.ok(body, `${label} 分组缺 .slides.panel-body`);
+    assert.ok(/<li><a class="link/.test(body[1]), `${label} 分组没有子项，不该渲染这一组`);
+    assert.ok(/href="\/(category|tag)\/[^/]+\/"/.test(body[1]) || label === '页面',
+      `${label} 分组的子项 href 不合法`);
+  }
+  // 标签分组必须排在分类之后、页面之前
+  if (labels.includes('标签')) {
+    assert.ok(labels.indexOf('分类') < labels.indexOf('标签'), '「标签」应排在「分类」之后');
+    assert.ok(labels.indexOf('标签') < labels.indexOf('页面'), '「标签」应排在「页面」之前');
   }
   assert.ok(/<ul class="slides panel-body">/.test(menu), '分组内缺 .slides.panel-body');
   // 分组下必须有可点的子项，且 current 只落在当前路径上
@@ -483,6 +499,7 @@ await test('正确密码登录成功（无 TOTP 时直接进后台）', async ()
   assert.ok(cookie.includes('te_sess='), '应设置会话 Cookie');
 });
 
+
 await test('后台仪表盘', async () => {
   const res = await call('GET', '/admin');
   assert.equal(res.status, 200);
@@ -566,6 +583,38 @@ await test('创建独立页面 + 前台访问 /[slug]/', async () => {
   // 导航应包含该页面
   const home = await call('GET', '/').then((r) => r.text());
   assert.ok(home.includes('href="/about/"'), '导航应包含独立页面');
+});
+
+await test('主题：侧边面板分组为 分类/标签/页面，且标签链接有效', async () => {
+  // 先造一篇带标签的文章，确保「标签」分组真的有子项可渲染
+  const created = await call('POST', '/admin/post', {
+    form: { type: 'post', title: '带标签的文章', text: '正文', status: 'publish', tags: '生活, 技术' },
+  });
+  assert.ok(!created.headers.get('Location')?.includes('/admin/login'),
+    `造带标签的文章失败：被重定向到 ${created.headers.get('Location')}`);
+  await call('POST', '/admin/page', {
+    form: { type: 'page', title: '关于', slug: 'about', text: '正文', status: 'publish' },
+  });
+
+  const html = await (await call('GET', '/')).text();
+  const i = html.indexOf('<ul class="joe_header__slideout-menu');
+  const menu = html.slice(i, html.indexOf('joe_header__searchout', i));
+
+  const labels = [...menu.matchAll(/<span>([^<]+)<\/span><svg class="icon"[^>]*width="13" height="13">/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ['分类', '标签', '页面'], `分组应为 分类/标签/页面，实际 ${labels.join('/')}`);
+
+  // 标签分组的子项必须指向 /tag/<slug>/ 且可访问
+  const tagBody = /<span>标签<\/span>[\s\S]*?<ul class="slides panel-body">([\s\S]*?)<\/ul>/.exec(menu);
+  assert.ok(tagBody, '标签分组缺 .slides.panel-body');
+  const tagLinks = [...tagBody[1].matchAll(/href="([^"]*)" title="([^"]*)"/g)].map((m) => ({ href: m[1], title: m[2] }));
+  assert.ok(tagLinks.length >= 1, '标签分组应至少有一个子项');
+  for (const l of tagLinks) {
+    assert.ok(/^\/tag\/[^/]+\/$/.test(l.href), `标签 href 非法：${l.href}`);
+    const r = await call('GET', l.href);
+    assert.equal(r.status, 200, `标签页 ${l.href} 打不开（${r.status}）`);
+  }
+  // 「栏目」已更名为「分类」，旧名不应残留
+  assert.ok(!menu.includes('<span>栏目</span>'), '「栏目」应更名为「分类」');
 });
 
 await test('评论管理页', async () => {
@@ -709,6 +758,7 @@ await test('登出后后台不可访问', async () => {
   const res = await call('GET', '/admin');
   assert.equal(res.status, 302);
 });
+
 
 // ================= 汇总 =================
 console.log('\n========== 测试结果 ==========');
