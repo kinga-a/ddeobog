@@ -141,7 +141,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
 			}
 		};
-		let queryData = { page: 1, pageSize: window.Joe.PAGE_SIZE, type: 'created' };
+		// 初始页码必须跟随 URL：Typecho 的分页是路径式的（/page/2/），服务端已
+		// 渲染好当前页，而下面的 initDom() 会清空列表并用这里的数据重画。
+		// 写死 1 会让 JS 把 /page/2/ 的内容又刷回第一页。
+		const currentPage = (() => {
+			const matched = window.location.pathname.match(/\/page\/(\d+)\/?$/);
+			return matched ? parseInt(matched[1], 10) : 1;
+		})();
+		let queryData = { page: currentPage, pageSize: window.Joe.PAGE_SIZE, type: 'created' };
 		const initDom = () => {
 			$('.joe_index__list .joe_list').html('');
 			$('.joe_load').show();

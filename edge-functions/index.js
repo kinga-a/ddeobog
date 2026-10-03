@@ -234,8 +234,8 @@ ${await pe(p)}
           <ul class="joe_list">${itemsHtml}</ul>
           <ul class="joe_list__loading" style="display:none"></ul>
         </div>
-        ${pageNav(page,list.pages,"/")}
         <div class="joe_load" style="display:none">\u67E5\u770B\u66F4\u591A</div>
+        ${pageNav(page,list.pages,"/")}
       </div>
     </div>
     ${await asideBlock(ctx)}

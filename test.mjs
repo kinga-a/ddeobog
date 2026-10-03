@@ -1077,6 +1077,16 @@ await test('搜索提交按钮为中文', async () => {
   assert.ok(!/>\s*Search\s*</.test(html), '页面不应残留英文 Search 文案');
 });
 
+// joe.index.js 的 initDom() 会清空服务端列表并用 /joe/api 重画，若初始页码写死 1，
+// 访问 /page/2/ 会被 JS 刷回第一页。断言它从 URL 解析当前页（查压缩后的 min.js）。
+await test('首页无限滚动从 URL 取初始页码', async () => {
+  const src = await readFile('usr/themes/joe/assets/js/joe.index.min.js', 'utf8');
+  assert.ok(
+    /location\.pathname\.match\(\/\\?\/page\//.test(src) || /pathname\.match\(\/\\\/page\\\//.test(src),
+    'joe.index.min.js 应从 location.pathname 解析 /page/N/ 的页码'
+  );
+});
+
 await test('登出后后台不可访问', async () => {
   await call('GET', '/admin/logout');
   const res = await call('GET', '/admin');

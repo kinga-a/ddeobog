@@ -573,8 +573,8 @@ export async function renderIndex(ctx) {
           <ul class="joe_list">${itemsHtml}</ul>
           <ul class="joe_list__loading" style="display:none"></ul>
         </div>
-        ${pageNav(page, list.pages, '/')}
         <div class="joe_load" style="display:none">查看更多</div>
+        ${pageNav(page, list.pages, '/')}
       </div>
     </div>
     ${await asideBlock(ctx)}
