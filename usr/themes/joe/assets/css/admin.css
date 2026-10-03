@@ -290,6 +290,65 @@ tbody tr:last-child td { border-bottom: 0; }
 .item { margin-bottom: 16px; }
 .item:last-child { margin-bottom: 0; }
 
+/* ---- 卡片小标题 / 说明文字 ---- */
+.card__title {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.card__intro {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink-3);
+}
+
+/* ---- 表单按钮行：与最后一个输入框保持稳定间距 ---- */
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.form-actions .btn { flex: none; }
+.form-actions--start { margin-top: 0; }
+
+/* ---- 仪表盘快捷操作 ---- */
+.quickacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+.quickacts .btn { flex: none; }
+.quickacts .badge {
+  margin-left: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  vertical-align: 1px;
+}
+
+/* ---- 修改密码：桌面三列，手机单列 ---- */
+.pwd-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.pwd-grid .item { margin-bottom: 0; }
+
+/* ---- 两步验证二维码 ---- */
+.qr-box {
+  width: fit-content;
+  margin: 0 auto 4px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.qr-hint { text-align: center; margin-top: 10px; }
+.qr-title { margin-top: 22px; }
+.qr-secret { user-select: all; font-size: 15px; }
+
 label {
   display: block;
   margin-bottom: 6px;
@@ -708,4 +767,23 @@ input.meta-input {
   .metas__head, .metas__body { padding-left: 16px; padding-right: 16px; }
   .metas th:first-child, .metas td:first-child { padding-left: 16px; }
   .metas th:last-child,  .metas td:last-child  { padding-right: 16px; }
+}
+
+/* ============================================================
+   手机端：快捷操作 / 表单按钮行 / 修改密码
+   ============================================================ */
+@media (max-width: 760px) {
+  /* 快捷操作按钮两列铺满，加大点按面积 */
+  .quickacts { gap: 8px 10px; }
+  .quickacts .btn {
+    flex: 1 1 calc(50% - 5px);
+    text-align: center;
+  }
+
+  /* 修改密码三列塌成单列 */
+  .pwd-grid { grid-template-columns: 1fr; gap: 14px; }
+
+  /* 表单按钮行：手机端按钮撑满，减少误触 */
+  .form-actions { margin-top: 16px; }
+  .form-actions .btn { width: 100%; }
 }

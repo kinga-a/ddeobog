@@ -298,15 +298,15 @@ async function dashboard(ctx) {
     <div class="stat"><div class="num">${tags.length}</div><div class="label">标签</div></div>
   </div>
   <div class="card">
-    <h2 style="font-size:16px;margin-bottom:14px">快捷操作</h2>
-    <p style="font-size:14px;line-height:2.2">
+    <h2 class="card__title">快捷操作</h2>
+    <div class="quickacts">
       <a class="btn primary" href="/admin/post?type=post">撰写新文章</a>
       <a class="btn" href="/admin/page">创建新页面</a>
       <a class="btn" href="/admin/uploads">上传附件</a>
       <a class="btn" href="/admin/settings">站点设置</a>
-      <a class="btn" href="/admin/security">两步验证 ${user.totpEnabled ? '<span class="badge green">已开启</span>' : '<span class="badge yellow">未开启</span>'}</a>
+      <a class="btn" href="/admin/security">两步验证 <span class="badge ${user.totpEnabled ? 'green' : 'yellow'}">${user.totpEnabled ? '已开启' : '未开启'}</span></a>
       <a class="btn" href="/" target="_blank">查看站点</a>
-    </p>
+    </div>
   </div>`;
   return html(adminLayout(ctx, { title: '仪表盘', active: '', body }));
 }
@@ -778,8 +778,10 @@ async function securityPage(ctx) {
     totpSection = `<div class="msg ok">两步验证已开启</div>
     <form method="post" action="/admin/security">
       <input type="hidden" name="op" value="disable">
-      <div class="item"><label>输入当前动态码以关闭两步验证</label><input type="text" name="totp" pattern="\\d{6}" required></div>
-      <button class="btn danger" type="submit">关闭两步验证</button>
+      <div class="item"><label>输入当前动态码以关闭两步验证</label><input type="text" name="totp" pattern="\\d{6}" required autocomplete="one-time-code"></div>
+      <div class="form-actions">
+        <button class="btn danger" type="submit">关闭两步验证</button>
+      </div>
     </form>`;
   } else if (step === 'bind') {
     // 生成新密钥并展示二维码
@@ -787,20 +789,24 @@ async function securityPage(ctx) {
     await db.setOption(`totpPending:${user.uid}`, secret);
     const uri = otpauthUri(secret, user.mail || user.name, ctx.options.title || 'TypechoEdge');
     const qr = totpQrSvg(uri);
-    totpSection = `<h2 style="font-size:16px;margin-bottom:14px">第一步：扫描二维码</h2>
-    <div style="text-align:center;margin-bottom:18px"><div style="display:inline-block;background:#fff;padding:12px;border-radius:8px">${qr.replace('<svg', '<svg width="220" height="220"')}</div>
-    <p class="hint" style="margin-top:10px">使用 Google Authenticator / Microsoft Authenticator / 微信小程序「腾讯身份验证器」等扫描</p>
-    <p class="hint">无法扫码？手动输入密钥：<code style="user-select:all;font-size:15px">${secret}</code></p></div>
-    <h2 style="font-size:16px;margin-bottom:14px">第二步：输入动态码确认绑定</h2>
+    totpSection = `<h2 class="card__title">第一步：扫描二维码</h2>
+    <div class="qr-box">${qr.replace('<svg', '<svg width="200" height="200"')}</div>
+    <p class="hint qr-hint">使用 Google Authenticator / Microsoft Authenticator / 微信小程序「腾讯身份验证器」等扫描</p>
+    <p class="hint qr-hint">无法扫码？手动输入密钥：<code class="qr-secret">${secret}</code></p>
+    <h2 class="card__title qr-title">第二步：输入动态码确认绑定</h2>
     <form method="post" action="/admin/security">
       <input type="hidden" name="op" value="enable">
       <div class="item"><label>6 位动态码</label><input type="text" name="totp" pattern="\\d{6}" required autofocus autocomplete="one-time-code"></div>
-      <button class="btn primary" type="submit">确认开启</button>
+      <div class="form-actions">
+        <button class="btn primary" type="submit">确认开启</button>
+      </div>
     </form>`;
   } else {
-    totpSection = `<p style="font-size:14px;color:#57606a;line-height:1.8;margin-bottom:16px">
+    totpSection = `<p class="card__intro">
       开启后，登录时除密码外还需输入动态验证码（TOTP，RFC 6238），<br>即使密码泄露也无法登录后台。</p>
-    <a class="btn primary" href="/admin/security?step=bind">开启两步验证</a>`;
+    <div class="form-actions form-actions--start">
+      <a class="btn primary" href="/admin/security?step=bind">开启两步验证</a>
+    </div>`;
   }
 
   const body = `${MSG(ctx)}
@@ -809,15 +815,17 @@ async function securityPage(ctx) {
     ${totpSection}
   </div>
   <div class="card">
-    <h2 style="font-size:16px;margin-bottom:14px">修改密码</h2>
+    <h2 class="card__title">修改密码</h2>
     <form method="post" action="/admin/security">
       <input type="hidden" name="op" value="password">
-      <div class="row">
-        <div class="item"><label>当前密码</label><input type="password" name="old" required></div>
-        <div class="item"><label>新密码（至少 8 位）</label><input type="password" name="password" required minlength="8"></div>
-        <div class="item"><label>确认新密码</label><input type="password" name="password2" required minlength="8"></div>
+      <div class="pwd-grid">
+        <div class="item"><label>当前密码</label><input type="password" name="old" required autocomplete="current-password"></div>
+        <div class="item"><label>新密码（至少 8 位）</label><input type="password" name="password" required minlength="8" autocomplete="new-password"></div>
+        <div class="item"><label>确认新密码</label><input type="password" name="password2" required minlength="8" autocomplete="new-password"></div>
       </div>
-      <button class="btn" type="submit">修改密码</button>
+      <div class="form-actions">
+        <button class="btn primary" type="submit">修改密码</button>
+      </div>
     </form>
   </div>`;
   return html(adminLayout(ctx, { title: '安全设置', active: 'security', body }));
