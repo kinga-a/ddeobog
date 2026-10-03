@@ -2,10 +2,16 @@
 import { escapeHtml } from './markdown.js';
 
 /** Joe 风格分页（ul.joe_pagination） */
+/** Joe 风格分页（ul.joe_pagination）
+ * 链接必须是路径式，不能用 ?page=N —— 前端路由只认 /page/N/ 与
+ * /<归档>/N/（见 src/controllers/frontend.js 的各条正则），从不读 page
+ * 查询参数。写成 ?page=N 时服务端仍按第 1 页渲染，点「下一页」原地不动。 */
 export function pageNav(page, pages, baseUrl, edge = 2) {
   if (pages <= 1) return '';
+  // 首页 baseUrl 为 '/'，页码走 /page/N/；归档形如 /category/x/，走 /category/x/N/
+  const stem = baseUrl === '/' ? '/page' : baseUrl.replace(/\/$/, '');
   const make = (p, html, cls = '') => {
-    const url = p === 1 ? baseUrl : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}page=${p}`;
+    const url = p === 1 ? baseUrl : `${stem}/${p}/`;
     return `<li class="${cls}"><a href="${url}" title="第 ${p} 页">${html}</a></li>`;
   };
   let html = '<ul class="joe_pagination">';

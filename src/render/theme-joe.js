@@ -253,7 +253,7 @@ async function headerBlock(ctx) {
       </nav>
       <form class="joe_header__above-search" method="get" action="/search">
         <input maxlength="16" autocomplete="off" placeholder="请输入关键字..." name="s" value="" class="input" type="text" />
-        <button type="submit" class="submit">Search</button>
+        <button type="submit" class="submit">搜索</button>
         <span class="icon"></span>
         <nav class="result">
           ${suggestHtml}
@@ -268,7 +268,7 @@ async function headerBlock(ctx) {
       <div class="joe_header__searchout-inner">
         <form class="search" method="get" action="/search">
           <input maxlength="16" autocomplete="off" placeholder="请输入关键字..." name="s" value="" class="input" type="text" />
-          <button type="submit" class="submit">Search</button>
+          <button type="submit" class="submit">搜索</button>
         </form>
       </div>
     </div>

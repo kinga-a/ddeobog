@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert';
 import { readFile, readdir } from 'node:fs/promises';
-import { thumbnail } from './src/render/html.js';
+import { pageNav, thumbnail } from './src/render/html.js';
 import { KV } from './src/storage/kv.js';
 import { BlobStorage } from './src/storage/blob.js';
 import { Database } from './src/db.js';
@@ -233,7 +233,7 @@ await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', asyn
   assert.ok(html.includes('class="joe_header__above-search" method="get"'),
     '顶栏搜索未使用 form，回车无法走原生提交');
   // 主题 CSS 靠 .submit / .icon / .result .item 的形状出效果，缺一样就散架
-  assert.ok(html.includes('class="submit">Search</button>'), '缺少 .submit 按钮');
+  assert.ok(html.includes('class="submit">搜索</button>'), '缺少 .submit 按钮');
   assert.ok(/<span class="icon"><\/span>/.test(html), '.icon 应为主题自带的 <span>（含聚焦翻转动画）');
   assert.ok(html.includes('class="result"'), '缺少联想/热门下拉面板');
   assert.ok(/<span class="sort">\d+<\/span>/.test(html), '.result 条目缺少 .sort 排名徽标');
@@ -1029,6 +1029,52 @@ await test('附件：删除会连带清掉 Blob 对象与 meta', async () => {
   assert.ok(!store.map.has('pic-file.png'), 'Blob 对象应已删除');
   assert.equal(await db.getContent(row.cid), null, 'KV 记录应已删除');
   assert.equal(await kv.getJSON('file:meta:pic-file.png'), null, 'meta 记录应已清理');
+});
+
+// 分页链接必须是路径式：路由只认 /page/N/ 与 /<归档>/N/，从不读 page 查询参数。
+// 曾长期生成 ?page=N，服务端照样按第 1 页渲染，点「下一页」原地不动。
+await test('分页链接是路径式，且真能翻到第 2 页', async () => {
+  const home1 = pageNav(1, 5, '/');
+  assert.ok(home1.includes('href="/"'), '首页第 1 页应指向 /');
+  assert.ok(home1.includes('href="/page/2/"'), `首页第 2 页应指向 /page/2/，实际: ${home1.match(/href="[^"]+"/g)}`);
+
+  const catNav = pageNav(2, 5, '/category/essay/');
+  assert.ok(catNav.includes('href="/category/essay/"'), '归档第 1 页应保留归档根路径');
+  assert.ok(catNav.includes('href="/category/essay/3/"'), `归档第 3 页应指向 /category/essay/3/，实际: ${catNav.match(/href="[^"]+"/g)}`);
+  assert.ok(!catNav.includes('?page='), '不应再出现 ?page= 查询串');
+
+  // 补足文章数直到首页真的出现分页（PAGE_SIZE = 10）
+  let guard = 0;
+  while (guard++ < 20) {
+    if ((await (await call('GET', '/')).text()).includes('/page/2/')) break;
+    await call('POST', '/admin/post', {
+      form: {
+        type: 'post', title: `凑分页的文章 ${guard}`, text: '正文内容',
+        status: 'publish', password: '', allowComment: '1', categories: '1', tags: '',
+      },
+    });
+  }
+  const home = await (await call('GET', '/')).text();
+  assert.ok(home.includes('/page/2/'), '首页应出现 /page/2/ 链接');
+  assert.ok(!home.includes('?page='), '首页不应出现 ?page= 查询串');
+
+  const res = await call('GET', '/page/2/');
+  assert.equal(res.status, 200, `/page/2/ 应返回 200，实际 ${res.status}`);
+  assert.ok(
+    /class="active"[^>]*>\s*<a[^>]*>2</.test(await res.text()),
+    '/page/2/ 的分页应把 2 标为当前页'
+  );
+});
+
+// 搜索提交按钮：两处（顶栏胶囊 + 展开面板）都应为中文，且不再残留英文
+await test('搜索提交按钮为中文', async () => {
+  const html = await (await call('GET', '/')).text();
+  const btns = html.match(/<button[^>]*class="submit"[^>]*>[^<]*<\/button>/g) || [];
+  assert.ok(btns.length >= 2, `应有两处 .submit 按钮，实际 ${btns.length}`);
+  for (const b of btns) {
+    assert.ok(b.includes('搜索'), `.submit 按钮应为「搜索」，实际: ${b}`);
+  }
+  assert.ok(!/>\s*Search\s*</.test(html), '页面不应残留英文 Search 文案');
 });
 
 await test('登出后后台不可访问', async () => {
