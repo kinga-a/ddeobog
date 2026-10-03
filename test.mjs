@@ -209,6 +209,56 @@ await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', asyn
   assert.ok(html.includes('assets/css/joe.layout.css'), '未引入 joe.layout.css');
 });
 
+await test('主题：文章底部 operate + pagination 对齐 5i.ink', async () => {
+  const html = await (await call('GET', '/archives/1/')).text();
+
+  // ---- .joe_detail__operate：胶囊标签 + 分享面板 ----
+  assert.ok(html.includes('class="joe_detail__operate"'), '缺少 .joe_detail__operate');
+  assert.ok(html.includes('class="joe_detail__operate-tags"'), '缺少标签区');
+  assert.ok(html.includes('class="joe_detail__operate-share"'), '缺少分享区');
+  assert.ok(html.includes('class="reach"'), '缺少 .reach 分享面板容器');
+  assert.ok(!html.includes('class="joe_detail__tags"'),
+    '仍在输出 .joe_detail__tags，主题 CSS 里没有这条规则（裸链接）');
+
+  // 三个分享入口，URL 模板与 5i.ink 一致
+  assert.ok(html.includes('connect.qq.com/widget/shareqq/index.html?url='), '缺 QQ 分享');
+  assert.ok(html.includes('sns.qzone.qq.com/cgi-bin/qzshare/cgi_qzshare_onekey?url='), '缺 QQ 空间分享');
+  assert.ok(html.includes('service.weibo.com/share/share.php?sharesource=weibo'), '缺微博分享');
+  // 分享链接必须带文章绝对地址，否则第三方平台拿不到原文
+  const shareUrls = [...html.matchAll(/class="reach"[\s\S]*?<\/div>/g)][0][0];
+  const abs = shareUrls.match(/url=([^&"]+)/);
+  assert.ok(abs && /^https?:\/\/[^/]+\/archives\/\d+\/$/.test(decodeURIComponent(abs[1])),
+    `分享链接的 url 不是文章绝对地址：${abs && abs[1]}`);
+  // 分享图标必须是内联 SVG（主题 CSS 用 svg{cursor:pointer} 和 hover 旋转）
+  assert.ok(/class="joe_detail__operate-share">\s*<svg viewBox="0 0 1024 1024"[^>]*width="26"/.test(html),
+    '分享入口图标应为 26×26 内联 svg');
+
+  // ---- .joe_post__pagination：可见文字是「上一篇/下一篇」，标题在 title 属性 ----
+  // 此刻夹具只有一篇文章，只有「下一篇」；两个方向齐全的那条见「上下篇文字」测试
+  const pag = html.slice(html.indexOf('class="joe_post__pagination"'));
+  const pagSeg = pag.slice(0, pag.indexOf('</ul>'));
+  const sides = { prev: '上一篇', next: '下一篇' };
+  let seen = 0;
+  for (const [side, label] of Object.entries(sides)) {
+    const m = new RegExp(`pagination-item ${side}"><a href="([^"]*)" title="([^"]*)">([^<]*)<\\/`).exec(pagSeg);
+    if (!m) continue;
+    seen++;
+    assert.equal(m[3], label, `${side} 可见文字应为「${label}」，实际「${m[3]}」`);
+    assert.ok(/^\/archives\/\d+\/$/.test(m[1]), `${side} 链接非法：${m[1]}`);
+    assert.ok(m[2], `${side} 的 title 应为文章标题`);
+  }
+  assert.equal(seen, 0, '只有一篇文章时上下篇都应缺席');
+
+  // ---- 分享面板的展开/收起必须有 JS（5i.ink 缺这段，面板永远 visibility:hidden）----
+  // 页面真正加载的是 joe.global.min.js，与 .js 是两份独立文件、构建也不会重新生成 min。
+  // 所以要去 HTML 里把脚本地址抠出来，取回那个文件校验，别只查 .js。
+  const scripts = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"><\/script>/g)].map((m) => m[1]);
+  assert.ok(scripts.length === 1, `页面应只加载一个 joe.global 脚本，实际：${scripts}`);
+  // /usr/ 静态资源由平台静态层响应，函数不返回内容，这里按 URL 映射回仓库文件读
+  const g = await readFile(`.${scripts[0].split('?')[0]}`, 'utf8');
+  assert.ok(/joe_detail__operate-share/.test(g), `${scripts[0]} 未绑定分享面板的展开/收起`);
+});
+
 await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', async () => {
   const html = await (await call('GET', '/')).text();
   const seg = html.slice(html.indexOf('<div class="joe_action">'));
@@ -349,6 +399,41 @@ await test('后台撰写文章（Markdown + 分类标签 + 字段）', async () 
   assert.ok(html.includes('第二篇文章'));
   assert.ok(html.includes('<h1 id='), 'Markdown 标题');
   assert.ok(html.includes('language-js'), '代码块');
+});
+
+await test('文章：上下篇可见文字为「上一篇/下一篇」，标题在 title 属性', async () => {
+  // 造第三篇，让中间的 cid=2 上下篇齐全
+  await call('POST', '/admin/post', {
+    form: { type: 'post', title: '第三篇文章', text: '正文', status: 'publish' },
+  });
+
+  const pagOf = async (cid) => {
+    const h = await call('GET', `/archives/${cid}/`).then((r) => r.text());
+    const seg = h.slice(h.indexOf('class="joe_post__pagination"'));
+    return seg.slice(0, seg.indexOf('</ul>'));
+  };
+  const pick = (pag, side) =>
+    new RegExp(`pagination-item ${side}"><a href="([^"]*)" title="([^"]*)">([^<]*)<\\/`).exec(pag);
+
+  const mid = await pagOf(2);
+  const prev = pick(mid, 'prev');
+  const next = pick(mid, 'next');
+  assert.ok(prev, '中间的文章应有上一篇');
+  assert.ok(next, '中间的文章应有下一篇');
+  assert.equal(prev[3], '上一篇', `上一篇可见文字实际「${prev && prev[3]}」`);
+  assert.equal(next[3], '下一篇', `下一篇可见文字实际「${next && next[3]}」`);
+  // db.prevNext 的约定与 5i.ink 一致：prev 指向更新的一篇，next 指向更早的一篇
+  assert.equal(prev[1], '/archives/3/');
+  assert.equal(next[1], '/archives/1/');
+  // title 是目标文章的标题，可见文字不该再重复它
+  assert.equal(prev[2], '第三篇文章');
+  assert.equal(next[2], 'Hello TypechoEdge');
+
+  // 最新一篇没有上一篇，最旧一篇没有下一篇——缺席而不是渲染空 li
+  assert.equal(pick(await pagOf(3), 'prev'), null, '最新一篇不该有上一篇');
+  assert.ok(pick(await pagOf(3), 'next'), '最新一篇应有下一篇');
+  assert.equal(pick(await pagOf(1), 'next'), null, '最旧一篇不该有下一篇');
+  assert.ok(pick(await pagOf(1), 'prev'), '最旧一篇应有上一篇');
 });
 
 await test('分类页 /category/default/', async () => {

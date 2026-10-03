@@ -42,6 +42,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  /* 文章底部的分享面板 */
+  {
+    $(".joe_detail__operate-share > svg").on("click", function (e) {
+      e.stopPropagation();
+      $(this).parent().toggleClass("active");
+    });
+    $(document).on("click", function () {
+      $(".joe_detail__operate-share").removeClass("active");
+    });
+  }
+
   /* 激活全局下拉框功能 */
   {
     $(".joe_dropdown").each(function (index, item) {
