@@ -37,7 +37,6 @@ export function pageNav(page, pages, baseUrl, edge = 2) {
 export function avatarUrl(mail, size = 100, avatarSource = 'weavatar') {
   const m = String(mail || '').trim().toLowerCase();
   if (!m) return `https://cravatar.cn/avatar/?d=mp&s=${size}`;
-  // 简易 MD5 不引入；使用各源的邮箱直传模式
   switch (avatarSource) {
     case 'gravatar':
       return `https://www.gravatar.com/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
