@@ -330,10 +330,10 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
 
   // 同一批 .panel 只能被绑一次 toggle：绑两次会互相抵消，点击表现为「没反应」。
   // （踩过一次：移植时又加了一份，5i.ink 原文件里本来就有一段。）
-  const bindings = [...g.matchAll(/joe_header__slideout-menu[^)]*\.panel\)?["'`][^)"]{0,20}\)?\.on\(/g)];
-  assert.equal(bindings.length, 1, `手风琴 click 绑定了 ${bindings.length} 次，应为 1 次`);
-  const toggles = [...g.matchAll(/toggleClass\(["']in["']\)/g)];
-  assert.ok(toggles.length >= 1, '没有展开/收起逻辑');
+  // 一份 handler 里只有一个 toggleClass("in")，出现两次就说明重复绑定了
+  const toggles = (g.match(/toggleClass\(["']in["']\)/g) || []).length;
+  assert.equal(toggles, 1, `toggleClass("in") 出现 ${toggles} 次：>1 说明同一批 .panel 被绑了多次，` +
+    '两次 toggle 会互相抵消，点击表现为「没反应」');
 });
 
 await test('主题：.min.js 必须由同名 .js 生成（页面加载的是 min）', async () => {
