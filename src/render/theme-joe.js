@@ -126,7 +126,7 @@ async function headerBlock(ctx) {
   const suggestHtml = hotViews
     .map(
       (p, i) =>
-        `<a href="${p.permalink}" title="${escapeHtml(p.title)}" class="item">` +
+        `<a href="${permalink(p)}" title="${escapeHtml(p.title)}" class="item">` +
         `<span class="sort">${i + 1}</span>` +
         `<span class="text">${escapeHtml(p.title)}</span>` +
         `<span class="views">${p.views} 阅读</span>` +
