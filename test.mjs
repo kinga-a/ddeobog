@@ -259,6 +259,71 @@ await test('主题：文章底部 operate + pagination 对齐 5i.ink', async () 
   assert.ok(/joe_detail__operate-share/.test(g), `${scripts[0]} 未绑定分享面板的展开/收起`);
 });
 
+await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
+  const html = await (await call('GET', '/')).text();
+  const i = html.indexOf('class="joe_header__slideout"');
+  assert.ok(i >= 0, '缺少侧边面板');
+  const seg = html.slice(i, html.indexOf('joe_header__searchout', i));
+
+  // 旧的 wrap 层和扁平的 a.item 在主题 CSS 里都零命中，必须已被替换
+  assert.ok(!seg.includes('joe_header__slideout-wrap'), '仍在输出零命中的 .joe_header__slideout-wrap');
+  assert.ok(!/<a class="item[^"]*"[^>]*>首页/.test(seg), '仍在输出零命中的扁平 a.item 菜单');
+
+  // ---- 壁纸图：absolute + 满宽 150px，主题 CSS 依赖 width/height 属性以外的内联尺寸 ----
+  const img = /<img width="100%" height="150" class="joe_header__slideout-image" src="([^"]*)" alt="侧边栏壁纸"/.exec(seg);
+  assert.ok(img, '壁纸图结构不符（需 width="100%" height="150"）');
+  assert.ok(img[1], '壁纸图 src 为空');
+
+  // ---- 博主卡：.avatar + .info(.link + .motto)，主题 CSS 要求 .avatar 是 50x50 ----
+  const author = seg.slice(seg.indexOf('<div class="joe_header__slideout-author"'), seg.indexOf('<ul class="joe_header__slideout-count"'));
+  assert.ok(/<img width="50" height="50" class="avatar lazyload" src="[^"]+" data-src="[^"]+" alt="博主头像"/.test(author),
+    '博主头像结构不符（需 50x50 .avatar.lazyload + data-src）');
+  assert.ok(/<div class="info">\s*<a class="link" href="[^"]+" target="_blank" rel="noopener noreferrer nofollow">/.test(author),
+    '博主昵称需是 .info > a.link 且带 target/rel');
+  assert.ok(/<p class="motto joe_motto">/.test(author), '缺 .motto.joe_motto（JS 会往里填签名）');
+  // 昵称不能是空字符串
+  const nick = /<a class="link"[^>]*>([^<]*)</.exec(author);
+  assert.ok(nick && nick[1].trim(), '博主昵称为空');
+
+  // ---- 统计：ul > li.item > svg.icon(15) + 文案 + strong ----
+  const count = seg.slice(seg.indexOf('<ul class="joe_header__slideout-count"'), seg.indexOf('class="joe_header__slideout-menu'));
+  assert.ok(count.startsWith('<ul'), '.joe_header__slideout-count 必须是 ul（主题 CSS 按 li.item 排版）');
+  const items = [...count.matchAll(/<li class="item">\s*<svg class="icon"[^>]*width="15" height="15">/g)];
+  assert.equal(items.length, 2, `应有两条统计，实际 ${items.length}`);
+  const wrote = /累计撰写 <strong>(\d+)<\/strong> 篇文章/.exec(count);
+  const got = /累计收到 <strong>(\d+)<\/strong> 条评论/.exec(count);
+  assert.ok(wrote && Number(wrote[1]) > 0, '文章数未渲染');
+  assert.ok(got, '评论数未渲染');
+
+  // ---- 菜单：ul.panel-box，首页 + .link.panel 手风琴 + ul.slides.panel-body ----
+  const menu = seg.slice(seg.indexOf('<ul class="joe_header__slideout-menu'));
+  assert.ok(/<ul class="joe_header__slideout-menu panel-box">/.test(menu), '菜单必须是 ul.panel-box');
+  assert.ok(/<li><a class="link current" href="\/" title="首页"><span>首页<\/span><\/a><\/li>|<li><a class="link" href="\/" title="首页">/.test(menu),
+    '菜单首项应为首页');
+  // 手风琴分组：有子项才渲染，且 .icon 是 13x13
+  const groups = [...menu.matchAll(/<a class="link panel" href="#" rel="nofollow"><span>([^<]+)<\/span><svg class="icon"[^>]*width="13" height="13">/g)];
+  assert.ok(groups.length >= 1, '应有「栏目」或「页面」手风琴分组');
+  for (const g of groups) {
+    const label = g[1];
+    assert.ok(menu.includes('>' + label + '</span>'), `分组 ${label} 缺标题`);
+  }
+  assert.ok(/<ul class="slides panel-body">/.test(menu), '分组内缺 .slides.panel-body');
+  // 分组下必须有可点的子项，且 current 只落在当前路径上
+  const subLinks = [...menu.matchAll(/<li><a class="link( current)?" href="([^"]*)" title="([^"]*)">/g)];
+  assert.ok(subLinks.length >= 2, `菜单子项过少：${subLinks.length}`);
+  for (const s2 of subLinks) {
+    if (!s2[1]) continue;
+    assert.equal(s2[2], '/', `首页之外的 current 项指向了 ${s2[2]}`);
+  }
+
+  // ---- 手风琴 JS 必须在真正被加载的 min 里 ----
+  const src = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"><\/script>/g)];
+  assert.equal(src.length, 1, `应只加载一个 joe.global，实际 ${src.length}`);
+  const g = await readFile(`.${src[0][1].split('?')[0]}`, 'utf8');
+  assert.ok(/joe_header__slideout-menu/.test(g), 'min 里没有滑出面板的初始化');
+  assert.ok(/panel-body/.test(g), 'min 里没有手风琴的展开逻辑');
+});
+
 await test('主题：.min.js 必须由同名 .js 生成（页面加载的是 min）', async () => {
   // 页面引用的是 .min.js，而 .js / .min.js 是两份独立文件、build 也不会重新生成 min。
   // 只改 .js 会让改动静默失效——share 面板就踩过一次。

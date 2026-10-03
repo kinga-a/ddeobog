@@ -42,6 +42,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  /* 侧边滑出面板的手风琴：栏目/页面的 .panel 与 .panel-body 互斥展开 */
+  {
+    const menu = $(".joe_header__slideout-menu");
+    // 当前页所在的分组默认展开，.icon 据此旋转 90 度
+    menu.find(".current").parents(".panel-body").show().siblings(".panel").addClass("in");
+    menu.find(".panel").on("click", function () {
+      const box = $(this).parent().parent();
+      box.find(".panel").not($(this)).removeClass("in");
+      box.find(".panel-body").not($(this).siblings(".panel-body")).stop().hide("fast");
+      $(this).toggleClass("in").siblings(".panel-body").stop().toggle("fast");
+    });
+  }
+
   /* 文章底部的分享面板 */
   {
     // 这里用原生 DOM 而不是 jQuery：触发元素是 SVG（.joe_detail__operate-share > svg），

@@ -34,6 +34,7 @@ export const JOE_DEFAULTS = {
   JList_Animate: 'off',
   JOverdue: 'off',
   JNavMaxNum: '6',
+  JHeader_Slideout_Image: '/usr/themes/joe/assets/img/aside_author_image.jpg',
   JFooter_Custom: '',
   JICP: '',
   JAssetsURL: '',
@@ -108,6 +109,87 @@ function scripts(ctx, extra = []) {
 }
 
 /** 页头：导航 + 搜索 + 移动端抽屉 */
+/* ------------------------------------------------------------------ *
+ * 侧边滑出面板 .joe_header__slideout
+ *
+ * 之前只输出了一层 .joe_header__slideout-wrap + 扁平的 a.item 列表：
+ *  -wrap 在主题 CSS 里零命中；-slideout 自身有 padding:135px 15px 15px，
+ *   多包一层反而挤掉定位；
+ *  - a.item 也没有规则，菜单完全没有样式（真实结构是 .link + .icon 的手风琴）。
+ *
+ * 5i.ink 的结构（主题 CSS 逐条对应）：
+ *   .joe_header__slideout
+ *     > img.joe_header__slideout-image     absolute/top 0/满宽 150px/object-fit:cover/z-index:-1
+ *     > .joe_header__slideout-author       .avatar(50x50) + .info(.link + .motto)
+ *     > ul.joe_header__slideout-count      li.item > svg.icon(15) + 累计撰写/收到
+ *     > ul.joe_header__slideout-menu.panel-box
+ *         li > a.link（首页）
+ *         li > a.link.panel + ul.slides.panel-body（栏目 / 页面的手风琴，
+ *              .in 时 .icon 旋转 90 度，由 joe.global.js 驱动）
+ * ------------------------------------------------------------------ */
+const SLIDEOUT_ICONS = {
+  post: `<path d="M606.227 985.923H164.75c-69.715 0-126.404-56.722-126.404-126.442V126.477C38.346 56.755 95.04 0 164.75 0h619.275c69.715 0 126.549 56.755 126.549 126.477v503.925c0 18.216-14.814 32.997-33.07 32.997-18.183 0-32.925-14.78-32.925-32.997V126.477c0-33.355-27.2-60.488-60.554-60.488H164.75c-33.353 0-60.41 27.133-60.41 60.488v733.004c0 33.353 27.057 60.441 60.41 60.441h441.477c18.183 0 32.925 14.787 32.925 33.004 0 18.211-14.742 32.997-32.925 32.997zm0 0" />
+          <path d="M657.62 322.056H291.154c-18.183 0-32.924-14.786-32.924-33.003 0-18.21 14.74-32.998 32.924-32.998H657.62c18.256 0 33.07 14.787 33.07 32.998 0 18.217-14.814 33.003-33.07 33.003zm0 0M657.62 504.749H291.154c-18.183 0-32.924-14.78-32.924-32.993 0-18.222 14.74-32.997 32.924-32.997H657.62c18.256 0 33.07 14.775 33.07 32.997 0 18.218-14.814 32.993-33.07 32.993zm0 0M445.611 687.486H291.154c-18.183 0-32.924-14.78-32.924-33.004 0-18.21 14.74-32.991 32.924-32.991h154.457c18.184 0 32.998 14.78 32.998 32.991 0 18.224-14.814 33.004-32.998 33.004zm0 0M866.482 1024c-8.447 0-16.896-3.225-23.34-9.662L577.595 748.786c-7.156-7.123-10.592-17.07-9.446-27.056l8.733-77.728c1.788-15.321 13.885-27.378 29.2-29.06l77.45-8.52c10.443-.965 19.9 2.433 26.905 9.449l265.558 265.551c12.875 12.877 12.875 33.784 0 46.666l-86.184 86.25c-6.438 6.437-14.887 9.662-23.33 9.662zm-231.05-310.646l231.05 231.018 39.575-39.62-231.043-231.05-35.505 3.938-4.076 35.714zm0 0" />`,
+  comment: `<path d="M921.6 153.6H102.4A102.4 102.4 0 0 0 0 256v512a102.4 102.4 0 0 0 102.4 102.4h819.2A102.4 102.4 0 0 0 1024 768V256a102.4 102.4 0 0 0-102.4-102.4zM687.616 473.088L972.8 258.304V791.04zM960 204.8L527.104 527.36 73.216 204.8zM371.2 483.584l-320 287.232V256zM73.984 819.2l339.2-307.2 83.456 59.392a51.2 51.2 0 0 0 60.416 0l89.6-67.328L931.072 819.2z" />`,
+  arrow: `<path d="M624.865 512.247L332.71 220.088c-12.28-12.27-12.28-32.186 0-44.457 12.27-12.28 32.186-12.28 44.457 0l314.388 314.388c12.28 12.27 12.28 32.186 0 44.457L377.167 848.863c-6.136 6.14-14.183 9.211-22.228 9.211s-16.092-3.071-22.228-9.211c-12.28-12.27-12.28-32.186 0-44.457l292.155-292.16z" />`,
+};
+
+async function slideoutBlock(ctx) {
+  const { options, pages, path, db } = ctx;
+  const isIndex = path === '/';
+
+  // 与侧栏 author 区同源：昵称/头像取管理员，缺省回落到站点配置
+  const owner = (await db.listUsers()).find((u) => u.group === 'administrator') || {};
+  const nick = options.joe.JAside_Author_Nick || owner.screenName || '博主';
+  const avatar = options.joe.JAside_Author_Avatar || avatarUrl(owner.mail);
+  const link = options.joe.JAside_Author_Link || '#';
+
+  const postsIdx = await db.listContents({ type: 'post', pageSize: 1 });
+  const commentsIdx = await db.listAllComments({ status: 'approved', pageSize: 1 });
+  const categories = await db.listMetas('category');
+
+  const icon = (svg, size) =>
+    `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${svg}</svg>`;
+
+  const subLink = (it) =>
+    `<li><a class="link${it.permalink === path ? ' current' : ''}" href="${it.permalink}" title="${escapeHtml(it.name || it.title)}">${escapeHtml(it.name || it.title)}</a></li>`;
+
+  // 手风琴分组：有子项才渲染；.slides 默认 display:none，由 .in 展开
+  const group = (label, items) => {
+    if (!items.length) return '';
+    return `<li>
+      <a class="link panel" href="#" rel="nofollow"><span>${label}</span>${icon(SLIDEOUT_ICONS.arrow, 13)}</a>
+      <ul class="slides panel-body">${items.map(subLink).join('')}</ul>
+    </li>`;
+  };
+
+  return `<div class="joe_header__slideout">
+    <img width="100%" height="150" class="joe_header__slideout-image" src="${escapeHtml(options.joe.JHeader_Slideout_Image || options.joe.JAside_Author_Image)}" alt="侧边栏壁纸" />
+    <div class="joe_header__slideout-author">
+      <img width="50" height="50" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(avatar)}" alt="博主头像" />
+      <div class="info">
+        <a class="link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(nick)}</a>
+        <p class="motto joe_motto"></p>
+      </div>
+    </div>
+    <ul class="joe_header__slideout-count">
+      <li class="item">
+        ${icon(SLIDEOUT_ICONS.post, 15)}
+        <span>累计撰写 <strong>${postsIdx.total}</strong> 篇文章</span>
+      </li>
+      <li class="item">
+        ${icon(SLIDEOUT_ICONS.comment, 15)}
+        <span>累计收到 <strong>${commentsIdx.total}</strong> 条评论</span>
+      </li>
+    </ul>
+    <ul class="joe_header__slideout-menu panel-box">
+      <li><a class="link${isIndex ? ' current' : ''}" href="/" title="首页"><span>首页</span></a></li>
+      ${group('栏目', categories)}
+      ${group('页面', pages)}
+    </ul>
+  </div>`;
+}
+
 async function headerBlock(ctx) {
   const { options, pages, path, db } = ctx;
   const navMax = parseInt(options.joe.JNavMaxNum || '6', 10);
@@ -159,14 +241,7 @@ async function headerBlock(ctx) {
       <svg class="joe_header__above-searchicon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M1004.257 874.846 768.898 639.488a385.526 385.526 0 0 0 44.851-178.637C813.749 259.91 654.353 100.513 457.287 100.513S100.825 259.91 100.825 456.977c0 197.066 159.396 356.462 356.462 356.462 64.819 0 125.602-17.36 178.637-44.851l235.358 235.358a35.607 35.607 0 0 0 50.397 0l42.578-42.578a35.607 35.607 0 0 0 0-50.397zM457.287 723.833c-147.386 0-266.856-119.47-266.856-266.856s119.47-266.856 266.856-266.856 266.856 119.47 266.856 266.856-119.47 266.856-266.856 266.856z"/></svg>
     </div>
   </div>
-  <div class="joe_header__slideout">
-    <div class="joe_header__slideout-wrap">
-      <nav class="joe_header__slideout-menu">
-        <a class="item${isIndex ? ' current' : ''}" href="/">首页</a>
-        ${pages.map((p) => `<a class="item${path === p.permalink ? ' current' : ''}" href="${p.permalink}">${escapeHtml(p.title)}</a>`).join('')}
-      </nav>
-    </div>
-  </div>
+  ${await slideoutBlock(ctx)}
   <div class="joe_header__searchout">
     <div class="joe_container">
       <div class="joe_header__searchout-inner">
