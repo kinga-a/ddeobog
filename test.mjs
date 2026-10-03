@@ -327,6 +327,13 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
   const g = await readFile(`.${src[0][1].split('?')[0]}`, 'utf8');
   assert.ok(/joe_header__slideout-menu/.test(g), 'min 里没有滑出面板的初始化');
   assert.ok(/panel-body/.test(g), 'min 里没有手风琴的展开逻辑');
+
+  // 同一批 .panel 只能被绑一次 toggle：绑两次会互相抵消，点击表现为「没反应」。
+  // （踩过一次：移植时又加了一份，5i.ink 原文件里本来就有一段。）
+  const bindings = [...g.matchAll(/joe_header__slideout-menu[^)]*\.panel\)?["'`][^)"]{0,20}\)?\.on\(/g)];
+  assert.equal(bindings.length, 1, `手风琴 click 绑定了 ${bindings.length} 次，应为 1 次`);
+  const toggles = [...g.matchAll(/toggleClass\(["']in["']\)/g)];
+  assert.ok(toggles.length >= 1, '没有展开/收起逻辑');
 });
 
 await test('主题：.min.js 必须由同名 .js 生成（页面加载的是 min）', async () => {
