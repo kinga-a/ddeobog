@@ -44,12 +44,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* 文章底部的分享面板 */
   {
-    $(".joe_detail__operate-share > svg").on("click", function (e) {
-      e.stopPropagation();
-      $(this).parent().toggleClass("active");
+    // 这里用原生 DOM 而不是 jQuery：触发元素是 SVG（.joe_detail__operate-share > svg），
+    // 不去依赖 jQuery 对 SVG 元素的事件绑定行为。
+    // 主题 CSS 里 .reach 默认 visibility:hidden，靠父级 .active 展开。
+    const shares = Array.prototype.slice.call(
+      document.querySelectorAll(".joe_detail__operate-share")
+    );
+    shares.forEach((share) => {
+      const svg = share.querySelector(":scope > svg");
+      if (!svg) return;
+      svg.style.cursor = "pointer";
+      svg.addEventListener("click", (e) => {
+        e.stopPropagation();
+        share.classList.toggle("active");
+      });
     });
-    $(document).on("click", function () {
-      $(".joe_detail__operate-share").removeClass("active");
+    document.addEventListener("click", () => {
+      shares.forEach((s) => s.classList.remove("active"));
     });
   }
 

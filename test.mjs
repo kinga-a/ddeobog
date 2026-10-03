@@ -6,7 +6,7 @@
  * 运行：node test.mjs
  */
 import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 
 // ---- mock KV binding ----
 class MockKV {
@@ -257,6 +257,36 @@ await test('主题：文章底部 operate + pagination 对齐 5i.ink', async () 
   // /usr/ 静态资源由平台静态层响应，函数不返回内容，这里按 URL 映射回仓库文件读
   const g = await readFile(`.${scripts[0].split('?')[0]}`, 'utf8');
   assert.ok(/joe_detail__operate-share/.test(g), `${scripts[0]} 未绑定分享面板的展开/收起`);
+});
+
+await test('主题：.min.js 必须由同名 .js 生成（页面加载的是 min）', async () => {
+  // 页面引用的是 .min.js，而 .js / .min.js 是两份独立文件、build 也不会重新生成 min。
+  // 只改 .js 会让改动静默失效——share 面板就踩过一次。
+  const dir = 'usr/themes/joe/assets/js/';
+  const names = (await readdir(dir)).filter((f) => f.endsWith('.min.js')).map((f) => f.slice(0, -7));
+  assert.ok(names.length >= 8, `预期主题 JS 至少 8 个 min，实际 ${names.length}`);
+
+  const markers = {
+    'joe.global': 'joe_detail__operate-share', // 本次新增：文章底部分享面板
+    'joe.search': null,
+  };
+
+  for (const name of names) {
+    const raw = await readFile(`${dir}${name}.js`, 'utf8');
+    // 从 .js 里挑几个只可能出现在功能实现里、且不会被压缩掉的标识符
+    const probes = markers[name] ? [markers[name]] : [];
+    for (const probe of probes) {
+      const inJs = raw.includes(probe);
+      const inMin = (await readFile(`${dir}${name}.min.js`, 'utf8')).includes(probe);
+      assert.equal(inJs, inMin, `${name}.js 与 ${name}.min.js 对 "${probe}" 的支持不一致`);
+    }
+  }
+
+  // 分享面板的展开逻辑必须在真正被加载的 min 里
+  const min = await readFile(`${dir}joe.global.min.js`, 'utf8');
+  assert.ok(/querySelectorAll\(".joe_detail__operate-share"\)/.test(min),
+    'joe.global.min.js 里没有分享面板的原生绑定');
+  assert.ok(/classList\.toggle\("active"\)/.test(min), 'joe.global.min.js 里没有展开/收起逻辑');
 });
 
 await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', async () => {
