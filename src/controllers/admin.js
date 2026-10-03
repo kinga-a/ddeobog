@@ -122,19 +122,9 @@ export async function handleAdmin(ctx) {
 function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = '' } = {}) {
   const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>登录 - ${esc(ctx.options.title)}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:#f4f5f7;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{background:#fff;border-radius:12px;box-shadow:0 2px 20px rgba(0,0,0,.08);max-width:400px;width:100%;padding:40px}
-    h1{font-size:20px;color:#24292f;margin-bottom:24px;text-align:center}
-    .item{margin-bottom:14px}
-    label{display:block;font-size:13px;color:#24292f;margin-bottom:6px;font-weight:600}
-    input{width:100%;padding:10px 12px;border:1px solid #d0d7de;border-radius:6px;font-size:14px;outline:none}
-    input:focus{border-color:#0969da;box-shadow:0 0 0 3px rgba(9,105,218,.15)}
-    button{width:100%;padding:12px;background:#1a1f24;color:#fff;border:0;border-radius:6px;font-size:15px;cursor:pointer;margin-top:8px}
-    button:hover{background:#30363d}
-    .err{background:#ffebe9;color:#cf222e;border:1px solid #ffcecb;border-radius:6px;padding:10px 12px;font-size:13px;margin-bottom:16px}
-    .tip{font-size:12px;color:#8b949e;margin-top:14px;text-align:center}
-  </style></head><body>
+  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css">
+  <meta name="color-scheme" content="light dark">
+</head><body class="auth">
   <div class="card">
     <h1>${esc(ctx.options.title)}</h1>
     ${error ? `<div class="err">${esc(error)}</div>` : ''}
@@ -240,55 +230,36 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} - ${esc(ctx.options.title)}</title>
   <link rel="stylesheet" href="/usr/themes/joe/assets/lib/font-awesome@4.7.0/font-awesome.min.css">
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:#f4f5f7;color:#24292f}
-    .layout{display:flex;min-height:100vh}
-    .side{width:220px;background:#1a1f24;color:#c9d1d9;padding:20px 0;flex-shrink:0}
-    .side .brand{padding:0 20px 20px;font-size:16px;font-weight:700;color:#fff;border-bottom:1px solid #30363d;margin-bottom:12px}
-    .side .brand small{display:block;font-size:11px;color:#8b949e;font-weight:400;margin-top:4px}
-    .side a{display:block;padding:11px 20px;color:#c9d1d9;text-decoration:none;font-size:14px}
-    .side a:hover{background:#30363d;color:#fff}
-    .side a.active{background:#0969da;color:#fff}
-    .side a i{width:22px;margin-right:8px}
-    .main{flex:1;padding:28px 36px;max-width:1200px}
-    h2{font-size:20px;margin-bottom:20px}
-    .card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);padding:24px;margin-bottom:20px}
-    table{width:100%;border-collapse:collapse;font-size:14px}
-    th{text-align:left;padding:10px 12px;border-bottom:2px solid #eaeef2;color:#57606a;font-size:13px}
-    td{padding:10px 12px;border-bottom:1px solid #eaeef2}
-    tr:hover td{background:#f6f8fa}
-    .btn{display:inline-block;padding:8px 16px;background:#1a1f24;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;border:0;cursor:pointer}
-    .btn:hover{background:#30363d}
-    .btn.primary{background:#0969da}.btn.primary:hover{background:#0860c4}
-    .btn.danger{background:#cf222e}.btn.danger:hover{background:#a40e26}
-    .btn.sm{padding:4px 10px;font-size:12px}
-    .item{margin-bottom:16px}
-    label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
-    input[type=text],input[type=password],input[type=email],input[type=number],input[type=file],select,textarea{width:100%;max-width:520px;padding:9px 12px;border:1px solid #d0d7de;border-radius:6px;font-size:14px;outline:none;font-family:inherit}
-    textarea{min-height:120px;resize:vertical}
-    input:focus,textarea:focus,select:focus{border-color:#0969da;box-shadow:0 0 0 3px rgba(9,105,218,.12)}
-    .row{display:flex;gap:14px;flex-wrap:wrap}
-    .row .item{flex:1;min-width:220px}
-    .hint{font-size:12px;color:#8b949e;margin-top:6px}
-    .msg{padding:12px 16px;border-radius:6px;margin-bottom:18px;font-size:14px}
-    .msg.ok{background:#dafbe1;color:#116329;border:1px solid #4ac26b}
-    .msg.err{background:#ffebe9;color:#cf222e;border:1px solid #ffcecb}
-    .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:20px}
-    .stat{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
-    .stat .num{font-size:26px;font-weight:700}
-    .stat .label{font-size:12px;color:#57606a;margin-top:4px}
-    .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:#eaeef2;color:#57606a}
-    .badge.green{background:#dafbe1;color:#116329}.badge.yellow{background:#fff8c5;color:#4d2d00}
-    a{color:#0969da}
-  </style></head><body>
+  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css">
+  <meta name="color-scheme" content="light dark">
+</head><body>
+  <button class="burger" type="button" aria-label="切换导航" aria-expanded="false" aria-controls="admin-side">
+    <i class="fa fa-bars" aria-hidden="true"></i>
+  </button>
+  <div class="scrim"></div>
   <div class="layout">
-    <nav class="side">
+    <nav class="side" id="admin-side">
       <div class="brand">${esc(ctx.options.title)}<small>TypechoEdge v${CONFIG.VERSION}</small></div>
       ${menu}
     </nav>
     <main class="main">${body}</main>
-  </div></body></html>`;
+  </div>
+  <script>
+  (function(){
+    var side=document.getElementById('admin-side'),scrim=document.querySelector('.scrim'),
+        burger=document.querySelector('.burger');
+    if(!side||!burger)return;
+    function setOpen(on){
+      side.classList.toggle('is-open',on);
+      scrim.classList.toggle('is-open',on);
+      burger.setAttribute('aria-expanded',on?'true':'false');
+    }
+    burger.addEventListener('click',function(){setOpen(!side.classList.contains('is-open'));});
+    scrim.addEventListener('click',function(){setOpen(false);});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape')setOpen(false);});
+    side.addEventListener('click',function(e){if(e.target.closest('a'))setOpen(false);});
+  })();
+  </script></body></html>`;
 }
 
 function json(data, status = 200) {
