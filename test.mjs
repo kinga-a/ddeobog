@@ -174,15 +174,23 @@ await test('Joe API: search 空关键字返回空列表而非报错', async () =
   assert.deepEqual(data.data.data, []);
 });
 
-await test('主题：搜索面板结构与脚本齐备', async () => {
+await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', async () => {
   const res = await call('GET', '/');
   const html = await res.text();
-  // CSS 期望 .joe_header__searchout-inner > .search > input + button
+  // 与 5i.ink 一致：顶栏和移动端面板都是 <form>，input/button 是表单直接子元素
   assert.ok(
-    /class="joe_header__searchout-inner"\s*>\s*<div class="search">/.test(html),
-    '搜索面板缺少 .search 包裹层，主题 CSS 的 input/button 布局不会生效'
+    /class="joe_header__searchout-inner"\s*>\s*<form class="search"/.test(html),
+    '搜索面板缺少 .search 表单包裹层，主题 CSS 的 input/button 布局不会生效'
   );
-  assert.ok(html.includes('class="submit search-btn"'));
+  assert.ok(html.includes('class="joe_header__above-search" method="get"'),
+    '顶栏搜索未使用 form，回车无法走原生提交');
+  // 主题 CSS 靠 .submit / .icon / .result .item 的形状出效果，缺一样就散架
+  assert.ok(html.includes('class="submit">Search</button>'), '缺少 .submit 按钮');
+  assert.ok(/<span class="icon"><\/span>/.test(html), '.icon 应为主题自带的 <span>（含聚焦翻转动画）');
+  assert.ok(html.includes('class="result"'), '缺少联想/热门下拉面板');
+  assert.ok(/<span class="sort">\d+<\/span>/.test(html), '.result 条目缺少 .sort 排名徽标');
+  assert.ok(html.includes('class="text"'), '.result 条目缺少 .text 标题');
+  assert.ok(/<span class="views">\d+ 阅读<\/span>/.test(html), '.result 条目缺少 .views 阅读量');
   // 联想渲染脚本必须被引入
   assert.ok(html.includes('assets/js/joe.search.js'), '未引入 joe.search.js，搜索框点了没反应');
   // 下拉容器（联想结果挂载点）必须落在 .joe_header__above-search 之内

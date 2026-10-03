@@ -30,7 +30,8 @@ ${await pe(p)}
   body { font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '\u5FAE\u8F6F\u96C5\u9ED1', Arial, sans-serif; }
 </style>`}function cssLinks(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/css/joe.mode.min.css"),a("assets/css/joe.normalize.min.css"),a("assets/css/joe.global.min.css"),a("assets/css/joe.responsive.min.css"),a("assets/lib/qmsg/qmsg.min.css"),a("assets/lib/fancybox@3.5.7/fancybox.min.css"),a("assets/lib/animate.css@4.1.1/animate.min.css"),a("assets/lib/font-awesome@4.7.0/font-awesome.min.css"),a("assets/lib/APlayer@1.10.1/APlayer.min.css"),a("assets/css/joe.layout.css"),...extra].map(h=>`<link href="${h}" rel="stylesheet" />`).join(`
 `)}function scripts(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/lib/jquery@3.6.1/jquery.min.js"),a("assets/lib/scroll/scroll.min.js"),a("assets/lib/lazysizes@5.3.2/lazysizes.min.js"),a("assets/lib/APlayer@1.10.1/APlayer.min.js"),a("assets/lib/sketchpad/sketchpad.min.js"),a("assets/lib/fancybox@3.5.7/fancybox.min.js"),a("assets/lib/extend/extend.min.js"),a("assets/lib/qmsg/qmsg.min.js"),a("assets/js/joe.global.min.js"),a("assets/js/joe.short.min.js"),a("assets/js/joe.search.js"),...extra].map(s=>`<script src="${s}"><\/script>`).join(`
-`)}function headerBlock(ctx){let{options,pages,path}=ctx,navMax=parseInt(options.joe.JNavMaxNum||"6",10),navPages=pages.slice(0,navMax),morePages=pages.slice(navMax),isIndex=path==="/";return`<header class="joe_header${ctx.isPost?" current":""}">
+`)}async function headerBlock(ctx){let{options,pages,path,db}=ctx,navMax=parseInt(options.joe.JNavMaxNum||"6",10),navPages=pages.slice(0,navMax),morePages=pages.slice(navMax),isIndex=path==="/",suggestNum=parseInt(options.joe.JSearch_Hot_Num||"5",10)||5,hot=await db.listContents({type:"post",pageSize:suggestNum,order:"views"}),suggestHtml=(await Promise.all(hot.items.map(async p=>({...p,views:await db.getStat(p.cid,"views")})))).map((p,i)=>`<a href="${p.permalink}" title="${escapeHtml(p.title)}" class="item"><span class="sort">${i+1}</span><span class="text">${escapeHtml(p.title)}</span><span class="views">${p.views} \u9605\u8BFB</span></a>`).join(`
+`);return`<header class="joe_header${ctx.isPost?" current":""}">
   <div class="joe_header__above">
     <div class="joe_container">
       <svg class="joe_header__above-slideicon" viewBox="0 0 1152 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M76.032 872a59.968 59.968 0 1 0 0 120h999.936a59.968 59.968 0 1 0 0-120H76.032zm16-420.032a59.968 59.968 0 1 0 0 120h599.936a59.968 59.968 0 0 0 0-119.936H92.032zM76.032 32a59.968 59.968 0 1 0 0 120h999.936a60.032 60.032 0 0 0 0-120H76.032z"/></svg>
@@ -45,11 +46,14 @@ ${await pe(p)}
           <nav class="joe_dropdown__menu">${morePages.map(p=>`<a href="${p.permalink}">${escapeHtml(p.title)}</a>`).join("")}</nav>
         </div>`:""}
       </nav>
-      <div class="joe_header__above-search">
-        <svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M1004.257 874.846 768.898 639.488a385.526 385.526 0 0 0 44.851-178.637C813.749 259.91 654.353 100.513 457.287 100.513S100.825 259.91 100.825 456.977c0 197.066 159.396 356.462 356.462 356.462 64.819 0 125.602-17.36 178.637-44.851l235.358 235.358a35.607 35.607 0 0 0 50.397 0l42.578-42.578a35.607 35.607 0 0 0 0-50.397zM457.287 723.833c-147.386 0-266.856-119.47-266.856-266.856s119.47-266.856 266.856-266.856 266.856 119.47 266.856 266.856-119.47 266.856-266.856 266.856z"/></svg>
-        <input type="text" class="input search-input" placeholder="\u641C\u7D22\u5185\u5BB9..." autocomplete="off" />
-        <div class="result"></div>
-      </div>
+      <form class="joe_header__above-search" method="get" action="/search">
+        <input maxlength="16" autocomplete="off" placeholder="\u8BF7\u8F93\u5165\u5173\u952E\u5B57..." name="s" value="" class="input" type="text" />
+        <button type="submit" class="submit">Search</button>
+        <span class="icon"></span>
+        <nav class="result">
+          ${suggestHtml}
+        </nav>
+      </form>
       <svg class="joe_header__above-searchicon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M1004.257 874.846 768.898 639.488a385.526 385.526 0 0 0 44.851-178.637C813.749 259.91 654.353 100.513 457.287 100.513S100.825 259.91 100.825 456.977c0 197.066 159.396 356.462 356.462 356.462 64.819 0 125.602-17.36 178.637-44.851l235.358 235.358a35.607 35.607 0 0 0 50.397 0l42.578-42.578a35.607 35.607 0 0 0 0-50.397zM457.287 723.833c-147.386 0-266.856-119.47-266.856-266.856s119.47-266.856 266.856-266.856 266.856 119.47 266.856 266.856-119.47 266.856-266.856 266.856z"/></svg>
     </div>
   </div>
@@ -64,10 +68,10 @@ ${await pe(p)}
   <div class="joe_header__searchout">
     <div class="joe_container">
       <div class="joe_header__searchout-inner">
-        <div class="search">
-          <input type="text" class="input" placeholder="\u641C\u7D22\u5185\u5BB9..." autocomplete="off" />
-          <button class="submit search-btn">\u641C\u7D22</button>
-        </div>
+        <form class="search" method="get" action="/search">
+          <input maxlength="16" autocomplete="off" placeholder="\u8BF7\u8F93\u5165\u5173\u952E\u5B57..." name="s" value="" class="input" type="text" />
+          <button type="submit" class="submit">Search</button>
+        </form>
       </div>
     </div>
   </div>
@@ -155,7 +159,7 @@ ${await pe(p)}
     <svg class="icon-1" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="25" height="25"> <path d="M587.264 104.96c33.28 57.856 52.224 124.928 52.224 196.608 0 218.112-176.128 394.752-393.728 394.752-29.696 0-58.368-3.584-86.528-9.728C223.744 832.512 369.152 934.4 538.624 934.4c229.376 0 414.72-186.368 414.72-416.256 1.024-212.992-159.744-389.12-366.08-413.184z" /> <path d="M340.48 567.808l-23.552-70.144-70.144-23.552 70.144-23.552 23.552-70.144 23.552 70.144 70.144 23.552-70.144 23.552-23.552 70.144zM168.96 361.472l-30.208-91.136-91.648-30.208 91.136-30.208 30.72-91.648 30.208 91.136 91.136 30.208-91.136 30.208-30.208 91.648z" /> </svg>
     <svg class="icon-2" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="25" height="25"> <path d="M234.24 512a277.76 277.76 0 1 0 555.52 0 277.76 277.76 0 1 0-555.52 0zM512 187.733a42.667 42.667 0 0 1-42.667-42.666v-102.4a42.667 42.667 0 0 1 85.334 0v102.826A42.667 42.667 0 0 1 512 187.733zm-258.987 107.52a42.667 42.667 0 0 1-29.866-12.373l-72.96-73.387a42.667 42.667 0 0 1 59.306-59.306l73.387 72.96a42.667 42.667 0 0 1 0 59.733 42.667 42.667 0 0 1-29.867 12.373zm-107.52 259.414H42.667a42.667 42.667 0 0 1 0-85.334h102.826a42.667 42.667 0 0 1 0 85.334zm34.134 331.946a42.667 42.667 0 0 1-29.44-72.106l72.96-73.387a42.667 42.667 0 0 1 59.733 59.733l-73.387 73.387a42.667 42.667 0 0 1-29.866 12.373zM512 1024a42.667 42.667 0 0 1-42.667-42.667V878.507a42.667 42.667 0 0 1 85.334 0v102.826A42.667 42.667 0 0 1 512 1024zm332.373-137.387a42.667 42.667 0 0 1-29.866-12.373l-73.387-73.387a42.667 42.667 0 0 1 0-59.733 42.667 42.667 0 0 1 59.733 0l72.96 73.387a42.667 42.667 0 0 1-29.44 72.106zm136.96-331.946H878.507a42.667 42.667 0 1 1 0-85.334h102.826a42.667 42.667 0 0 1 0 85.334zM770.987 295.253a42.667 42.667 0 0 1-29.867-12.373 42.667 42.667 0 0 1 0-59.733l73.387-72.96a42.667 42.667 0 1 1 59.306 59.306l-72.96 73.387a42.667 42.667 0 0 1-29.866 12.373z" /> </svg>
   </div>
-</div>`}function layout(ctx,{title,meta:meta3="",css=[],js=[],bodyClass=""}){let{options}=ctx;return`<!DOCTYPE html>
+</div>`}async function layout(ctx,{title,meta:meta3="",css=[],js=[],bodyClass=""}){let{options}=ctx;return`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
@@ -170,7 +174,7 @@ ${await pe(p)}
 </head>
 <body${bodyClass?` class="${bodyClass}"`:""}>
   <div id="Joe">
-    ${headerBlock(ctx)}
+    ${await headerBlock(ctx)}
     ${ctx.contentBody||""}
     ${footerBlock(ctx)}
   </div>
@@ -196,7 +200,7 @@ ${await pe(p)}
       </div>
     </div>
     ${await asideBlock(ctx)}
-  </div>`,layout(ctx,{title:`${escapeHtml(ctx.options.title)} - ${escapeHtml(ctx.options.description||"")}`,css:[a("assets/lib/swiper@5.4.5/swiper.min.css"),a("assets/css/joe.index.min.css")],js:[a("assets/lib/swiper@5.4.5/swiper.min.js"),a("assets/lib/wowjs@1.1.3/wow.min.js"),a("assets/js/joe.index.min.js")]})}function indexItem(ctx,p){let a=__name(path=>assetsUrl(ctx.options,path),"a");return`<li class="joe_list__item default">
+  </div>`,await layout(ctx,{title:`${escapeHtml(ctx.options.title)} - ${escapeHtml(ctx.options.description||"")}`,css:[a("assets/lib/swiper@5.4.5/swiper.min.css"),a("assets/css/joe.index.min.css")],js:[a("assets/lib/swiper@5.4.5/swiper.min.js"),a("assets/lib/wowjs@1.1.3/wow.min.js"),a("assets/js/joe.index.min.js")]})}function indexItem(ctx,p){let a=__name(path=>assetsUrl(ctx.options,path),"a");return`<li class="joe_list__item default">
   <div class="line"></div>
   <a href="${permalink(p)}" class="thumbnail" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">
     <img width="100%" height="100%" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(thumbnail(p,a("assets")))}" alt="${escapeHtml(p.title)}" />
@@ -272,7 +276,7 @@ ${await pe(p)}
       </div>
     </div>
     ${await asideBlock(ctx)}
-  </div>`;let desc=post.fields?.description||plainExcerpt(post.text,120);return layout(ctx,{title:`${escapeHtml(post.title)} - ${escapeHtml(ctx.options.title)}`,meta:`<meta name="description" content="${escapeHtml(desc)}" />${post.fields?.keywords||tags.length?`<meta name="keywords" content="${escapeHtml(post.fields?.keywords||tags.map(t=>t.name).join(","))}" />`:""}`,css:[a("assets/lib/prism/prism.min.css"),a("assets/css/joe.post.min.css")],js:[a("assets/lib/clipboard@2.0.11/clipboard.min.js"),a("assets/lib/prism/prism.min.js"),a("assets/js/joe.post_page.min.js")]})}async function commentsBlock(ctx,post){if(!post.allowComment||ctx.options.joe.JCommentStatus==="off")return'<div class="joe_comment"><h3 class="joe_comment__title">\u8BC4\u8BBA</h3><div class="joe_comment__close"><span>\u535A\u4E3B\u5173\u95ED\u4E86\u8BC4\u8BBA</span></div></div>';let{db,csrfToken,user}=ctx,all=await db.listComments(post.cid),byParent=new Map;for(let c of all)byParent.has(c.parent)||byParent.set(c.parent,[]),byParent.get(c.parent).push(c);let renderComment=__name((c,depth=0)=>{let children=byParent.get(c.coid)||[];return`<li class="comment-list__item">
+  </div>`;let desc=post.fields?.description||plainExcerpt(post.text,120);return await layout(ctx,{title:`${escapeHtml(post.title)} - ${escapeHtml(ctx.options.title)}`,meta:`<meta name="description" content="${escapeHtml(desc)}" />${post.fields?.keywords||tags.length?`<meta name="keywords" content="${escapeHtml(post.fields?.keywords||tags.map(t=>t.name).join(","))}" />`:""}`,css:[a("assets/lib/prism/prism.min.css"),a("assets/css/joe.post.min.css")],js:[a("assets/lib/clipboard@2.0.11/clipboard.min.js"),a("assets/lib/prism/prism.min.js"),a("assets/js/joe.post_page.min.js")]})}async function commentsBlock(ctx,post){if(!post.allowComment||ctx.options.joe.JCommentStatus==="off")return'<div class="joe_comment"><h3 class="joe_comment__title">\u8BC4\u8BBA</h3><div class="joe_comment__close"><span>\u535A\u4E3B\u5173\u95ED\u4E86\u8BC4\u8BBA</span></div></div>';let{db,csrfToken,user}=ctx,all=await db.listComments(post.cid),byParent=new Map;for(let c of all)byParent.has(c.parent)||byParent.set(c.parent,[]),byParent.get(c.parent).push(c);let renderComment=__name((c,depth=0)=>{let children=byParent.get(c.coid)||[];return`<li class="comment-list__item">
       <div class="comment-list__item-contain" id="comment-${c.coid}">
         <div class="term">
           <img width="48" height="48" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail)}" alt="\u5934\u50CF" />
@@ -338,7 +342,7 @@ ${await pe(p)}
       ${pageNav(page,list.pages,ctx.archiveBaseUrl)}
     </div>
     ${await asideBlock(ctx)}
-  </div>`,layout(ctx,{title:`${escapeHtml(archiveTitle)} - ${escapeHtml(ctx.options.title)}`,css:[a("assets/css/joe.archive.min.css")]})}async function render404(ctx){let a=__name(p=>assetsUrl(ctx.options,p),"a");return ctx.contentBody=`<div class="joe_container">
+  </div>`,await layout(ctx,{title:`${escapeHtml(archiveTitle)} - ${escapeHtml(ctx.options.title)}`,css:[a("assets/css/joe.archive.min.css")]})}async function render404(ctx){let a=__name(p=>assetsUrl(ctx.options,p),"a");return ctx.contentBody=`<div class="joe_container">
     <div class="joe_main">
       <div class="joe_404">
         <h1>404</h1>
@@ -346,7 +350,7 @@ ${await pe(p)}
         <a class="home" href="/">\u8FD4\u56DE\u9996\u9875</a>
       </div>
     </div>
-  </div>`,layout(ctx,{title:`\u9875\u9762\u4E0D\u5B58\u5728 - ${escapeHtml(ctx.options.title)}`,css:[a("assets/css/joe.global.min.css")]})}var THEME_NAME,LAZYLOAD,JOE_DEFAULTS,g_ctx,OWO_MAP,init_theme_joe=__esm({"src/render/theme-joe.js"(){init_markdown();init_html();THEME_NAME="joe",LAZYLOAD="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",JOE_DEFAULTS={JFavicon:"/usr/themes/joe/assets/img/link.png",JLogo:"/usr/themes/joe/assets/img/aside_author_image.jpg",JBirthDay:"",JDocumentTitle:"",JAside_Author_Image:"/usr/themes/joe/assets/img/aside_author_image.jpg",JAside_Author_Avatar:"",JAside_Author_Nick:"",JAside_Author_Link:"#",JAside_Author_Motto:"\u6709\u94B1\u7EC8\u6210\u7737\u5C5E\uFF0C\u6CA1\u94B1\u4EB2\u773C\u76EE\u7779",JAside_Author_Nav:"on",JAside_Hot_Num:"5",JAside_Newreply_Status:"on",JAside_Timelife_Status:"on",JAside_3DTag:"off",JAside_Flatterer:"on",JCommentStatus:"on",JIndex_Hot:"off",JIndex_Carousel:"",JIndex_Recommend:"",JIndex_Ad:"",JIndex_Notice:"",JList_Animate:"off",JOverdue:"off",JNavMaxNum:"6",JFooter_Custom:"",JICP:"",JAssetsURL:""};__name(assetsUrl,"assetsUrl");__name(headBlock,"headBlock");__name(cssLinks,"cssLinks");__name(scripts,"scripts");__name(headerBlock,"headerBlock");__name(asideBlock,"asideBlock");__name(commentLink,"commentLink");__name(footerBlock,"footerBlock");__name(layout,"layout");__name(permalink,"permalink");__name(contentMetas,"contentMetas");__name(renderIndex,"renderIndex");__name(indexItem,"indexItem");__name(renderPost,"renderPost");__name(commentsBlock,"commentsBlock");__name(renderCommentText,"renderCommentText");g_ctx={options:{themeAssetsBase:"/usr/themes/joe"}};__name(setThemeContext,"setThemeContext");OWO_MAP={};__name(setOwoMap,"setOwoMap");__name(parseAgentOS,"parseAgentOS");__name(parseAgentBrowser,"parseAgentBrowser");__name(renderArchive,"renderArchive");__name(render404,"render404")}});var hello_world_exports={};__export(hello_world_exports,{meta:()=>meta,register:()=>register});function register(api){api.registerHook("commentSubmit",data=>(data&&data.text&&(data.text=data.text.replace(/\bhello\b/gi,"Hello World")),data)),api.registerAction("hello",async ctx=>new Response(JSON.stringify({code:1,data:{message:"Hello World from TypechoEdge plugin!"}}),{headers:{"Content-Type":"application/json; charset=utf-8"}}))}var meta,init_hello_world=__esm({"src/plugins-builtin/hello-world.js"(){__name(register,"register");meta={title:"HelloWorld",desc:"\u793A\u4F8B\u63D2\u4EF6\uFF1A\u8BC4\u8BBA hello \u66FF\u6362 + /action/hello \u63A5\u53E3",author:"TypechoEdge",version:"1.0.0"}}});var links_cache_exports={};__export(links_cache_exports,{meta:()=>meta2,register:()=>register2});function register2(api){api.registerHook("renderContent",async(text,{post})=>post?.fields?.mode==="links"?`<div class="joe_links">
+  </div>`,await layout(ctx,{title:`\u9875\u9762\u4E0D\u5B58\u5728 - ${escapeHtml(ctx.options.title)}`,css:[a("assets/css/joe.global.min.css")]})}var THEME_NAME,LAZYLOAD,JOE_DEFAULTS,g_ctx,OWO_MAP,init_theme_joe=__esm({"src/render/theme-joe.js"(){init_markdown();init_html();THEME_NAME="joe",LAZYLOAD="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",JOE_DEFAULTS={JFavicon:"/usr/themes/joe/assets/img/link.png",JLogo:"/usr/themes/joe/assets/img/aside_author_image.jpg",JBirthDay:"",JDocumentTitle:"",JAside_Author_Image:"/usr/themes/joe/assets/img/aside_author_image.jpg",JAside_Author_Avatar:"",JAside_Author_Nick:"",JAside_Author_Link:"#",JAside_Author_Motto:"\u6709\u94B1\u7EC8\u6210\u7737\u5C5E\uFF0C\u6CA1\u94B1\u4EB2\u773C\u76EE\u7779",JAside_Author_Nav:"on",JAside_Hot_Num:"5",JAside_Newreply_Status:"on",JAside_Timelife_Status:"on",JAside_3DTag:"off",JAside_Flatterer:"on",JCommentStatus:"on",JIndex_Hot:"off",JIndex_Carousel:"",JIndex_Recommend:"",JIndex_Ad:"",JIndex_Notice:"",JList_Animate:"off",JOverdue:"off",JNavMaxNum:"6",JFooter_Custom:"",JICP:"",JAssetsURL:""};__name(assetsUrl,"assetsUrl");__name(headBlock,"headBlock");__name(cssLinks,"cssLinks");__name(scripts,"scripts");__name(headerBlock,"headerBlock");__name(asideBlock,"asideBlock");__name(commentLink,"commentLink");__name(footerBlock,"footerBlock");__name(layout,"layout");__name(permalink,"permalink");__name(contentMetas,"contentMetas");__name(renderIndex,"renderIndex");__name(indexItem,"indexItem");__name(renderPost,"renderPost");__name(commentsBlock,"commentsBlock");__name(renderCommentText,"renderCommentText");g_ctx={options:{themeAssetsBase:"/usr/themes/joe"}};__name(setThemeContext,"setThemeContext");OWO_MAP={};__name(setOwoMap,"setOwoMap");__name(parseAgentOS,"parseAgentOS");__name(parseAgentBrowser,"parseAgentBrowser");__name(renderArchive,"renderArchive");__name(render404,"render404")}});var hello_world_exports={};__export(hello_world_exports,{meta:()=>meta,register:()=>register});function register(api){api.registerHook("commentSubmit",data=>(data&&data.text&&(data.text=data.text.replace(/\bhello\b/gi,"Hello World")),data)),api.registerAction("hello",async ctx=>new Response(JSON.stringify({code:1,data:{message:"Hello World from TypechoEdge plugin!"}}),{headers:{"Content-Type":"application/json; charset=utf-8"}}))}var meta,init_hello_world=__esm({"src/plugins-builtin/hello-world.js"(){__name(register,"register");meta={title:"HelloWorld",desc:"\u793A\u4F8B\u63D2\u4EF6\uFF1A\u8BC4\u8BBA hello \u66FF\u6362 + /action/hello \u63A5\u53E3",author:"TypechoEdge",version:"1.0.0"}}});var links_cache_exports={};__export(links_cache_exports,{meta:()=>meta2,register:()=>register2});function register2(api){api.registerHook("renderContent",async(text,{post})=>post?.fields?.mode==="links"?`<div class="joe_links">
   <ul class="joe_links__list">
     ${String(text).split(`
 `).map(l=>l.trim()).filter(Boolean).map(l=>l.split("||").map(s=>s.trim())).filter(p=>p.length>=2).map(([name,url,avatar])=>({name,url,avatar:avatar||""})).map(l=>`<li class="item">

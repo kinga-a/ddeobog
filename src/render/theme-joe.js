@@ -108,12 +108,31 @@ function scripts(ctx, extra = []) {
 }
 
 /** 页头：导航 + 搜索 + 移动端抽屉 */
-function headerBlock(ctx) {
-  const { options, pages, path } = ctx;
+async function headerBlock(ctx) {
+  const { options, pages, path, db } = ctx;
   const navMax = parseInt(options.joe.JNavMaxNum || '6', 10);
   const navPages = pages.slice(0, navMax);
   const morePages = pages.slice(navMax);
   const isIndex = path === '/';
+
+  // 搜索下拉的初始内容。与 5i.ink 一致：面板里的条目是服务端渲染的热门文章，
+  // 主题 CSS 期望 .result .item > .sort(排名徽标) + .text(标题) + .views(阅读量)，
+  // 前三条徽标自带红/橙/黄配色，hover 底色也由主题给。
+  const suggestNum = parseInt(options.joe.JSearch_Hot_Num || '5', 10) || 5;
+  const hot = await db.listContents({ type: 'post', pageSize: suggestNum, order: 'views' });
+  const hotViews = await Promise.all(
+    hot.items.map(async (p) => ({ ...p, views: await db.getStat(p.cid, 'views') }))
+  );
+  const suggestHtml = hotViews
+    .map(
+      (p, i) =>
+        `<a href="${p.permalink}" title="${escapeHtml(p.title)}" class="item">` +
+        `<span class="sort">${i + 1}</span>` +
+        `<span class="text">${escapeHtml(p.title)}</span>` +
+        `<span class="views">${p.views} 阅读</span>` +
+        `</a>`
+    )
+    .join('\n');
   return `<header class="joe_header${ctx.isPost ? ' current' : ''}">
   <div class="joe_header__above">
     <div class="joe_container">
@@ -129,11 +148,14 @@ function headerBlock(ctx) {
           <nav class="joe_dropdown__menu">${morePages.map((p) => `<a href="${p.permalink}">${escapeHtml(p.title)}</a>`).join('')}</nav>
         </div>` : ''}
       </nav>
-      <div class="joe_header__above-search">
-        <svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M1004.257 874.846 768.898 639.488a385.526 385.526 0 0 0 44.851-178.637C813.749 259.91 654.353 100.513 457.287 100.513S100.825 259.91 100.825 456.977c0 197.066 159.396 356.462 356.462 356.462 64.819 0 125.602-17.36 178.637-44.851l235.358 235.358a35.607 35.607 0 0 0 50.397 0l42.578-42.578a35.607 35.607 0 0 0 0-50.397zM457.287 723.833c-147.386 0-266.856-119.47-266.856-266.856s119.47-266.856 266.856-266.856 266.856 119.47 266.856 266.856-119.47 266.856-266.856 266.856z"/></svg>
-        <input type="text" class="input search-input" placeholder="搜索内容..." autocomplete="off" />
-        <div class="result"></div>
-      </div>
+      <form class="joe_header__above-search" method="get" action="/search">
+        <input maxlength="16" autocomplete="off" placeholder="请输入关键字..." name="s" value="" class="input" type="text" />
+        <button type="submit" class="submit">Search</button>
+        <span class="icon"></span>
+        <nav class="result">
+          ${suggestHtml}
+        </nav>
+      </form>
       <svg class="joe_header__above-searchicon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M1004.257 874.846 768.898 639.488a385.526 385.526 0 0 0 44.851-178.637C813.749 259.91 654.353 100.513 457.287 100.513S100.825 259.91 100.825 456.977c0 197.066 159.396 356.462 356.462 356.462 64.819 0 125.602-17.36 178.637-44.851l235.358 235.358a35.607 35.607 0 0 0 50.397 0l42.578-42.578a35.607 35.607 0 0 0 0-50.397zM457.287 723.833c-147.386 0-266.856-119.47-266.856-266.856s119.47-266.856 266.856-266.856 266.856 119.47 266.856 266.856-119.47 266.856-266.856 266.856z"/></svg>
     </div>
   </div>
@@ -148,10 +170,10 @@ function headerBlock(ctx) {
   <div class="joe_header__searchout">
     <div class="joe_container">
       <div class="joe_header__searchout-inner">
-        <div class="search">
-          <input type="text" class="input" placeholder="搜索内容..." autocomplete="off" />
-          <button class="submit search-btn">搜索</button>
-        </div>
+        <form class="search" method="get" action="/search">
+          <input maxlength="16" autocomplete="off" placeholder="请输入关键字..." name="s" value="" class="input" type="text" />
+          <button type="submit" class="submit">Search</button>
+        </form>
       </div>
     </div>
   </div>
@@ -294,7 +316,7 @@ function footerBlock(ctx) {
 }
 
 /** HTML 文档骨架 */
-function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = '' }) {
+async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = '' }) {
   const { options } = ctx;
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -311,7 +333,7 @@ function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = '' }) {
 </head>
 <body${bodyClass ? ` class="${bodyClass}"` : ''}>
   <div id="Joe">
-    ${headerBlock(ctx)}
+    ${await headerBlock(ctx)}
     ${ctx.contentBody || ''}
     ${footerBlock(ctx)}
   </div>
@@ -368,7 +390,7 @@ export async function renderIndex(ctx) {
     </div>
     ${await asideBlock(ctx)}
   </div>`;
-  return layout(ctx, {
+  return await layout(ctx, {
     title: `${escapeHtml(ctx.options.title)} - ${escapeHtml(ctx.options.description || '')}`,
     css: [a('assets/lib/swiper@5.4.5/swiper.min.css'), a('assets/css/joe.index.min.css')],
     js: [a('assets/lib/swiper@5.4.5/swiper.min.js'), a('assets/lib/wowjs@1.1.3/wow.min.js'), a('assets/js/joe.index.min.js')],
@@ -474,7 +496,7 @@ export async function renderPost(ctx) {
   </div>`;
 
   const desc = post.fields?.description || plainExcerpt(post.text, 120);
-  return layout(ctx, {
+  return await layout(ctx, {
     title: `${escapeHtml(post.title)} - ${escapeHtml(ctx.options.title)}`,
     meta: `<meta name="description" content="${escapeHtml(desc)}" />${(post.fields?.keywords || tags.length) ? `<meta name="keywords" content="${escapeHtml(post.fields?.keywords || tags.map((t) => t.name).join(','))}" />` : ''}`,
     css: [a('assets/lib/prism/prism.min.css'), a('assets/css/joe.post.min.css')],
@@ -619,7 +641,7 @@ export async function renderArchive(ctx) {
     </div>
     ${await asideBlock(ctx)}
   </div>`;
-  return layout(ctx, {
+  return await layout(ctx, {
     title: `${escapeHtml(archiveTitle)} - ${escapeHtml(ctx.options.title)}`,
     css: [a('assets/css/joe.archive.min.css')],
   });
@@ -637,7 +659,7 @@ export async function render404(ctx) {
       </div>
     </div>
   </div>`;
-  return layout(ctx, {
+  return await layout(ctx, {
     title: `页面不存在 - ${escapeHtml(ctx.options.title)}`,
     css: [a('assets/css/joe.global.min.css')],
   });
