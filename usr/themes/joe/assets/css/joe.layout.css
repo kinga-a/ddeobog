@@ -43,33 +43,5 @@
 }
 
 /* ---------- 侧边悬浮操作按钮（回到顶部 / 切换主题） ----------
-   主题自带 CSS 只有静态外观和 active 显隐/切换动画，全库没有任何
-   :hover 规则，按钮悬停时毫无反馈。这里补 hover 上浮 + 按下反馈。
-   同时把点击热区从 40px 放大到 46px（图标 25px→28px），间距 15px→12px。
-   .joe_action 定位容器不动。 */
-.joe_action_item {
-  width: 46px;
-  height: 46px;
-  margin-top: 12px;
-  /* 保留原 transition 里的 visibility，否则 scroll 按钮显隐时会失去过渡 */
-  transition: visibility 0.35s, transform 0.35s, box-shadow 0.35s;
-}
-
-.joe_action_item svg {
-  width: 28px;
-  height: 28px;
-}
-
-/* hover / active 选择器要带上 .scroll.active：
-   主题的 `.joe_action_item.scroll.active{transform:scale(1)}` 是 (0,3,0)，
-   裸的 `.joe_action_item:hover` 只有 (0,2,0) 会被它压掉，回顶按钮就浮不起来。 */
-.joe_action_item.mode:hover,
-.joe_action_item.scroll.active:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 0 14px rgba(0, 0, 0, 0.14), 0 10px 26px rgba(0, 0, 0, 0.26);
-}
-
-.joe_action_item.mode:active,
-.joe_action_item.scroll.active:active {
-  transform: translateY(0) scale(0.92);
-}
+   按钮外观保持主题自带样式（40×40 白圆、图标 25px），不做覆盖。
+   原先这里加过 hover 上浮 + 放大到 46px，现已移除以对齐 5i.ink 的观感。 */

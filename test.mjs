@@ -193,6 +193,30 @@ await test('主题：搜索面板结构与脚本齐备', async () => {
   assert.ok(html.includes('assets/css/joe.layout.css'), '未引入 joe.layout.css');
 });
 
+await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', async () => {
+  const html = await (await call('GET', '/')).text();
+  const seg = html.slice(html.indexOf('<div class="joe_action">'));
+  const act = seg.slice(0, seg.indexOf('</div>\n</div>') > 0 ? 4000 : 4000);
+
+  // 顺序：回顶(scroll) 在上，切换主题(mode) 在下
+  assert.ok(act.indexOf('joe_action_item scroll') < act.indexOf('joe_action_item mode'),
+    '回顶按钮应在切换主题按钮上方');
+
+  // 回顶是火箭，不是主题切换图标的复制品（曾把日间图标直接复制过来）
+  const rocket = act.match(/joe_action_item scroll">([\s\S]*?)<\/svg>/)[1];
+  assert.ok(rocket.includes('M725.902 498.916'), '回顶图标不是火箭');
+  assert.ok(rocket.includes('width="25"'), '回顶图标尺寸应为 25');
+
+  // 切换主题：夜间月亮 / 日间太阳，两个图标必须不同
+  const icons = [...act.matchAll(/<svg class="(icon-[12])"([\s\S]*?)<\/svg>/g)];
+  assert.equal(icons.length, 2, '切换主题按钮应有两个图标');
+  const [i1, i2] = icons.map((m) => m[2]);
+  assert.ok(i1.includes('M587.264 104.96'), 'icon-1 应为月亮');
+  assert.ok(i2.includes('M234.24 512a277.76'), 'icon-2 应为太阳');
+  assert.notEqual(i1, i2, '月亮与太阳不能是同一个图标');
+  assert.ok(i1.includes('width="25"') && i2.includes('width="25"'), '切换主题图标尺寸应为 25');
+});
+
 await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点）', async () => {
   const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
   // 侧栏在左：order:-1 + flex 固定宽度，正文 flex:1
@@ -202,13 +226,9 @@ await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点�
   // 搜索高亮样式已从内联 <style> 迁到该文件
   assert.ok(css.includes('.joe_header__above-search .result .item.active'));
 
-  // 侧边悬浮按钮：主题缺 :hover，这里补了；热区放大到 46px
-  assert.ok(/\.joe_action_item\s*\{[^}]*width:\s*46px[^}]*height:\s*46px/.test(css), '按钮未放大到 46px');
-  assert.ok(/\.joe_action_item\.mode:hover/.test(css), '缺少主题切换按钮的 hover 反馈');
-  assert.ok(/\.joe_action_item\.scroll\.active:hover/.test(css), '缺少回顶按钮的 hover 反馈');
-  assert.ok(/\.joe_action_item\.mode:active/.test(css), '缺少按下反馈');
-  // hover 选择器必须带 .scroll.active，否则被主题的 .scroll.active{transform:scale(1)} 压掉
-  assert.ok(!/^\.joe_action_item:hover\b/m.test(css), '裸 .joe_action_item:hover 特异性不够，会被 .scroll.active 覆盖');
+  // 悬浮按钮外观交回主题自带样式（对齐 5i.ink），此处不应再覆盖尺寸/悬停
+  assert.ok(!css.includes('.joe_action_item'), '不应再覆盖 .joe_action_item 外观');
+
 
   for (const [path, marker] of [
     ['/', 'joe_index'],
