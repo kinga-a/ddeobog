@@ -705,6 +705,37 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
 });
 
 
+await test('主题：分类/标签等归档页的面包屑单行不换行', async () => {
+  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
+  const rule = (sel) => {
+    const m = css.match(new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`));
+    assert.ok(m, `layout.css 缺少 ${sel} 规则`);
+    return m[1];
+  };
+  assert.ok(/display:\s*flex/.test(rule('.joe_bread__bread')), '面包屑应为 flex 单行');
+  const item = rule('.joe_bread__bread .item');
+  assert.ok(/white-space:\s*nowrap/.test(item), '面包屑条目不应换行');
+  assert.ok(/text-overflow:\s*ellipsis/.test(item), '过长时应用省略号');
+
+  // 回归点：.joe_bread 的样式原本只在 post.min.css 里，归档页加载不到。
+  // layout.css 是全站基础样式，必须自带这一份，否则分类/标签页会退回块级堆叠。
+  const archive = await readFile('usr/themes/joe/assets/css/joe.archive.min.css', 'utf8');
+  assert.ok(!archive.includes('joe_bread'), 'joe.archive.min.css 不含面包屑样式（靠 layout.css 兜底）');
+
+  // 归档页实际渲染了面包屑，且结构完整
+  const html = await (await call('GET', '/category/default/')).text();
+  const m = html.match(/<ul class="joe_bread__bread">([\s\S]*?)<\/ul>/);
+  assert.ok(m, '分类页应有面包屑');
+  assert.ok(/<a href="\/" class="link" title="首页">首页<\/a>/.test(m[1]), '面包屑首项应为首页链接');
+  assert.ok((m[1].match(/class="line">\/<\/li>/g) || []).length >= 1, '面包屑应有分隔符');
+  // 样式在归档页确实被加载
+  assert.ok(html.includes('href="/usr/themes/joe/assets/css/joe.layout.css"'), '归档页应加载 layout.css');
+
+  // 标签页同样
+  const tagHtml = await (await call('GET', '/tag/%E6%B5%8B%E8%AF%95/')).text();
+  assert.ok(/<ul class="joe_bread__bread">/.test(tagHtml), '标签页应有面包屑');
+});
+
 await test('评论管理页', async () => {
   const res = await call('GET', '/admin/comments');
   assert.equal(res.status, 200);

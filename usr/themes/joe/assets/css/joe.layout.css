@@ -132,3 +132,39 @@
     display: none;
   }
 }
+
+/* 面包屑
+ *
+ * 原来 .joe_bread__bread 的样式只存在于 joe.post.min.css，
+ * 而分类/标签/搜索等归档页加载的是 joe.archive.min.css —— 那边一条都没有，
+ * 于是 li 退回块级布局、每个独占一行，看起来就是「换行」。
+ * 这里补齐全局样式（layout.css 是所有页面都加载的基础样式），
+ * 并保证单行不换行：过长时省略而不是折行。
+ */
+.joe_bread {
+  padding-top: 15px;
+}
+.joe_bread__bread {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.joe_bread__bread .line {
+  flex: none;
+  color: var(--seat);
+  padding: 0 8px;
+}
+.joe_bread__bread .item {
+  min-width: 0;
+  color: var(--minor);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.joe_bread__bread .item .link {
+  color: var(--routine);
+  transition: color 0.35s;
+}
+.joe_bread__bread .item .link:hover {
+  color: var(--theme);
+}
