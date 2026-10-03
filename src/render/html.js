@@ -33,12 +33,20 @@ export function pageNav(page, pages, baseUrl, edge = 2) {
   return html;
 }
 
-/** Cravatar/WeAvatar 兼容头像（国内可用） */
-export function avatarUrl(mail, size = 100) {
+/** Cravatar/WeAvatar/Gravatar 兼容头像（国内可用） */
+export function avatarUrl(mail, size = 100, avatarSource = 'weavatar') {
   const m = String(mail || '').trim().toLowerCase();
-  if (!m) return 'https://cravatar.cn/avatar/?d=mp&s=' + size;
-  // 简易 MD5 不引入；使用 WeAvatar 的邮箱直传模式
-  return `https://weavatar.com/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
+  if (!m) return `https://cravatar.cn/avatar/?d=mp&s=${size}`;
+  // 简易 MD5 不引入；使用各源的邮箱直传模式
+  switch (avatarSource) {
+    case 'gravatar':
+      return `https://www.gravatar.com/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
+    case 'cravatar':
+      return `https://cravatar.cn/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
+    case 'weavatar':
+    default:
+      return `https://weavatar.com/avatar/${encodeURIComponent(m)}?default=mp&size=${size}`;
+  }
 }
 
 export function formatDate(ts, fmt = 'Y-m-d') {

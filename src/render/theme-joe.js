@@ -38,6 +38,7 @@ export const JOE_DEFAULTS = {
   JFooter_Custom: '',
   JICP: '',
   JAssetsURL: '',
+  JAvatarSource: 'weavatar',
 };
 
 export function assetsUrl(opts, path) {
@@ -154,7 +155,8 @@ async function slideoutBlock(ctx) {
   // 与侧栏 author 区同源：昵称/头像取管理员，缺省回落到站点配置
   const owner = (await db.listUsers()).find((u) => u.group === 'administrator') || {};
   const nick = options.joe.JAside_Author_Nick || owner.screenName || '博主';
-  const avatar = options.joe.JAside_Author_Avatar || avatarUrl(owner.mail);
+  const avatarSource = options.joe.JAvatarSource || 'weavatar';
+  const avatar = options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, 100, avatarSource);
   const link = options.joe.JAside_Author_Link || '#';
 
   const postsIdx = await db.listContents({ type: 'post', pageSize: 1 });
@@ -282,6 +284,7 @@ async function asideBlock(ctx) {
   const { options, db, user } = ctx;
   const a = (p) => assetsUrl(options, p);
   const owner = (await db.listUsers()).find((u) => u.group === 'administrator') || {};
+  const avatarSource = options.joe.JAvatarSource || 'weavatar';
   const postsIdx = await db.listContents({ type: 'post', pageSize: 1 });
   const stat = {
     posts: postsIdx.total,
@@ -296,7 +299,7 @@ async function asideBlock(ctx) {
   <section class="joe_aside__item author">
     <img width="100%" height="120" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Image)}" alt="博主栏壁纸" />
     <div class="user">
-      <img width="75" height="75" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Avatar || avatarUrl(owner.mail))}" alt="博主头像" />
+      <img width="75" height="75" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, 75, avatarSource))}" alt="博主头像" />
       <a class="link" href="${escapeHtml(options.joe.JAside_Author_Link)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(options.joe.JAside_Author_Nick || owner.screenName || '博主')}</a>
       <p class="motto joe_motto"></p>
     </div>
@@ -334,7 +337,7 @@ async function asideBlock(ctx) {
       <ul class="joe_aside__item-contain">
         ${recentComments.map((c) => `<li class="item">
           <div class="user">
-            <img width="40" height="40" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail)}" alt="${escapeHtml(c.author)}" />
+            <img width="40" height="40" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 40, avatarSource)}" alt="${escapeHtml(c.author)}" />
             <div class="info"><div class="author">${escapeHtml(c.author)}</div><span class="date">${formatDate(c.created, 'Y-m-d')}</span></div>
           </div>
           <div class="reply"><a class="link" href="${commentLink(db, c)}">${escapeHtml(plainExcerpt(c.text, 40))}</a></div>
@@ -613,6 +616,7 @@ function indexItem(ctx, p) {
 export async function renderPost(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { post, db } = ctx;
+  const avatarSource = ctx.options.joe?.JAvatarSource || 'weavatar';
   const { cats, tags } = await contentMetas(db, post);
   const author = (await db.getUser(post.authorId)) || { screenName: '博主', mail: '' };
   const { prev, next } = await db.prevNext(post.cid, post.type);
@@ -638,7 +642,7 @@ export async function renderPost(ctx) {
         <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
         <div class="joe_detail__count">
           <div class="joe_detail__count-information">
-            <img width="35" height="35" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(author.mail)}" alt="${escapeHtml(author.screenName)}" />
+            <img width="35" height="35" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(author.mail, 35, avatarSource)}" alt="${escapeHtml(author.screenName)}" />
             <div class="meta">
               <div class="author"><a class="link" href="/author/${post.authorId}/" title="${escapeHtml(author.screenName)}">${escapeHtml(author.screenName)}</a></div>
               <div class="item">
@@ -699,6 +703,7 @@ async function commentsBlock(ctx, post) {
     return `<div class="joe_comment"><h3 class="joe_comment__title">评论</h3><div class="joe_comment__close"><span>博主关闭了评论</span></div></div>`;
   }
   const { db, csrfToken, user } = ctx;
+  const avatarSource = ctx.options.joe?.JAvatarSource || 'weavatar';
   const all = await db.listComments(post.cid);
   const byParent = new Map();
   for (const c of all) {
@@ -710,7 +715,7 @@ async function commentsBlock(ctx, post) {
     return `<li class="comment-list__item">
       <div class="comment-list__item-contain" id="comment-${c.coid}">
         <div class="term">
-          <img width="48" height="48" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail)}" alt="头像" />
+          <img width="48" height="48" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 48, avatarSource)}" alt="头像" />
           <div class="content">
             <div class="user">
               <span class="author">${escapeHtml(c.author)}</span>

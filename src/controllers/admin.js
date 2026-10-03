@@ -722,6 +722,11 @@ async function settingsPage(ctx) {
     <div class="row">
       <div class="item"><label>侧栏博主昵称</label><input type="text" name="j_JAside_Author_Nick" value="${esc(theme.JAside_Author_Nick || '')}"></div>
       <div class="item"><label>侧栏博主头像 URL</label><input type="text" name="j_JAside_Author_Avatar" value="${esc(theme.JAside_Author_Avatar || '')}"></div>
+      <div class="item"><label>头像源</label><select name="j_JAvatarSource">
+        <option value="weavatar" ${theme.JAvatarSource === 'weavatar' ? 'selected' : ''}>WeAvatar (weavatar.com)</option>
+        <option value="cravatar" ${theme.JAvatarSource === 'cravatar' ? 'selected' : ''}>Cravatar (cravatar.cn)</option>
+        <option value="gravatar" ${theme.JAvatarSource === 'gravatar' ? 'selected' : ''}>Gravatar (gravatar.com)</option>
+      </select></div>
       <div class="item"><label>侧栏博主链接</label><input type="text" name="j_JAside_Author_Link" value="${esc(theme.JAside_Author_Link || '')}"></div>
     </div>
     <div class="row">
