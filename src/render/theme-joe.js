@@ -509,6 +509,13 @@ export async function renderIndex(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page } = ctx;
   const itemsHtml = list.items.map((p) => indexItem(ctx, p)).join('');
+  // PC 端在「最新/热门/…」导航右侧展示标签入口（.joe_index__title-tags 移动端隐藏）
+  const tagMeta = await ctx.db.listMetas('tag');
+  const tagsHtml = tagMeta.length
+    ? `<div class="joe_index__title-tags">${tagMeta
+        .map((t) => `<a href="/tag/${encodeURIComponent(t.slug)}/" title="${escapeHtml(t.name)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.name)}</a>`)
+        .join('')}</div>`
+    : '';
   ctx.contentBody = `<div class="joe_container joe_body">
     <div class="joe_main">
       <div class="joe_index">
@@ -520,6 +527,7 @@ export async function renderIndex(ctx) {
             <li class="item" data-type="agree">点赞最多</li>
             <li class="line"></li>
           </ul>
+          ${tagsHtml}
         </div>
         <div class="joe_index__list" data-wow="off">
           <ul class="joe_list">${itemsHtml}</ul>

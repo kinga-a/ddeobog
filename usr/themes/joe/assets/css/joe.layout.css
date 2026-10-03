@@ -45,3 +45,34 @@
 /* ---------- 侧边悬浮操作按钮（回到顶部 / 切换主题） ----------
    按钮外观保持主题自带样式（40×40 白圆、图标 25px），不做覆盖。
    原先这里加过 hover 上浮 + 放大到 46px，现已移除以对齐 5i.ink 的观感。 */
+
+/* 索引页标题栏右侧的标签入口（PC 端，移动端隐藏） */
+.joe_index__title-tags {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  margin-left: 25px;
+  height: 40px;
+  overflow: hidden;
+}
+.joe_index__title-tags a {
+  color: var(--minor);
+  font-size: 13px;
+  line-height: 20px;
+  padding: 2px 10px;
+  margin-right: 8px;
+  border-radius: 10px;
+  background: var(--classD);
+  white-space: nowrap;
+  transition: color 0.35s, background 0.35s;
+}
+.joe_index__title-tags a:hover {
+  color: var(--theme);
+  background: var(--classC);
+}
+@media (max-width: 768px) {
+  .joe_index__title-tags {
+    display: none;
+  }
+}

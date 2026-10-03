@@ -210,7 +210,7 @@ ${await pe(p)}
       ${item(`http://service.weibo.com/share/share.php?sharesource=weibo&title=${enc(`\u5206\u4EAB\uFF1A${title}\uFF0C\u539F\u6587\u94FE\u63A5\uFF1A${url}`)}${pic?`&pic=${pic}`:""}`,"\u5206\u4EAB\u5230\u65B0\u6D6A\u5FAE\u535A",SHARE_ICONS.weibo)}
     </div>
   </div>
-</div>`}function permalink(content){return content.type==="page"?`/${content.slug}/`:content.type==="attachment"?`/attachment/${content.cid}/`:`/archives/${content.cid}/`}async function contentMetas(db,content){let cats=[],tags=[];for(let mid of content.categories||[]){let m=await db.getMeta(mid);m&&cats.push({...m,permalink:`/category/${encodeURIComponent(m.slug)}/`})}for(let mid of content.tags||[]){let m=await db.getMeta(mid);m&&tags.push({...m,permalink:`/tag/${encodeURIComponent(m.slug)}/`})}return{cats,tags}}async function renderIndex(ctx){let a=__name(p=>assetsUrl(ctx.options,p),"a"),{list,page}=ctx,itemsHtml=list.items.map(p=>indexItem(ctx,p)).join("");return ctx.contentBody=`<div class="joe_container joe_body">
+</div>`}function permalink(content){return content.type==="page"?`/${content.slug}/`:content.type==="attachment"?`/attachment/${content.cid}/`:`/archives/${content.cid}/`}async function contentMetas(db,content){let cats=[],tags=[];for(let mid of content.categories||[]){let m=await db.getMeta(mid);m&&cats.push({...m,permalink:`/category/${encodeURIComponent(m.slug)}/`})}for(let mid of content.tags||[]){let m=await db.getMeta(mid);m&&tags.push({...m,permalink:`/tag/${encodeURIComponent(m.slug)}/`})}return{cats,tags}}async function renderIndex(ctx){let a=__name(p=>assetsUrl(ctx.options,p),"a"),{list,page}=ctx,itemsHtml=list.items.map(p=>indexItem(ctx,p)).join(""),tagMeta=await ctx.db.listMetas("tag"),tagsHtml=tagMeta.length?`<div class="joe_index__title-tags">${tagMeta.map(t=>`<a href="/tag/${encodeURIComponent(t.slug)}/" title="${escapeHtml(t.name)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.name)}</a>`).join("")}</div>`:"";return ctx.contentBody=`<div class="joe_container joe_body">
     <div class="joe_main">
       <div class="joe_index">
         <div class="joe_index__title">
@@ -221,6 +221,7 @@ ${await pe(p)}
             <li class="item" data-type="agree">\u70B9\u8D5E\u6700\u591A</li>
             <li class="line"></li>
           </ul>
+          ${tagsHtml}
         </div>
         <div class="joe_index__list" data-wow="off">
           <ul class="joe_list">${itemsHtml}</ul>

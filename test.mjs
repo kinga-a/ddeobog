@@ -617,6 +617,43 @@ await test('主题：侧边面板分组为 分类/标签/页面，且标签链�
   assert.ok(!menu.includes('<span>栏目</span>'), '「栏目」应更名为「分类」');
 });
 
+await test('主题：PC 端索引页标题栏后有标签入口（移动端由 CSS 隐藏）', async () => {
+  const html = await (await call('GET', '/')).text();
+  // 结构：.joe_index__title-title 之后紧跟 .joe_index__title-tags
+  const titleEnd = html.indexOf('</ul>', html.indexOf('<ul class="joe_index__title-title'));
+  const after = html.slice(titleEnd + 5, titleEnd + 60);
+  assert.ok(after.trimStart().startsWith('<div class="joe_index__title-tags">'),
+    `标签块应紧跟在标题导航之后，实际：${after.slice(0, 40)}`);
+  // 同一个 .joe_index__title 容器内
+  const container = html.slice(html.lastIndexOf('<div class="joe_index__title">', titleEnd));
+  assert.ok(container.indexOf('joe_index__title-tags') !== -1, '标签块应在 .joe_index__title 内');
+
+  // 每个标签都指向可访问的 /tag/<slug>/，且带 title
+  const start = html.indexOf('<div class="joe_index__title-tags">');
+  const tagsBody = html.slice(start, html.indexOf('</div>', start));
+  const hrefs = [...tagsBody.matchAll(/href="(\/tag\/[^"]*)" title="([^"]*)"/g)];
+  assert.ok(hrefs.length >= 1, '索引页应至少渲染一个标签入口');
+  // 数量应与侧栏「标签」手风琴分组一致（同源 listMetas('tag')），避免漏渲染
+  const slideStart = html.indexOf('<span>标签</span>');
+  assert.ok(slideStart !== -1, '侧栏应存在「标签」分组');
+  const slideBody = html.slice(slideStart, html.indexOf('</ul>', slideStart));
+  const expected = (slideBody.match(/href="\/tag\//g) || []).length;
+  assert.ok(expected >= 1, '侧栏标签分组应有子项');
+  assert.equal(hrefs.length, expected, `索引页标签入口数 ${hrefs.length} 应等于侧栏标签数 ${expected}`);
+  for (const [, h, title] of hrefs) {
+    assert.ok(/^\/tag\/[^/]+\/$/.test(h), `标签 href 非法：${h}`);
+    assert.ok(title.length > 0, `标签 ${h} 缺 title`);
+    const r = await call('GET', h);
+    assert.equal(r.status, 200, `标签页 ${h} 打不开（${r.status}）`);
+  }
+  // 移动端隐藏：CSS 里有 max-width:768px 的 display:none
+  // 静态资源在测试环境不走 HTTP，直接读磁盘（与 .min.js 那条测试一致）
+  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
+  assert.ok(css.includes('joe_index__title-tags'), '布局 CSS 未包含标签样式');
+  const rule = css.match(/@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?\.joe_index__title-tags[\s\S]*?\}/);
+  assert.ok(rule && /display:\s*none/.test(rule[0]), '移动端应隐藏标签入口');
+});
+
 await test('评论管理页', async () => {
   const res = await call('GET', '/admin/comments');
   assert.equal(res.status, 200);
