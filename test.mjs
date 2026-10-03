@@ -177,6 +177,7 @@ await test('Joe API: search 空关键字返回空列表而非报错', async () =
 await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', async () => {
   const res = await call('GET', '/');
   const html = await res.text();
+  const aboveAtOf = (h) => h.indexOf('class="joe_header__above-search"');
   // 与 5i.ink 一致：顶栏和移动端面板都是 <form>，input/button 是表单直接子元素
   assert.ok(
     /class="joe_header__searchout-inner"\s*>\s*<form class="search"/.test(html),
@@ -191,6 +192,13 @@ await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', asyn
   assert.ok(/<span class="sort">\d+<\/span>/.test(html), '.result 条目缺少 .sort 排名徽标');
   assert.ok(html.includes('class="text"'), '.result 条目缺少 .text 标题');
   assert.ok(/<span class="views">\d+ 阅读<\/span>/.test(html), '.result 条目缺少 .views 阅读量');
+  // 热门条目必须带真实链接（曾误用不存在的 p.permalink，渲染成 href="undefined"）
+  const aboveSeg = html.slice(aboveAtOf(html), aboveAtOf(html) + 1400);
+  const hrefs = [...aboveSeg.matchAll(/<a href="([^"]*)"[^>]*class="item"/g)].map((m) => m[1]);
+  assert.ok(hrefs.length > 0, '下拉面板没有渲染任何条目');
+  for (const h of hrefs) {
+    assert.ok(/^\/(archives\/\d+\/|attachment\/\d+\/|[^/]+\/)/.test(h), `下拉条目链接非法：${h}`);
+  }
   // 联想渲染脚本必须被引入
   assert.ok(html.includes('assets/js/joe.search.js'), '未引入 joe.search.js，搜索框点了没反应');
   // 下拉容器（联想结果挂载点）必须落在 .joe_header__above-search 之内
