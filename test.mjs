@@ -617,49 +617,73 @@ await test('主题：侧边面板分组为 分类/标签/页面，且标签链�
   assert.ok(!menu.includes('<span>栏目</span>'), '「栏目」应更名为「分类」');
 });
 
-await test('主题：PC 端索引页标题栏后有标签入口（移动端由 CSS 隐藏）', async () => {
+await test('主题：索引页标题栏右侧是分类/标签展开按钮（默认收起，可切换）', async () => {
   const html = await (await call('GET', '/')).text();
-  // 结构：.joe_index__title-title 之后紧跟 .joe_index__title-tags
   const titleEnd = html.indexOf('</ul>', html.indexOf('<ul class="joe_index__title-title'));
   const after = html.slice(titleEnd + 5, titleEnd + 60);
-  assert.ok(after.trimStart().startsWith('<div class="joe_index__title-tags">'),
-    `标签块应紧跟在标题导航之后，实际：${after.slice(0, 40)}`);
-  // 同一个 .joe_index__title 容器内
-  const container = html.slice(html.lastIndexOf('<div class="joe_index__title">', titleEnd));
-  assert.ok(container.indexOf('joe_index__title-tags') !== -1, '标签块应在 .joe_index__title 内');
+  assert.ok(after.trimStart().startsWith('<div class="joe_index__title-filter">'),
+    `筛选按钮容器应紧跟标题导航之后，实际：${after.slice(0, 40)}`);
 
-  // 每个标签都指向可访问的 /tag/<slug>/，且带 title
-  const start = html.indexOf('<div class="joe_index__title-tags">');
-  const tagsBody = html.slice(start, html.indexOf('</div>', start));
-  const hrefs = [...tagsBody.matchAll(/href="(\/tag\/[^"]*)" title="([^"]*)"/g)];
-  assert.ok(hrefs.length >= 1, '索引页应至少渲染一个标签入口');
-  // 数量应与侧栏「标签」手风琴分组一致（同源 listMetas('tag')），避免漏渲染
-  const slideStart = html.indexOf('<span>标签</span>');
-  assert.ok(slideStart !== -1, '侧栏应存在「标签」分组');
-  const slideBody = html.slice(slideStart, html.indexOf('</ul>', slideStart));
-  const expected = (slideBody.match(/href="\/tag\//g) || []).length;
-  assert.ok(expected >= 1, '侧栏标签分组应有子项');
-  assert.equal(hrefs.length, expected, `索引页标签入口数 ${hrefs.length} 应等于侧栏标签数 ${expected}`);
-  for (const [, h, title] of hrefs) {
-    assert.ok(/^\/tag\/[^/]+\/$/.test(h), `标签 href 非法：${h}`);
-    assert.ok(title.length > 0, `标签 ${h} 缺 title`);
-    const r = await call('GET', h);
-    assert.equal(r.status, 200, `标签页 ${h} 打不开（${r.status}）`);
+  // 旧的一排标签入口已被按钮取代
+  assert.ok(!html.includes('joe_index__title-tags'), '不应再有旧的标签行容器');
+
+  // 分类按钮在标签按钮之前
+  const catBtn = html.indexOf('data-panel="category"');
+  const tagBtn = html.indexOf('data-panel="tag"');
+  assert.ok(catBtn !== -1 && tagBtn !== -1, '分类/标签按钮都应存在');
+  assert.ok(catBtn < tagBtn, '「分类」按钮应在「标签」按钮之前');
+  assert.ok(html.slice(catBtn, tagBtn).includes('>分类<'), '第一个按钮文案应为「分类」');
+  assert.ok(/data-panel="tag"[^>]*>标签</.test(html), '第二个按钮文案应为「标签」');
+
+  // 两个面板默认收起，各自列出全部条目
+  for (const kind of ['category', 'tag']) {
+    const p = html.match(new RegExp(`<div class="joe_index__title-filter-panel joe_index__title-filter-panel--${kind}" hidden>`));
+    assert.ok(p, `${kind} 面板应存在且默认带 hidden`);
+    const body = html.slice(html.indexOf(p[0]), html.indexOf('</div>', html.indexOf(p[0])));
+    const hrefs = [...body.matchAll(/href="(\/[^"]*)"[^>]*>([^<]+)</g)].map((m) => ({ href: m[1], name: m[2] }));
+    assert.ok(hrefs.length >= 1, `${kind} 面板应至少有一个条目`);
+    for (const h of hrefs) {
+      assert.ok(new RegExp(`^/(${kind})/[^/]+/$`).test(h.href), `${kind} 条目 href 非法：${h.href}`);
+      const r = await call('GET', h.href);
+      assert.equal(r.status, 200, `${kind} 页 ${h.href} 打不开（${r.status}）`);
+    }
   }
-  // 移动端隐藏：CSS 里有 max-width:768px 的 display:none
-  // 静态资源在测试环境不走 HTTP，直接读磁盘（与 .min.js 那条测试一致）
-  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
-  assert.ok(css.includes('joe_index__title-tags'), '布局 CSS 未包含标签样式');
-  const rule = css.match(/@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?\.joe_index__title-tags[\s\S]*?\}/);
-  assert.ok(rule && /display:\s*none/.test(rule[0]), '移动端应隐藏标签入口');
+  assert.ok(html.includes('aria-expanded="false"'), '按钮初始 aria-expanded 应为 false');
 
-  // 标签多时横向滚动，而不是被 overflow:hidden 裁掉
-  const box = css.match(/\.joe_index__title-tags\s*\{([^}]*)\}/)[1];
-  assert.ok(/overflow-x:\s*auto/.test(box), `标签容器应可横向滚动，实际：${box.replace(/\s+/g, ' ').trim()}`);
-  assert.ok(!/overflow(-x)?:\s*hidden/.test(box), '标签容器不应再是 overflow:hidden（会裁掉标签）');
-  const tagA = css.match(/\.joe_index__title-tags a\s*\{([^}]*)\}/)[1];
-  assert.ok(/flex:\s*0 0 auto/.test(tagA), '标签不应被压缩，否则滚动条永远用不上');
+  // 面板内容应与侧栏同名分组一致（同源 listMetas）
+  const sideCount = (label) => {
+    const s0 = html.indexOf(`<span>${label}</span>`);
+    const body = html.slice(s0, html.indexOf('</ul>', s0));
+    return (body.match(/href="\/(category|tag)\//g) || []).length;
+  };
+  const panelCount = (kind) => {
+    const p0 = html.indexOf(`joe_index__title-filter-panel--${kind}" hidden>`);
+    const body = html.slice(p0, html.indexOf('</div>', p0));
+    return (body.match(/href="\/(category|tag)\//g) || []).length;
+  };
+  assert.equal(panelCount('category'), sideCount('分类'), '分类面板条目数应与侧栏一致');
+  assert.equal(panelCount('tag'), sideCount('标签'), '标签面板条目数应与侧栏一致');
+
+  // 交互脚本：切换 + 点外部关闭
+  const js = await readFile('usr/themes/joe/assets/js/joe.index.js', 'utf8');
+  const min = await readFile('usr/themes/joe/assets/js/joe.index.min.js', 'utf8');
+  for (const [label, src] of [['joe.index.js', js], ['joe.index.min.js', min]]) {
+    assert.ok(src.includes('joe_index__title-filter-btn'), `${label} 应绑定按钮`);
+    // esbuild 会把 'click' 改成 "click"，两种引号都认
+    assert.ok(/\$\(document\)\.on\(['"]click['"]/.test(src), `${label} 应有点击外部关闭的逻辑`);
+    assert.ok(src.includes('stopPropagation'), `${label} 按钮点击应阻止冒泡，否则会被「点外部关闭」立刻收起`);
+    assert.ok(/hidden/.test(src), `${label} 应切换 hidden`);
+  }
+
+  // 样式：面板绝对定位 + 默认隐藏 + 移动端不显示
+  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
+  const panel = css.match(/\.joe_index__title-filter-panel\s*\{([^}]*)\}/)[1];
+  assert.ok(/position:\s*absolute/.test(panel), '面板应绝对定位在按钮下方');
+  assert.ok(/\.joe_index__title-filter-panel\[hidden\]\s*\{\s*display:\s*none/.test(css), '面板默认应 display:none');
+  const rule = css.match(/@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?\.joe_index__title-filter[\s\S]*?\}/);
+  assert.ok(rule && /display:\s*none/.test(rule[0]), '移动端应隐藏筛选按钮');
 });
+
 
 await test('评论管理页', async () => {
   const res = await call('GET', '/admin/comments');

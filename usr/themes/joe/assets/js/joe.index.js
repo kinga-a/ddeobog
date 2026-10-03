@@ -196,6 +196,37 @@ document.addEventListener('DOMContentLoaded', () => {
 		});
 	}
 
+	/* 分类 / 标签展开收起：点按钮切换，点别处收起 */
+	{
+		const wrap = $('.joe_index__title-filter');
+		if (wrap.length !== 0) {
+			const btns = wrap.find('.joe_index__title-filter-btn');
+			const closeAll = () => {
+				wrap.find('.joe_index__title-filter-panel').attr('hidden', 'hidden');
+				btns.removeClass('active').attr('aria-expanded', 'false');
+			};
+			btns.on('click', function (event) {
+				// 阻止冒泡，否则文档上的「点别处收起」会立刻把它关掉
+				event.stopPropagation();
+				const panel = wrap.find('.joe_index__title-filter-panel--' + $(this).attr('data-panel'));
+				if (panel.length === 0) return;
+				const willOpen = panel.attr('hidden') !== undefined;
+				closeAll();
+				if (willOpen) {
+					panel.removeAttr('hidden');
+					$(this).addClass('active').attr('aria-expanded', 'true');
+				}
+			});
+			$(document).on('click', function (event) {
+				if (wrap[0].contains(event.target)) return;
+				closeAll();
+			});
+			$(document).on('keydown', function (event) {
+				if (event.key === 'Escape') closeAll();
+			});
+		}
+	}
+
 	/* 激活列表特效 */
 	{
 		const wow = $('.joe_index__list').attr('data-wow');

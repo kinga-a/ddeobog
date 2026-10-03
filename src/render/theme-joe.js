@@ -509,12 +509,32 @@ export async function renderIndex(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page } = ctx;
   const itemsHtml = list.items.map((p) => indexItem(ctx, p)).join('');
-  // PC 端在「最新/热门/…」导航右侧展示标签入口（.joe_index__title-tags 移动端隐藏）
-  const tagMeta = await ctx.db.listMetas('tag');
-  const tagsHtml = tagMeta.length
-    ? `<div class="joe_index__title-tags">${tagMeta
-        .map((t) => `<a href="/tag/${encodeURIComponent(t.slug)}/" title="${escapeHtml(t.name)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.name)}</a>`)
-        .join('')}</div>`
+  // 标题栏右侧的「分类 / 标签」展开按钮：默认收起，点开显示全部，点别处收起
+  const metaLinks = async (type, prefix) =>
+    (await ctx.db.listMetas(type)).map((m) => ({
+      name: m.name,
+      href: `${prefix}/${encodeURIComponent(m.slug)}/`,
+    }));
+  const [catMeta, tagMeta] = await Promise.all([metaLinks('category', '/category'), metaLinks('tag', '/tag')]);
+  const filterBtn = (label, kind, count) =>
+    count
+      ? `<button type="button" class="item joe_index__title-filter-btn" data-panel="${kind}" aria-expanded="false">${label}</button>`
+      : '';
+  const filterPanel = (kind, items) =>
+    items.length
+      ? `<div class="joe_index__title-filter-panel joe_index__title-filter-panel--${kind}" hidden>
+          <ul class="slides">${items
+            .map((m) => `<li><a class="link" href="${m.href}" title="${escapeHtml(m.name)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.name)}</a></li>`)
+            .join('')}</ul>
+        </div>`
+      : '';
+  const filterHtml = catMeta.length || tagMeta.length
+    ? `<div class="joe_index__title-filter">
+        ${filterBtn('分类', 'category', catMeta.length)}
+        ${filterBtn('标签', 'tag', tagMeta.length)}
+        ${filterPanel('category', catMeta)}
+        ${filterPanel('tag', tagMeta)}
+      </div>`
     : '';
   ctx.contentBody = `<div class="joe_container joe_body">
     <div class="joe_main">
@@ -527,7 +547,7 @@ export async function renderIndex(ctx) {
             <li class="item" data-type="agree">点赞最多</li>
             <li class="line"></li>
           </ul>
-          ${tagsHtml}
+          ${filterHtml}
         </div>
         <div class="joe_index__list" data-wow="off">
           <ul class="joe_list">${itemsHtml}</ul>
