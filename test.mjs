@@ -202,6 +202,14 @@ await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点�
   // 搜索高亮样式已从内联 <style> 迁到该文件
   assert.ok(css.includes('.joe_header__above-search .result .item.active'));
 
+  // 侧边悬浮按钮：主题缺 :hover，这里补了；热区放大到 46px
+  assert.ok(/\.joe_action_item\s*\{[^}]*width:\s*46px[^}]*height:\s*46px/.test(css), '按钮未放大到 46px');
+  assert.ok(/\.joe_action_item\.mode:hover/.test(css), '缺少主题切换按钮的 hover 反馈');
+  assert.ok(/\.joe_action_item\.scroll\.active:hover/.test(css), '缺少回顶按钮的 hover 反馈');
+  assert.ok(/\.joe_action_item\.mode:active/.test(css), '缺少按下反馈');
+  // hover 选择器必须带 .scroll.active，否则被主题的 .scroll.active{transform:scale(1)} 压掉
+  assert.ok(!/^\.joe_action_item:hover\b/m.test(css), '裸 .joe_action_item:hover 特异性不够，会被 .scroll.active 覆盖');
+
   for (const [path, marker] of [
     ['/', 'joe_index'],
     ['/archives/1/', 'joe_detail'],
