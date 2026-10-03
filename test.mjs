@@ -788,6 +788,19 @@ await test('封面图：thumb > 正文第一图（Markdown 与 HTML 都认） > 
   assert.ok(t({ cid: 1, fields: {}, text: '' }) === t({ cid: 1, fields: {}, text: '' }), '同一篇默认图应固定');
   const names = await readdir('usr/themes/joe/assets/thumb');
   assert.equal(names.filter((f) => f.endsWith('.jpg')).length, 42, '内置默认图应为 42 张');
+
+  // 回归点：内置默认图原本是相对路径 /usr/...，而页面上其它封面都是绝对地址。
+  // 相对地址的那批在浏览器里 src 和 data-src 会双双变成字符串 "undefined"，图不显示。
+  const html = await (await call('GET', '/')).text();
+  // 只看文章卡片的封面，侧栏头像等其它 lazyload 图不在此列
+  const covers = [...html.matchAll(/class="thumbnail"[^>]*>\s*<img[^>]*data-src="([^"]*)"/g)].map((m) => m[1]);
+  assert.ok(covers.length >= 1, '首页应有封面图');
+  for (const c of covers) {
+    assert.ok(!/^\//.test(c), `封面图不应是相对路径（会显示不出来）：${c}`);
+    assert.ok(/^https?:\/\//.test(c), `封面图应为绝对地址：${c}`);
+  }
+  const defaults = covers.filter((c) => c.includes('/assets/thumb/'));
+  console.log(`    → 首页 ${covers.length} 张封面，其中内置默认图 ${defaults.length} 张，绝对地址 ${covers.length}/${covers.length}`);
 });
 
 await test('评论管理页', async () => {

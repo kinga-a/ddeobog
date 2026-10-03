@@ -45,6 +45,19 @@ export function assetsUrl(opts, path) {
   return `${base}/${path}`;
 }
 
+/**
+ * 列表/封面用的缩略图地址。
+ *
+ * 没有自定义封面时 thumbnail() 会回落到主题内置的 /usr/themes/joe/assets/thumb/N.jpg，
+ * 这是个相对路径。而页面上其它封面全是绝对地址，实测只有相对地址的这批会被懒加载
+ * 脚本搞坏——运行时 src 和 data-src 双双变成字符串 "undefined"，图片直接不显示。
+ * 统一补成绝对地址，既修掉这个问题，也让子目录部署时不会失效。
+ */
+function coverUrl(ctx, content) {
+  const url = thumbnail(content, assetsUrl(ctx.options, 'assets'));
+  return url.startsWith('/') ? `${ctx.siteUrl}${url}` : url;
+}
+
 /** window.Joe 全局配置 + 通用 head */
 function headBlock(ctx, extra = {}) {
   const { options } = ctx;
@@ -307,7 +320,7 @@ async function asideBlock(ctx) {
         ${hotViews.map((p, i) => `<li class="item">
           <a class="link" href="${permalink(p)}" title="${escapeHtml(p.title)}">
             <i class="sort">${i + 1}</i>
-            <img width="100%" height="130" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(thumbnail(p, a('assets')))}" alt="${escapeHtml(p.title)}" />
+            <img width="100%" height="130" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}" />
             <div class="describe"><h6>${escapeHtml(p.title)}</h6><span>${p.views} 阅读 - ${formatDate(p.created, 'm/d')}</span></div>
           </a>
         </li>`).join('')}
@@ -578,7 +591,7 @@ function indexItem(ctx, p) {
   return `<li class="joe_list__item default">
   <div class="line"></div>
   <a href="${permalink(p)}" class="thumbnail" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">
-    <img width="100%" height="100%" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(thumbnail(p, a('assets')))}" alt="${escapeHtml(p.title)}" />
+    <img width="100%" height="100%" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}" />
     <time datetime="${formatDate(p.created, 'Y-m-d')}">${formatDate(p.created, 'Y-m-d')}</time>
   </a>
   <div class="information">
@@ -656,7 +669,7 @@ export async function renderPost(ctx) {
           <div class="joe_detail__related-title">相关推荐</div>
           <div class="joe_detail__related-content">
             ${related.map((r) => `<a class="item" href="${permalink(r)}" title="${escapeHtml(r.title)}">
-              <img width="100%" height="120" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(thumbnail(r, a('assets')))}" alt="${escapeHtml(r.title)}" />
+              <img width="100%" height="120" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, r))}" alt="${escapeHtml(r.title)}" />
               <div class="title">${escapeHtml(r.title)}</div>
             </a>`).join('')}
           </div>
