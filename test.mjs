@@ -135,6 +135,18 @@ await test('Joe API: publish_list', async () => {
   assert.equal(data.code, 1);
   assert.ok(data.data.length >= 1);
   assert.ok(data.data[0].permalink.startsWith('/archives/'));
+
+  // 回归点：首页卡片其实是 joe.index.js 清空后用这份数据重画的，取的是 _.image[0]。
+  // 没封面时 image 为空数组，取出来是 undefined，模板就渲染出 data-src="undefined"，
+  // lazysizes 再把这串写进 src——图片彻底不显示。必须始终有图可取。
+  for (const item of data.data) {
+    assert.ok(Array.isArray(item.image) && item.image.length >= 1, `${item.title} 的 image 为空`);
+    const u = item.image[0];
+    assert.equal(typeof u, 'string');
+    assert.notEqual(u, 'undefined');
+    assert.notEqual(u, '');
+    assert.ok(/^(https?:\/\/|\/)/.test(u), `${item.title} 的 image[0] 不是可用地址：${u}`);
+  }
 });
 
 await test('Joe API: handle_views 计数', async () => {

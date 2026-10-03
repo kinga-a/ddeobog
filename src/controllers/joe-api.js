@@ -1,7 +1,9 @@
 /**
  * Joe 主题开放 API（/joe/api）—— 兼容 Joe 原版 routeType 协议
  */
-export async function handleJoeApi({ db, request, url }) {
+import { thumbnail } from '../render/html.js';
+
+export async function handleJoeApi({ db, request, url, options = {} }) {
   // 注意：不能用 `request.formData().catch(...)`。
   // EdgeOne 边缘运行时的 Request 在没有 Content-Type 时是**同步抛错**
   // （"Content-Type header is empty"），此时 .catch 还没挂上，异常会直接
@@ -39,7 +41,6 @@ export async function handleJoeApi({ db, request, url }) {
             const m = await db.getMeta(mid);
             if (m) cats.push({ name: m.name, permalink: `/category/${encodeURIComponent(m.slug)}/` });
           }
-          const firstImg = (p.text || '').match(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/);
           return {
             cid: p.cid,
             title: p.title,
@@ -51,7 +52,11 @@ export async function handleJoeApi({ db, request, url }) {
             agree: await db.getStat(p.cid, 'agree'),
             category: cats,
             type: p.status === 'sticky' ? 'sticky' : p.type,
-            image: [p.fields?.thumb || (firstImg ? firstImg[1] : '')].filter(Boolean),
+            // 必须始终给得出图，否则客户端渲染会写出字面量 "undefined"：
+            // joe.index.js 的 initDom() 会清空服务端渲染的列表，改用 publish_list
+            // 的数据重画，取的是 _.image[0]——空数组取出来就是 undefined，
+            // data-src 变成 "undefined"，lazysizes 再把这串当地址写进 src，图彻底不显示。
+            image: [thumbnail(p, `${options.themeAssetsBase || '/usr/themes/joe'}/assets`)],
             lazyload: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
             time: fmt(p.created, 'YYYY-MM-DD'),
             mode: 'default',
