@@ -7,6 +7,7 @@
  */
 import assert from 'node:assert';
 import { readFile, readdir } from 'node:fs/promises';
+import { thumbnail } from './src/render/html.js';
 
 // ---- mock KV binding ----
 class MockKV {
@@ -754,6 +755,39 @@ await test('主题：分类/标签等归档页的面包屑单行不换行', asyn
   assert.ok(searchCrumb[0].replace(/<[^>]*>/g, '').startsWith('搜索 '),
     `搜索面包屑应为「搜索 …」，实际 ${searchCrumb[0]}`);
   assert.ok(searchHtml.includes('包含关键字 test 的文章'), '搜索页大标题仍是完整标题');
+});
+
+await test('封面图：thumb > 正文第一图（Markdown 与 HTML 都认） > 默认图', async () => {
+  const A = 'https://ddblog.y11.fun/usr/themes/joe/assets';
+  const isDefault = (u) => u.includes('/assets/thumb/');
+  const t = (post) => thumbnail(post, A);
+
+  assert.equal(t({ cid: 1, fields: { thumb: 'https://x.com/a.png' }, text: '' }), 'https://x.com/a.png', '优先用后台填的封面');
+  assert.equal(t({ cid: 2, fields: {}, text: '前文\n\n![alt](https://y.com/b.png)' }), 'https://y.com/b.png', '认 Markdown 图');
+
+  // 回归点：正文里是粘贴来的 HTML <img> 时也要能取到，不能白白回落到默认图
+  assert.equal(t({ cid: 3, fields: {}, text: '前文\n\n<img src="https://z.com/c.png">' }), 'https://z.com/c.png', '认 HTML img');
+  assert.equal(t({ cid: 3, fields: {}, text: "<img class='x' src='https://z.com/s.png'>" }), 'https://z.com/s.png', '认单引号的 HTML img');
+  assert.equal(t({ cid: 9, fields: {}, text: '<img alt="t" src="https://ok.png" width="10">' }), 'https://ok.png', 'src 不是第一个属性时也要取到');
+
+  // 取文本上更靠前的那张，符合「正文第一图」
+  assert.equal(t({ cid: 7, fields: {}, text: '<img src="https://first.png">\n\n![a](https://second.png)' }), 'https://first.png', 'HTML 在前时取 HTML');
+  assert.equal(t({ cid: 8, fields: {}, text: '![a](https://first.png)\n\n<img src="https://second.png">' }), 'https://first.png', 'Markdown 在前时取 Markdown');
+
+  assert.ok(isDefault(t({ cid: 4, fields: {}, text: '纯文字，没有任何图片' })), '无图时用默认图');
+  assert.ok(isDefault(t({ cid: 5, fields: { thumb: '' }, text: '纯文字' })), '封面留空时用默认图');
+  // data: 占位图（懒加载 1x1 gif）不能当封面
+  assert.ok(isDefault(t({ cid: 6, fields: {}, text: '<img src="data:image/gif;base64,R0lG">' })), 'data: 占位图应跳过');
+
+  // 默认图按 cid 取模，范围必须是 1..42（目录里正好 42 张，否则会 404）
+  for (const cid of [1, 42, 43, 84, 1000]) {
+    const u = t({ cid, fields: {}, text: '' });
+    const n = Number(u.match(/\/(\d+)\.jpg$/)[1]);
+    assert.ok(Number.isInteger(n) && n >= 1 && n <= 42, `cid ${cid} 的默认图编号 ${n} 超出 1..42`);
+  }
+  assert.ok(t({ cid: 1, fields: {}, text: '' }) === t({ cid: 1, fields: {}, text: '' }), '同一篇默认图应固定');
+  const names = await readdir('usr/themes/joe/assets/thumb');
+  assert.equal(names.filter((f) => f.endsWith('.jpg')).length, 42, '内置默认图应为 42 张');
 });
 
 await test('评论管理页', async () => {

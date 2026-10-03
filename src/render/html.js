@@ -47,12 +47,25 @@ export function formatDate(ts, fmt = 'Y-m-d') {
     .replace(/s/g, pad(d.getSeconds()));
 }
 
-/** 内容缩略图：fields.thumb > 正文第一图 > 随机默认图 */
+/**
+ * 内容缩略图：fields.thumb > 正文第一图 > 随机默认图
+ *
+ * 正文取图原来只认 Markdown 的 ![alt](url)。但从网页复制、或用富文本编辑器
+ * 粘贴进来的正文里是 HTML 的 <img src="...">，那种文章即使有图也会一路
+ * 回落到默认图。所以两种语法都认，并取文本上更靠前的那张，符合「正文第一图」。
+ * data: 占位图（比如懒加载的 1x1 gif）不能当封面，遇到就跳过。
+ */
 export function thumbnail(content, themeAssets) {
   const f = content.fields || {};
   if (f.thumb) return f.thumb;
-  const m = (content.text || '').match(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/);
-  if (m) return m[1];
+  const text = content.text || '';
+  const first = [
+    text.match(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/),
+    text.match(/<img[^>]*\ssrc=["']([^"']+)["']/i),
+  ]
+    .filter((m) => m && !/^data:/i.test(m[1]))
+    .sort((a, b) => a.index - b.index)[0];
+  if (first) return first[1];
   const n = (content.cid % 42) + 1;
   return `${themeAssets}/thumb/${n}.jpg`;
 }
