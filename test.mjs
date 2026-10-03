@@ -311,6 +311,11 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
   // 分组下必须有可点的子项，且 current 只落在当前路径上
   const subLinks = [...menu.matchAll(/<li><a class="link( current)?" href="([^"]*)" title="([^"]*)">/g)];
   assert.ok(subLinks.length >= 2, `菜单子项过少：${subLinks.length}`);
+  // href 必须是可用的站内地址：listMetas 不给 permalink，拼错就是 href="undefined"
+  for (const s2 of subLinks) {
+    assert.ok(/^\/(archives\/\d+|category\/[^/]+\/|[^/]+\/|)\S*$/.test(s2[2]) && !/undefined|null|NaN/.test(s2[2]),
+      `子项 href 非法：${s2[2]}`);
+  }
   for (const s2 of subLinks) {
     if (!s2[1]) continue;
     assert.equal(s2[2], '/', `首页之外的 current 项指向了 ${s2[2]}`);

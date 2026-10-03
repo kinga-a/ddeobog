@@ -146,7 +146,11 @@ async function slideoutBlock(ctx) {
 
   const postsIdx = await db.listContents({ type: 'post', pageSize: 1 });
   const commentsIdx = await db.listAllComments({ status: 'approved', pageSize: 1 });
-  const categories = await db.listMetas('category');
+  const categories = (await db.listMetas('category')).map((m) => ({
+    ...m,
+    // listMetas 返回的是 { name, slug, ... }，没有 permalink，得自己拼
+    permalink: `/category/${encodeURIComponent(m.slug)}/`,
+  }));
 
   const icon = (svg, size) =>
     `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${svg}</svg>`;
