@@ -54,9 +54,25 @@
   min-width: 0;
   margin-left: 25px;
   height: 40px;
-  overflow: hidden;
+  /* 标签多时横向滚动，而不是直接裁掉 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--classC) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.joe_index__title-tags::-webkit-scrollbar {
+  height: 4px;
+}
+.joe_index__title-tags::-webkit-scrollbar-thumb {
+  background: var(--classC);
+  border-radius: 2px;
+}
+.joe_index__title-tags::-webkit-scrollbar-track {
+  background: transparent;
 }
 .joe_index__title-tags a {
+  flex: 0 0 auto;
   color: var(--minor);
   font-size: 13px;
   line-height: 20px;

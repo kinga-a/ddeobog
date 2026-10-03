@@ -652,6 +652,13 @@ await test('主题：PC 端索引页标题栏后有标签入口（移动端由 C
   assert.ok(css.includes('joe_index__title-tags'), '布局 CSS 未包含标签样式');
   const rule = css.match(/@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?\.joe_index__title-tags[\s\S]*?\}/);
   assert.ok(rule && /display:\s*none/.test(rule[0]), '移动端应隐藏标签入口');
+
+  // 标签多时横向滚动，而不是被 overflow:hidden 裁掉
+  const box = css.match(/\.joe_index__title-tags\s*\{([^}]*)\}/)[1];
+  assert.ok(/overflow-x:\s*auto/.test(box), `标签容器应可横向滚动，实际：${box.replace(/\s+/g, ' ').trim()}`);
+  assert.ok(!/overflow(-x)?:\s*hidden/.test(box), '标签容器不应再是 overflow:hidden（会裁掉标签）');
+  const tagA = css.match(/\.joe_index__title-tags a\s*\{([^}]*)\}/)[1];
+  assert.ok(/flex:\s*0 0 auto/.test(tagA), '标签不应被压缩，否则滚动条永远用不上');
 });
 
 await test('评论管理页', async () => {
