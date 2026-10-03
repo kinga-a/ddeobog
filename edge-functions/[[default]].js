@@ -638,44 +638,46 @@ console.log('Hello from EdgeOne Edge Functions!');
     <button class="btn primary" type="submit">${isNew?"\u53D1\u5E03":"\u4FDD\u5B58\u4FEE\u6539"}</button>
     <a class="btn" href="/admin/${isPage?"pages":"posts"}">\u8FD4\u56DE\u5217\u8868</a>
   </form>
-  </div>`;return html(adminLayout(ctx,{title:isNew?"\u64B0\u5199":"\u7F16\u8F91",active:isPage?"page":"post",body}))}__name(postEditor,"postEditor");async function savePost(ctx){let{db,user,url}=ctx,form=await ctx.request.formData(),cid=parseInt(form.get("cid")||"0",10),type=form.get("type")==="page"?"page":"post",title=String(form.get("title")||"").trim()||"\u672A\u547D\u540D",text=String(form.get("text")||""),slug=String(form.get("slug")||"").trim();type==="page"&&!slug&&(slug="page-"+Date.now().toString(36));let categories=form.getAll("categories").map(Number).filter(Boolean),tags=[];for(let rawName of String(form.get("tags")||"").split(/[,，]/)){let name=rawName.trim();if(!name)continue;let tag=(await db.listMetas("tag")).find(t=>t.name===name);tag||(tag=await db.createMeta({name,slug:name,type:"tag"})),tags.push(tag.mid)}let fields={...cid?(await db.getContent(cid))?.fields||{}:{}};for(let k of["thumb","abstract","mode"]){let v=String(form.get("field_"+k)||"").trim();v?fields[k]=v:delete fields[k]}let data={title,slug,text,type,status:form.get("status")==="hidden"?"hidden":"publish",password:String(form.get("password")||""),allowComment:form.get("allowComment")==="1",categories,tags,fields,authorId:user.uid};return cid?await db.updateContent(cid,data):await db.createContent(data),Response.redirect(new URL(`/admin/${type==="page"?"pages":"posts"}?msg=saved`,url).href,302)}__name(savePost,"savePost");async function deletePost(ctx){let{db,url}=ctx,form=await ctx.request.formData(),cid=parseInt(form.get("cid")||"0",10),back="/admin/posts";if(cid){let row=await db.getContent(cid);row&&row.type==="attachment"&&(back="/admin/uploads"),await db.deleteContent(cid)}return Response.redirect(new URL(`${back}?msg=ok`,url).href,302)}__name(deletePost,"deletePost");async function metasPage(ctx){let{db}=ctx,cats=await db.listMetas("category"),tags=await db.listMetas("tag"),metaTable=__name((list,type)=>`<table><thead><tr><th>\u540D\u79F0</th><th>\u7F29\u7565\u540D</th><th>\u6587\u7AE0\u6570</th><th>\u64CD\u4F5C</th></tr></thead><tbody>
+  </div>`;return html(adminLayout(ctx,{title:isNew?"\u64B0\u5199":"\u7F16\u8F91",active:isPage?"page":"post",body}))}__name(postEditor,"postEditor");async function savePost(ctx){let{db,user,url}=ctx,form=await ctx.request.formData(),cid=parseInt(form.get("cid")||"0",10),type=form.get("type")==="page"?"page":"post",title=String(form.get("title")||"").trim()||"\u672A\u547D\u540D",text=String(form.get("text")||""),slug=String(form.get("slug")||"").trim();type==="page"&&!slug&&(slug="page-"+Date.now().toString(36));let categories=form.getAll("categories").map(Number).filter(Boolean),tags=[];for(let rawName of String(form.get("tags")||"").split(/[,，]/)){let name=rawName.trim();if(!name)continue;let tag=(await db.listMetas("tag")).find(t=>t.name===name);tag||(tag=await db.createMeta({name,slug:name,type:"tag"})),tags.push(tag.mid)}let fields={...cid?(await db.getContent(cid))?.fields||{}:{}};for(let k of["thumb","abstract","mode"]){let v=String(form.get("field_"+k)||"").trim();v?fields[k]=v:delete fields[k]}let data={title,slug,text,type,status:form.get("status")==="hidden"?"hidden":"publish",password:String(form.get("password")||""),allowComment:form.get("allowComment")==="1",categories,tags,fields,authorId:user.uid};return cid?await db.updateContent(cid,data):await db.createContent(data),Response.redirect(new URL(`/admin/${type==="page"?"pages":"posts"}?msg=saved`,url).href,302)}__name(savePost,"savePost");async function deletePost(ctx){let{db,url}=ctx,form=await ctx.request.formData(),cid=parseInt(form.get("cid")||"0",10),back="/admin/posts";if(cid){let row=await db.getContent(cid);row&&row.type==="attachment"&&(back="/admin/uploads"),await db.deleteContent(cid)}return Response.redirect(new URL(`${back}?msg=ok`,url).href,302)}__name(deletePost,"deletePost");async function metasPage(ctx){let{db}=ctx,cats=await db.listMetas("category"),tags=await db.listMetas("tag"),metaTable=__name((list,type)=>`<table><thead><tr><th>\u540D\u79F0</th><th>\u7F29\u7565\u540D</th><th>\u6587\u7AE0\u6570</th><th class="col-act">\u64CD\u4F5C</th></tr></thead><tbody>
     ${list.map(m=>`<tr>
-      <td>${escapeHtml(m.name)}</td><td><code>${escapeHtml(m.slug)}</code></td><td>${m.count}</td>
+      <td class="cell-strong">${escapeHtml(m.name)}</td><td><code>${escapeHtml(m.slug)}</code></td><td>${m.count}</td>
       <td>
-        <form method="post" action="/admin/meta" style="display:flex;gap:6px">
-          <input type="hidden" name="mid" value="${m.mid}">
-          <input type="hidden" name="type" value="${type}">
-          <input type="text" name="name" value="${escapeHtml(m.name)}" style="max-width:140px;padding:5px 8px">
-          <button class="btn sm" type="submit">\u6539\u540D</button>
-        </form>
-        <form method="post" action="/admin/meta-delete" style="display:inline;margin-top:4px" onsubmit="return confirm('\u786E\u5B9A\u5220\u9664\uFF1F\u6587\u7AE0\u5C06\u89E3\u9664\u5173\u8054')">
-          <input type="hidden" name="mid" value="${m.mid}">
-          <button class="btn sm danger" type="submit">\u5220\u9664</button>
-        </form>
+        <div class="meta-ops">
+          <form method="post" action="/admin/meta">
+            <input type="hidden" name="mid" value="${m.mid}">
+            <input type="hidden" name="type" value="${type}">
+            <input class="meta-input" type="text" name="name" value="${escapeHtml(m.name)}" aria-label="\u6539\u540D">
+            <button class="btn sm" type="submit">\u6539\u540D</button>
+          </form>
+          <form method="post" action="/admin/meta-delete" onsubmit="return confirm('\u786E\u5B9A\u5220\u9664\uFF1F\u6587\u7AE0\u5C06\u89E3\u9664\u5173\u8054')">
+            <input type="hidden" name="mid" value="${m.mid}">
+            <button class="btn sm danger" type="submit">\u5220\u9664</button>
+          </form>
+        </div>
       </td>
-    </tr>`).join("")||'<tr><td colspan="4">\u6682\u65E0</td></tr>'}
+    </tr>`).join("")||'<tr><td colspan="4" class="empty-cell">\u6682\u65E0</td></tr>'}
   </tbody></table>`,"metaTable"),body=`${MSG(ctx)}
   <h2>\u5206\u7C7B / \u6807\u7B7E</h2>
-  <div class="row">
-    <div class="card" style="flex:1;min-width:340px">
-      <h2 style="font-size:16px;margin-bottom:14px">\u65B0\u5EFA</h2>
-      <form method="post" action="/admin/meta">
-        <div class="row">
+  <div class="metas">
+    <section class="card">
+      <div class="metas__head"><h2>\u65B0\u5EFA</h2></div>
+      <div class="metas__body">
+        <form class="meta-create" method="post" action="/admin/meta">
           <div class="item"><label>\u7C7B\u578B</label><select name="type"><option value="category">\u5206\u7C7B</option><option value="tag">\u6807\u7B7E</option></select></div>
           <div class="item"><label>\u540D\u79F0</label><input type="text" name="name" required></div>
           <div class="item"><label>\u7F29\u7565\u540D\uFF08\u53EF\u9009\uFF09</label><input type="text" name="slug"></div>
-        </div>
-        <button class="btn primary" type="submit">\u521B\u5EFA</button>
-      </form>
-    </div>
-    <div class="card" style="flex:1;min-width:340px">
-      <h2 style="font-size:16px;margin-bottom:14px">\u5206\u7C7B\uFF08${cats.length}\uFF09</h2>
-      ${metaTable(cats,"category")}
-    </div>
-    <div class="card" style="flex:1;min-width:340px">
-      <h2 style="font-size:16px;margin-bottom:14px">\u6807\u7B7E\uFF08${tags.length}\uFF09</h2>
-      ${metaTable(tags,"tag")}
-    </div>
+          <button class="btn primary" type="submit">\u521B\u5EFA</button>
+        </form>
+      </div>
+    </section>
+    <section class="card">
+      <div class="metas__head"><h2>\u5206\u7C7B</h2><span class="metas__count">${cats.length}</span></div>
+      <div class="metas__scroll">${metaTable(cats,"category")}</div>
+    </section>
+    <section class="card">
+      <div class="metas__head"><h2>\u6807\u7B7E</h2><span class="metas__count">${tags.length}</span></div>
+      <div class="metas__scroll">${metaTable(tags,"tag")}</div>
+    </section>
   </div>`;return html(adminLayout(ctx,{title:"\u5206\u7C7B\u6807\u7B7E",active:"metas",body}))}__name(metasPage,"metasPage");async function saveMeta(ctx){let{db,url}=ctx,form=await ctx.request.formData(),mid=parseInt(form.get("mid")||"0",10),name=String(form.get("name")||"").trim(),type=form.get("type")==="tag"?"tag":"category";if(!name)return Response.redirect(new URL("/admin/metas?msg=err",url).href,302);if(mid)await db.updateMeta(mid,{name});else{let slug=String(form.get("slug")||"").trim()||name;await db.createMeta({name,slug,type})}return Response.redirect(new URL("/admin/metas?msg=saved",url).href,302)}__name(saveMeta,"saveMeta");async function deleteMeta(ctx){let{db,url}=ctx,form=await ctx.request.formData(),mid=parseInt(form.get("mid")||"0",10);return mid&&await db.deleteMeta(mid),Response.redirect(new URL("/admin/metas?msg=ok",url).href,302)}__name(deleteMeta,"deleteMeta");async function commentsPage(ctx){let{db,url}=ctx,status=url.searchParams.get("status")||"",page=parseInt(url.searchParams.get("page")||"1",10),list=await db.listAllComments({status:status||void 0,page,pageSize:30}),tabs=`<p style="margin-bottom:14px;font-size:14px">
     <a href="/admin/comments" ${status?"":'style="font-weight:700"'}>\u5168\u90E8</a> \xB7
     <a href="/admin/comments?status=approved" ${status==="approved"?'style="font-weight:700"':""}>\u5DF2\u901A\u8FC7</a> \xB7

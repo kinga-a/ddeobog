@@ -628,3 +628,69 @@ body.auth {
   .burger { display: grid; }
   .main { padding-top: 64px; }
 }
+
+/* ============================================================
+   分类 / 标签页
+   三块通栏卡片纵向排列，样式统一；操作按钮与内容同行。
+   ============================================================ */
+.metas { display: flex; flex-direction: column; gap: 18px; }
+.metas .card { padding: 0; overflow: hidden; }
+
+.metas__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 20px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.metas__head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+
+.metas__count {
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 620;
+  line-height: 1.5;
+}
+
+.metas__body { padding: 18px 20px; }
+.metas__scroll { overflow-x: auto; }
+
+.metas th:first-child, .metas td:first-child { padding-left: 20px; }
+.metas th:last-child,  .metas td:last-child  { padding-right: 20px; }
+
+/* 新建：字段与「创建」按钮同一排 */
+.meta-create { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.meta-create .item { flex: 1 1 180px; min-width: 0; margin-bottom: 0; }
+.meta-create .btn { flex: none; }
+
+/* 操作列：改名与删除保持同一排 */
+.meta-ops { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; }
+.meta-ops form { display: flex; gap: 6px; align-items: center; margin: 0; }
+/* 注意：需用 input.meta-input（0,1,1）压过全局 input[type="text"]（0,1,1），
+   后者在文件更早处，靠源码顺序取胜，否则 width/padding/font 会被全局规则覆盖。 */
+input.meta-input {
+  width: 160px;
+  max-width: none;
+  flex: none;
+  padding: 5px 9px;
+  font-size: 12.5px;
+}
+
+.cell-strong { color: var(--ink); font-weight: 600; }
+.metas .col-act { width: 1%; white-space: nowrap; text-align: right; }
+.metas .empty-cell {
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--ink-4);
+}
+
+@media (max-width: 760px) {
+  .meta-create .item { flex: 1 1 100%; }
+  .meta-create .btn { width: 100%; }
+  .meta-ops { flex-wrap: wrap; }
+  .metas__head, .metas__body { padding-left: 16px; padding-right: 16px; }
+}

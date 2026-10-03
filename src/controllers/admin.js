@@ -512,46 +512,48 @@ async function metasPage(ctx) {
   const { db } = ctx;
   const cats = await db.listMetas('category');
   const tags = await db.listMetas('tag');
-  const metaTable = (list, type) => `<table><thead><tr><th>名称</th><th>缩略名</th><th>文章数</th><th>操作</th></tr></thead><tbody>
+  const metaTable = (list, type) => `<table><thead><tr><th>名称</th><th>缩略名</th><th>文章数</th><th class="col-act">操作</th></tr></thead><tbody>
     ${list.map((m) => `<tr>
-      <td>${esc(m.name)}</td><td><code>${esc(m.slug)}</code></td><td>${m.count}</td>
+      <td class="cell-strong">${esc(m.name)}</td><td><code>${esc(m.slug)}</code></td><td>${m.count}</td>
       <td>
-        <form method="post" action="/admin/meta" style="display:flex;gap:6px">
-          <input type="hidden" name="mid" value="${m.mid}">
-          <input type="hidden" name="type" value="${type}">
-          <input type="text" name="name" value="${esc(m.name)}" style="max-width:140px;padding:5px 8px">
-          <button class="btn sm" type="submit">改名</button>
-        </form>
-        <form method="post" action="/admin/meta-delete" style="display:inline;margin-top:4px" onsubmit="return confirm('确定删除？文章将解除关联')">
-          <input type="hidden" name="mid" value="${m.mid}">
-          <button class="btn sm danger" type="submit">删除</button>
-        </form>
+        <div class="meta-ops">
+          <form method="post" action="/admin/meta">
+            <input type="hidden" name="mid" value="${m.mid}">
+            <input type="hidden" name="type" value="${type}">
+            <input class="meta-input" type="text" name="name" value="${esc(m.name)}" aria-label="改名">
+            <button class="btn sm" type="submit">改名</button>
+          </form>
+          <form method="post" action="/admin/meta-delete" onsubmit="return confirm('确定删除？文章将解除关联')">
+            <input type="hidden" name="mid" value="${m.mid}">
+            <button class="btn sm danger" type="submit">删除</button>
+          </form>
+        </div>
       </td>
-    </tr>`).join('') || `<tr><td colspan="4">暂无</td></tr>`}
+    </tr>`).join('') || `<tr><td colspan="4" class="empty-cell">暂无</td></tr>`}
   </tbody></table>`;
 
   const body = `${MSG(ctx)}
   <h2>分类 / 标签</h2>
-  <div class="row">
-    <div class="card" style="flex:1;min-width:340px">
-      <h2 style="font-size:16px;margin-bottom:14px">新建</h2>
-      <form method="post" action="/admin/meta">
-        <div class="row">
+  <div class="metas">
+    <section class="card">
+      <div class="metas__head"><h2>新建</h2></div>
+      <div class="metas__body">
+        <form class="meta-create" method="post" action="/admin/meta">
           <div class="item"><label>类型</label><select name="type"><option value="category">分类</option><option value="tag">标签</option></select></div>
           <div class="item"><label>名称</label><input type="text" name="name" required></div>
           <div class="item"><label>缩略名（可选）</label><input type="text" name="slug"></div>
-        </div>
-        <button class="btn primary" type="submit">创建</button>
-      </form>
-    </div>
-    <div class="card" style="flex:1;min-width:340px">
-      <h2 style="font-size:16px;margin-bottom:14px">分类（${cats.length}）</h2>
-      ${metaTable(cats, 'category')}
-    </div>
-    <div class="card" style="flex:1;min-width:340px">
-      <h2 style="font-size:16px;margin-bottom:14px">标签（${tags.length}）</h2>
-      ${metaTable(tags, 'tag')}
-    </div>
+          <button class="btn primary" type="submit">创建</button>
+        </form>
+      </div>
+    </section>
+    <section class="card">
+      <div class="metas__head"><h2>分类</h2><span class="metas__count">${cats.length}</span></div>
+      <div class="metas__scroll">${metaTable(cats, 'category')}</div>
+    </section>
+    <section class="card">
+      <div class="metas__head"><h2>标签</h2><span class="metas__count">${tags.length}</span></div>
+      <div class="metas__scroll">${metaTable(tags, 'tag')}</div>
+    </section>
   </div>`;
   return html(adminLayout(ctx, { title: '分类标签', active: 'metas', body }));
 }
