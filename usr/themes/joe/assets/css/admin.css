@@ -4,70 +4,74 @@
    类名与 src/controllers/admin.js 保持一致。
    ============================================================ */
 
+/* ---- 中性灰阶：白 + 灰，无彩色强调 ---- */
 :root {
-  /* 纸墨 */
-  --paper:      #faf7f2;
+  --paper:      #f6f6f7;
   --surface:    #ffffff;
-  --surface-2:  #fbf9f5;
-  --surface-3:  #f4efe6;
-  --line:       #e7e0d4;
-  --line-soft:  #f0eae0;
+  --surface-2:  #fafafa;
+  --surface-3:  #f0f0f1;
+  --line:       #e4e4e7;
+  --line-soft:  #ededf0;
 
-  --ink:        #17130f;
-  --ink-2:      #4d453c;
-  --ink-3:      #877c6f;
-  --ink-4:      #b0a698;
+  --ink:        #18181b;
+  --ink-2:      #3f3f46;
+  --ink-3:      #71717a;
+  --ink-4:      #a1a1aa;
 
-  /* 朱砂 */
-  --accent:      #c0442a;
-  --accent-ink:  #a5361f;
-  --accent-soft: #fbeae5;
-  --accent-line: #f1cec3;
+  /* 主色＝近黑，替代朱砂 */
+  --accent:      #18181b;
+  --accent-ink:  #3f3f46;
+  --accent-soft: #f0f0f1;
+  --accent-line: #d4d4d8;
+  --on-accent:   #ffffff;
+  --accent-hover: #3f3f46;
 
-  --ok:        #2f7d5d;
-  --ok-soft:   #e6f4ec;
-  --warn:      #8a6210;
-  --warn-soft: #faf0da;
-  --danger:    #b3352c;
-  --danger-soft:#fbe9e7;
+  /* 语义色仅用于状态可辨，保持低饱和 */
+  --ok:          #3f7d63;
+  --ok-soft:     #eef6f2;
+  --warn:        #8a6d2a;
+  --warn-soft:   #faf6ea;
+  --danger:      #b3423a;
+  --danger-soft: #fbeceb;
 
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
 
-  --sh-1: 0 1px 2px rgba(40,28,16,.04), 0 1px 3px rgba(40,28,16,.05);
-  --sh-2: 0 2px 4px rgba(40,28,16,.04), 0 10px 24px -10px rgba(40,28,16,.16);
-  --sh-3: 0 20px 48px -18px rgba(40,28,16,.28);
+  --sh-1: 0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.05);
+  --sh-2: 0 2px 4px rgba(0,0,0,.04), 0 10px 24px -10px rgba(0,0,0,.14);
+  --sh-3: 0 20px 48px -18px rgba(0,0,0,.22);
 
   --ease: cubic-bezier(.22,.68,.32,1);
   --t: 180ms;
 
   --side-w: 232px;
-  --topbar-h: 0px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper:      #131110;
-    --surface:    #1c1917;
-    --surface-2:  #232020;
-    --surface-3:  #2b2724;
-    --line:       #35302c;
-    --line-soft:  #2a2522;
+    --paper:      #0f0f11;
+    --surface:    #18181b;
+    --surface-2:  #1c1c1f;
+    --surface-3:  #26262a;
+    --line:       #2e2e33;
+    --line-soft:  #26262a;
 
-    --ink:   #f4efe7;
-    --ink-2: #c8beb1;
-    --ink-3: #948a7e;
-    --ink-4: #6d655c;
+    --ink:   #fafafa;
+    --ink-2: #d4d4d8;
+    --ink-3: #a1a1aa;
+    --ink-4: #6b6b74;
 
-    --accent:      #e0705a;
-    --accent-ink:  #f0917c;
-    --accent-soft: #33211c;
-    --accent-line: #4a2f27;
+    --accent:      #fafafa;
+    --accent-ink:  #d4d4d8;
+    --accent-soft: #27272a;
+    --accent-line: #3f3f46;
+    --on-accent:   #18181b;
+    --accent-hover: #d4d4d8;
 
-    --ok:   #62b98f;   --ok-soft:    #16281f;
-    --warn: #d0a44a;   --warn-soft:  #2b2416;
-    --danger: #e2746a; --danger-soft:#2e1a18;
+    --ok:   #5aa87f;   --ok-soft:     #12241c;
+    --warn: #c2a05a;   --warn-soft:   #262015;
+    --danger: #dd7a72; --danger-soft: #2a1615;
 
     --sh-1: 0 1px 2px rgba(0,0,0,.30);
     --sh-2: 0 2px 4px rgba(0,0,0,.26), 0 10px 24px -10px rgba(0,0,0,.50);
@@ -179,9 +183,21 @@ code {
 .side a:hover { background: var(--surface-3); color: var(--ink); }
 
 .side a.active {
+  position: relative;
   background: var(--accent-soft);
-  color: var(--accent-ink);
+  color: var(--ink);
   font-weight: 620;
+}
+.side a.active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  transform: translateY(-50%);
 }
 
 .side a i {
@@ -260,10 +276,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
-  box-shadow: 0 1px 2px rgba(40,28,16,.10), 0 6px 16px -8px rgba(192,68,42,.55);
+  color: var(--on-accent);
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 16px -8px rgba(0,0,0,.22);
 }
-.btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: #fff; }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
 
 .btn.danger { color: var(--danger); border-color: var(--line); background: var(--surface); }
 .btn.danger:hover { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
@@ -313,7 +329,7 @@ textarea { min-height: 120px; resize: vertical; }
 select {
   appearance: none;
   padding-right: 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23877c6f' stroke-width='1.6' stroke-linecap='round' d='M3 4.6 6 7.8 9 4.6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23a1a1aa' stroke-width='1.6' stroke-linecap='round' d='M3 4.6 6 7.8 9 4.6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   background-size: 12px;
@@ -446,16 +462,16 @@ body.auth {
   border: 1px solid var(--accent);
   border-radius: var(--r-md);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-family: inherit;
   font-size: 14px;
   font-weight: 620;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(40,28,16,.10), 0 8px 18px -8px rgba(192,68,42,.6);
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 18px -8px rgba(0,0,0,.24);
   transition: background var(--t) var(--ease), transform var(--t) var(--ease),
               box-shadow var(--t) var(--ease);
 }
-.auth button:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+.auth button:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
 .auth button:active { transform: translateY(1px); box-shadow: none; }
 
 .auth .err {
@@ -507,6 +523,7 @@ body.auth {
     gap: 0;
   }
   .side a i { width: auto; margin: 0; font-size: 15px; }
+  .side a.active::before { left: -8px; }
 
   .main { padding: 24px 24px 56px; }
 }
@@ -598,7 +615,7 @@ body.auth {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(24,18,12,.42);
+  background: rgba(0,0,0,.42);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
   opacity: 0;
