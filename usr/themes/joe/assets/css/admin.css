@@ -689,8 +689,23 @@ input.meta-input {
 }
 
 @media (max-width: 760px) {
-  .meta-create .item { flex: 1 1 100%; }
-  .meta-create .btn { width: 100%; }
-  .meta-ops { flex-wrap: wrap; }
+  /* 手机端同样保持按钮与内容同行，不做换行；
+     宽度不够时由 .metas__scroll 横向滚动承接。 */
+
+  /* 必须抵消全局的 ".card table{display:block}"：
+     那条把表格降级为块级，列宽塌陷后操作列必然换行。
+     分类/标签页改由 .metas__scroll 负责横向滚动。 */
+  .metas .card table { display: table; white-space: normal; overflow-x: visible; }
+
+  /* 缩窄改名输入框并收紧单元格内边距，尽量减少横向滚动量 */
+  input.meta-input { width: 100px; }
+  .metas th, .metas td { padding-left: 10px; padding-right: 10px; }
+
+  /* 新建表单：两项一行，创建按钮跟在末项右侧同一排 */
+  .meta-create .item { flex: 1 1 140px; min-width: 0; }
+  .meta-create .btn { flex: none; width: auto; }
+
   .metas__head, .metas__body { padding-left: 16px; padding-right: 16px; }
+  .metas th:first-child, .metas td:first-child { padding-left: 16px; }
+  .metas th:last-child,  .metas td:last-child  { padding-right: 16px; }
 }
