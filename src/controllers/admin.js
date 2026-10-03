@@ -525,8 +525,14 @@ async function deletePost(ctx) {
   const { db, url } = ctx;
   const form = await ctx.request.formData();
   const cid = parseInt(form.get('cid') || '0', 10);
-  if (cid) await db.deleteContent(cid);
-  return Response.redirect(new URL('/admin/posts?msg=ok', url).href, 302);
+  // 附件和文章共用这个入口，删完要回各自的列表
+  let back = '/admin/posts';
+  if (cid) {
+    const row = await db.getContent(cid);
+    if (row && row.type === 'attachment') back = '/admin/uploads';
+    await db.deleteContent(cid);
+  }
+  return Response.redirect(new URL(`${back}?msg=ok`, url).href, 302);
 }
 
 /* ==================== 分类/标签 ==================== */

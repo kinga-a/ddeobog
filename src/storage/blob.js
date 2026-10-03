@@ -46,6 +46,26 @@ async function getBlobStore() {
   }
 }
 
+/**
+ * content-type 兜底表。
+ *
+ * Blob 模式下二进制要靠 store.get(key, {type:'arrayBuffer'}) 读，那条路拿不到
+ * 响应头，所以正常靠 KV 里那条 file:meta: 记录；老附件（meta 缺失）或
+ * KV 兜底通道才按扩展名猜。
+ */
+const MIME_BY_EXT = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+  webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon',
+  svg: 'image/svg+xml', pdf: 'application/pdf', zip: 'application/zip',
+  txt: 'text/plain; charset=utf-8', md: 'text/markdown; charset=utf-8',
+  json: 'application/json', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg',
+};
+
+const guessMime = (key) => {
+  const m = /\.([a-z0-9]+)$/i.exec(String(key || ''));
+  return (m && MIME_BY_EXT[m[1].toLowerCase()]) || 'application/octet-stream';
+};
+
 export class BlobStorage {
   constructor(kv) {
     this.kv = kv; // KV 降级通道
@@ -67,6 +87,11 @@ export class BlobStorage {
   async set(key, data, contentType) {
     if (this.mode === 'blob') {
       await this.store.set(key, data);
+      // 二进制读取拿不到响应头，content-type 得另存一份
+      await this.kv.putJSON(`file:meta:${key}`, {
+        contentType: contentType || guessMime(key),
+        size: data && data.byteLength ? data.byteLength : 0,
+      });
       return { key, mode: 'blob' };
     }
     // KV 降级：存 base64
@@ -94,12 +119,15 @@ export class BlobStorage {
   async get(key) {
     if (this.mode === 'blob') {
       try {
-        const result = await this.store.getWithHeaders(key);
-        if (!result) return null;
-        const buf = await new Response(result.body).arrayBuffer();
+        // 注意：不能用 store.getWithHeaders()——它内部是
+        // `new TextDecoder("utf-8").decode(s.body)`，把二进制字节毁成字符串，
+        // 图片读出来就是一坨乱码。取 body 必须用 arrayBuffer（原始字节）。
+        const buf = await this.store.get(key, { type: 'arrayBuffer' });
+        if (!buf) return null;
+        const meta = await this.kv.getJSON(`file:meta:${key}`);
         return {
           body: buf,
-          contentType: result.headers['content-type'] || 'application/octet-stream',
+          contentType: (meta && meta.contentType) || guessMime(key),
         };
       } catch (e) {
         return null;
@@ -119,5 +147,6 @@ export class BlobStorage {
     } else {
       await this.kv.delete(`file:data:${key}`);
     }
+    await this.kv.delete(`file:meta:${key}`);
   }
 }

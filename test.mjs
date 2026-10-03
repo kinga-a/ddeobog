@@ -8,6 +8,40 @@
 import assert from 'node:assert';
 import { readFile, readdir } from 'node:fs/promises';
 import { thumbnail } from './src/render/html.js';
+import { KV } from './src/storage/kv.js';
+import { BlobStorage } from './src/storage/blob.js';
+import { Database } from './src/db.js';
+
+/**
+ * 假 Blob store，**刻意复刻真实 SDK 的两个行为**：
+ * 1. get(key,{type:'arrayBuffer'}) 返回原始字节；
+ * 2. getWithHeaders() 的 body 是 new TextDecoder('utf-8').decode(bytes)，
+ *    二进制会被毁成字符串（这正是线上预览打不开的根因）。
+ * 有了它，谁把读取改回 getWithHeaders 测试就会红。
+ */
+function makeFakeBlobStore() {
+  const map = new Map();
+  const calls = { del: [] };
+  const toBytes = (v) => (v instanceof Uint8Array ? v : new Uint8Array(v));
+  return {
+    map,
+    calls,
+    async set(k, v) { map.set(k, toBytes(v).slice()); },
+    async get(k, o = {}) {
+      const raw = map.get(k);
+      if (!raw) return null;
+      const b = toBytes(raw);
+      if (o.type === 'arrayBuffer') return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+      return new TextDecoder('utf-8').decode(b);
+    },
+    async getWithHeaders(k) {
+      const raw = map.get(k);
+      if (!raw) return null;
+      return { body: new TextDecoder('utf-8').decode(toBytes(raw)), headers: { 'content-type': 'image/png' } };
+    },
+    async delete(k) { calls.del.push(k); map.delete(k); },
+  };
+}
 
 // ---- mock KV binding ----
 class MockKV {
@@ -949,6 +983,52 @@ await test('附件上传到 Blob（KV 降级模式）', async () => {
   // 附件访问
   const key = [...globalThis.BLOG_KV.map.keys()].find((k) => k.startsWith('file:data:'));
   assert.ok(key, '附件应存储（Blob 降级 KV）');
+});
+
+await test('附件：Blob 模式二进制往返不被 UTF-8 破坏', async () => {
+  const kv = new KV(new MockKV());
+  const store = makeFakeBlobStore();
+  const blob = new BlobStorage(kv);
+  blob.mode = 'blob';
+  blob.store = store;
+
+  // 真 PNG/JPEG 头，含 0x89、0xff 0xd8 这类非法 UTF-8 字节序列
+  const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x80, 0xfe, 0xbf, 0xc0]);
+  await blob.set('shot.png', bytes.buffer, 'image/png');
+
+  const got = await blob.get('shot.png');
+  assert.ok(got, '应能读回附件');
+  const back = new Uint8Array(got.body);
+  assert.equal(back.length, bytes.length, `字节长度应一致（实际 ${back.length} != ${bytes.length}）`);
+  assert.deepEqual([...back], [...bytes], '字节内容应逐字节一致，未被 UTF-8 解码破坏');
+  assert.equal(got.contentType, 'image/png', 'content-type 应来自上传时写入的 meta');
+
+  // meta 缺失（老附件）时按扩展名兜底
+  await store.set('old.gif', new Uint8Array([0x47, 0x49, 0x46, 0xff, 0xfe]));
+  const old = await blob.get('old.gif');
+  assert.equal(old.contentType, 'image/gif', '缺 meta 时应按扩展名推断 content-type');
+});
+
+await test('附件：删除会连带清掉 Blob 对象与 meta', async () => {
+  const kv = new KV(new MockKV());
+  const store = makeFakeBlobStore();
+  const blob = new BlobStorage(kv);
+  blob.mode = 'blob';
+  blob.store = store;
+  const db = new Database(kv, blob);
+
+  const row = await db.createContent({
+    title: 'pic.png', slug: 'pic-file.png', type: 'attachment', text: '', authorId: 1,
+    fields: { contentType: 'image/png', size: 3 },
+  });
+  await blob.set('pic-file.png', new Uint8Array([0x89, 0x50, 0x4e]).buffer, 'image/png');
+  assert.ok(store.map.has('pic-file.png'), '前置：Blob 对象应已写入');
+
+  await db.deleteContent(row.cid);
+  assert.ok(store.calls.del.includes('pic-file.png'), '应调用 store.delete 清 Blob 对象');
+  assert.ok(!store.map.has('pic-file.png'), 'Blob 对象应已删除');
+  assert.equal(await db.getContent(row.cid), null, 'KV 记录应已删除');
+  assert.equal(await kv.getJSON('file:meta:pic-file.png'), null, 'meta 记录应已清理');
 });
 
 await test('登出后后台不可访问', async () => {

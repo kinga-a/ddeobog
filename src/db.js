@@ -204,6 +204,16 @@ export class Database {
   async deleteContent(cid) {
     const row = await this.getContent(cid);
     if (!row) return false;
+    // 附件的字节不在 KV 里，KV 行删掉后 slug 就再也找不回来了，
+    // 必须先清 Blob 对象再删记录，否则 Blob 空间永久残留（KV 降级通道的
+    // file:data: 同理）。这里失败只告警不阻断——记录才是列表的真相。
+    if (row.type === 'attachment' && row.slug) {
+      try {
+        await this.blob.delete(row.slug);
+      } catch (e) {
+        console.error('[db] 删除附件 Blob 失败:', row.slug, e && e.message);
+      }
+    }
     await this.kv.delete(`post:${cid}`);
     const idx = await this.#loadPostIndex();
     const i = idx.findIndex((e) => e.cid === cid);
