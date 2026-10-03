@@ -99,6 +99,7 @@ async function routeInner(ctx) {
       slug: decodeURIComponent(match[1]),
       page: parseInt(match[2] || '1', 10),
       titleFor: (m) => `分类 ${m.name} 下的文章`,
+      labelFor: (m) => m.name,
       baseUrlFor: (m) => `/category/${encodeURIComponent(m.slug)}/`,
     });
   }
@@ -110,6 +111,7 @@ async function routeInner(ctx) {
       slug: decodeURIComponent(match[1]),
       page: parseInt(match[2] || '1', 10),
       titleFor: (m) => `标签 ${m.name} 下的文章`,
+      labelFor: (m) => m.name,
       baseUrlFor: (m) => `/tag/${encodeURIComponent(m.slug)}/`,
     });
   }
@@ -124,6 +126,7 @@ async function routeInner(ctx) {
       authorId: uid,
       page: parseInt(match[2] || '1', 10),
       titleFor: () => `${user.screenName} 发布的文章`,
+      labelFor: () => user.screenName,
       baseUrlFor: () => `/author/${uid}/`,
     });
   }
@@ -136,6 +139,7 @@ async function routeInner(ctx) {
       keywords: kw,
       page: parseInt(match[2] || '1', 10),
       titleFor: () => `包含关键字 ${kw} 的文章`,
+      labelFor: () => `搜索 ${kw}`,
       baseUrlFor: () => `/search/${encodeURIComponent(kw)}/`,
     });
   }
@@ -198,7 +202,7 @@ function theme404Layout(ctx, title) {
   </head><body><div id="Joe">${ctx.contentBody}</div></body></html>`;
 }
 
-async function renderArchive(ctx, { type, slug, page, titleFor, baseUrlFor, authorId, keywords }) {
+async function renderArchive(ctx, { type, slug, page, titleFor, labelFor, baseUrlFor, authorId, keywords }) {
   const { db } = ctx;
   let meta = null;
   if (slug) {
@@ -214,6 +218,9 @@ async function renderArchive(ctx, { type, slug, page, titleFor, baseUrlFor, auth
     list,
     page,
     archiveTitle: titleFor(meta),
+    // 面包屑用短名：「默认分类」而不是「分类 默认分类 下的文章」——
+    // 完整标题就在下方的 .joe_archive__title 里，重复一遍又长又啰嗦
+    archiveLabel: labelFor ? labelFor(meta) : titleFor(meta),
     archiveBaseUrl: baseUrlFor(meta),
   });
   return html(await theme.renderArchive(ctx));

@@ -731,9 +731,29 @@ await test('主题：分类/标签等归档页的面包屑单行不换行', asyn
   // 样式在归档页确实被加载
   assert.ok(html.includes('href="/usr/themes/joe/assets/css/joe.layout.css"'), '归档页应加载 layout.css');
 
+  // 面包屑用短名，完整标题留给 title 属性和下方的 .joe_archive__title
+  const crumb = (h) => (h.match(/<li class="item" title="([^"]*)">([^<]*)<\/li>/g) || []);
+  const catCrumb = crumb(html);
+  assert.equal(catCrumb.length, 1, '分类页面包屑应有且仅有一个非链接条目');
+  assert.ok(catCrumb[0].includes('>默认分类<'), `分类面包屑应为短名「默认分类」，实际 ${catCrumb[0]}`);
+  assert.ok(catCrumb[0].includes('title="分类 默认分类 下的文章"'), '面包屑 title 应保留完整标题');
+  assert.ok(html.includes('<div class="joe_archive__title">分类 默认分类 下的文章</div>'),
+    '页面大标题仍应是完整标题');
+  assert.ok(html.includes('<title>分类 默认分类 下的文章 - '), 'SEO title 仍应是完整标题');
+
   // 标签页同样
   const tagHtml = await (await call('GET', '/tag/%E6%B5%8B%E8%AF%95/')).text();
   assert.ok(/<ul class="joe_bread__bread">/.test(tagHtml), '标签页应有面包屑');
+  const tagCrumb = crumb(tagHtml);
+  assert.ok(tagCrumb[0].includes('>测试<'), `标签面包屑应为短名「测试」，实际 ${tagCrumb[0]}`);
+
+  // 作者 / 搜索归档页的短名
+  const searchHtml = await (await call('GET', '/search/test/')).text();
+  const searchCrumb = crumb(searchHtml);
+  assert.ok(searchCrumb.length === 1, '搜索页面包屑应有一个条目');
+  assert.ok(searchCrumb[0].replace(/<[^>]*>/g, '').startsWith('搜索 '),
+    `搜索面包屑应为「搜索 …」，实际 ${searchCrumb[0]}`);
+  assert.ok(searchHtml.includes('包含关键字 test 的文章'), '搜索页大标题仍是完整标题');
 });
 
 await test('评论管理页', async () => {

@@ -799,12 +799,13 @@ function parseAgentBrowser(agent) {
 export async function renderArchive(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page, archiveTitle } = ctx;
+  const archiveLabel = ctx.archiveLabel || archiveTitle;
   const itemsHtml = list.items.map((p) => indexItem(ctx, p)).join('');
   ctx.contentBody = `<div class="joe_container joe_bread">
     <ul class="joe_bread__bread">
       <li class="item"><a href="/" class="link" title="首页">首页</a></li>
       <li class="line">/</li>
-      <li class="item">${escapeHtml(archiveTitle)}</li>
+      <li class="item" title="${escapeHtml(archiveTitle)}">${escapeHtml(archiveLabel)}</li>
     </ul>
   </div>
   <div class="joe_container joe_body">
