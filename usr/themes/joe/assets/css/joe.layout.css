@@ -54,27 +54,42 @@
   margin-left: auto;
   height: 40px;
 }
+/* 胶囊按钮：与旁边的纯文字 tab 拉开视觉层次，但仍用主题色板 */
 .joe_index__title-filter-btn {
-  cursor: pointer;
-  color: var(--routine);
-  font-weight: 400;
-  height: 40px;
-  line-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
   padding: 0 12px;
-  border-radius: 4px;
+  margin-left: 8px;
+  border: 1px solid var(--classC);
+  border-radius: 14px;
+  background: var(--classD);
+  color: var(--routine);
+  font-size: 13px;
+  line-height: 26px;
+  white-space: nowrap;
+  cursor: pointer;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
-  transition: color 0.35s, background 0.35s;
+  transition: color 0.35s, background 0.35s, border-color 0.35s;
+}
+.joe_index__title-filter-btn .icon {
+  width: 13px;
+  height: 13px;
+  margin-right: 5px;
+  flex: none;
+  transition: transform 0.35s;
 }
 .joe_index__title-filter-btn:hover {
   color: var(--theme);
-  background: var(--classD);
+  border-color: var(--theme);
 }
 .joe_index__title-filter-btn.active {
-  color: var(--theme);
-  background: var(--classD);
+  color: #fff;
+  background: var(--theme);
+  border-color: var(--theme);
 }
 .joe_index__title-filter-panel {
   position: absolute;
@@ -86,6 +101,7 @@
   max-height: 340px;
   overflow-y: auto;
   padding: 8px 0;
+  border: 1px solid var(--classC);
   border-radius: var(--radius-inner);
   background: var(--background);
   box-shadow: var(--box-shadow);

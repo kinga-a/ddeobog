@@ -632,8 +632,10 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
   const tagBtn = html.indexOf('data-panel="tag"');
   assert.ok(catBtn !== -1 && tagBtn !== -1, '分类/标签按钮都应存在');
   assert.ok(catBtn < tagBtn, '「分类」按钮应在「标签」按钮之前');
-  assert.ok(html.slice(catBtn, tagBtn).includes('>分类<'), '第一个按钮文案应为「分类」');
-  assert.ok(/data-panel="tag"[^>]*>标签</.test(html), '第二个按钮文案应为「标签」');
+  // 按钮里是「图标 + 文字」，所以文案在图标之后
+  const btnOf = (kind) => html.slice(html.indexOf(`data-panel="${kind}"`));
+  assert.ok(/<\/svg>分类</.test(btnOf('category').slice(0, 400)), '第一个按钮文案应为「分类」');
+  assert.ok(/<\/svg>标签</.test(btnOf('tag').slice(0, 400)), '第二个按钮文案应为「标签」');
 
   // 两个面板默认收起，各自列出全部条目
   for (const kind of ['category', 'tag']) {
@@ -649,6 +651,15 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
     }
   }
   assert.ok(html.includes('aria-expanded="false"'), '按钮初始 aria-expanded 应为 false');
+
+  // 每个按钮都带一个跟随文字颜色的线性图标（currentColor），且图标不同
+  const btns = [...html.matchAll(/<button[^>]*joe_index__title-filter-btn[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1]);
+  assert.equal(btns.length, 2, '应有两个按钮');
+  const iconPaths = btns.map((b) => (b.match(/<svg[^>]*>[\s\S]*?<path d="([^"]{40,})"/) || [])[1]);
+  assert.ok(iconPaths.every(Boolean), '每个按钮都应有图标');
+  assert.notEqual(iconPaths[0], iconPaths[1], '分类/标签应各用各的图标');
+  assert.ok(btns.every((b) => /fill="currentColor"/.test(b)), '图标应跟随文字颜色');
+  assert.ok(btns.every((b) => /aria-hidden="true"/.test(b)), '装饰性图标应 aria-hidden');
 
   // 面板内容应与侧栏同名分组一致（同源 listMetas）
   const sideCount = (label) => {
@@ -682,6 +693,15 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
   assert.ok(/\.joe_index__title-filter-panel\[hidden\]\s*\{\s*display:\s*none/.test(css), '面板默认应 display:none');
   const rule = css.match(/@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?\.joe_index__title-filter[\s\S]*?\}/);
   assert.ok(rule && /display:\s*none/.test(rule[0]), '移动端应隐藏筛选按钮');
+
+  // 胶囊按钮样式：图标 + 圆角 + 展开态填主题色
+  const btn = css.match(/\.joe_index__title-filter-btn\s*\{([^}]*)\}/)[1];
+  assert.ok(/border-radius:\s*14px/.test(btn), '按钮应为胶囊圆角');
+  assert.ok(/display:\s*inline-flex/.test(btn), '按钮应让图标与文字同行居中');
+  assert.ok(/var\(--classD\)/.test(btn), '按钮底色应用主题的 classD');
+  const active = css.match(/\.joe_index__title-filter-btn\.active\s*\{([^}]*)\}/)[1];
+  assert.ok(/background:\s*var\(--theme\)/.test(active), '展开态应填充主题色');
+  assert.ok(/color:\s*#fff/.test(active), '展开态文字应为白色');
 });
 
 

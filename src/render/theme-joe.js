@@ -516,9 +516,16 @@ export async function renderIndex(ctx) {
       href: `${prefix}/${encodeURIComponent(m.slug)}/`,
     }));
   const [catMeta, tagMeta] = await Promise.all([metaLinks('category', '/category'), metaLinks('tag', '/tag')]);
+  // 胶囊按钮里的线性图标，跟随文字颜色（currentColor）
+  const filterIcon = (d) =>
+    `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="${d}" /></svg>`;
+  const FILTER_ICONS = {
+    category: 'M896 288H512l-96-96H128c-35.3 0-64 28.7-64 64v512c0 35.3 28.7 64 64 64h768c35.3 0 64-28.7 64-64V352c0-35.3-28.7-64-64-64z',
+    tag: 'M128 96h288l448 448-288 288L128 384V96zm96 128v256l320 320 192-192-320-320H224zm0 32a48 48 0 1 0 0 96 48 48 0 0 0 0-96z',
+  };
   const filterBtn = (label, kind, count) =>
     count
-      ? `<button type="button" class="item joe_index__title-filter-btn" data-panel="${kind}" aria-expanded="false">${label}</button>`
+      ? `<button type="button" class="joe_index__title-filter-btn" data-panel="${kind}" aria-expanded="false">${filterIcon(FILTER_ICONS[kind])}${label}</button>`
       : '';
   const filterPanel = (kind, items) =>
     items.length
