@@ -1254,15 +1254,27 @@ await test('首页列表：匿名看不到隐藏文章，管理员看得到且�
   assert.ok(admin.includes('>隐藏</span>'), '管理员能看出它是隐藏文章');
 });
 
-await test('隐藏文章不泄漏到 RSS 和主题公开 API', async () => {
+await test('RSS 里没有隐藏文章（对管理员也一样）', async () => {
   const saved = cookie;
-  // 即便管理员自己请求，feed 和 /joe/api 也是公开出口，不该带上隐藏文章
   await loginAdmin();
   const feed = await call('GET', '/feed/').then((r) => r.text());
-  assert.ok(!feed.includes('隐藏文章标题XYZ'), 'RSS 里没有隐藏文章');
+  assert.ok(!feed.includes('隐藏文章标题XYZ'), 'RSS 是订阅出口，不带隐藏文章');
+  cookie = saved;
+});
 
-  const api = await call('GET', '/joe/api?action=publish_list&pageSize=50').then((r) => r.text());
-  assert.ok(!api.includes('隐藏文章标题XYZ'), '主题 API 里没有隐藏文章');
+await test('主题 API 的首页列表：匿名无隐藏文章，管理员有且带 status', async () => {
+  const url = '/joe/api?routeType=publish_list&pageSize=50';
+  const saved = cookie;
+  cookie = '';
+  const anon = await call('GET', url).then((r) => r.text());
+  assert.ok(!anon.includes('隐藏文章标题XYZ'), '匿名请求主题 API 拿不到隐藏文章');
+
+  await loginAdmin();
+  const admin = await call('GET', url).then((r) => r.text());
+  assert.ok(admin.includes('隐藏文章标题XYZ'), '管理员请求主题 API 能拿到隐藏文章');
+  const data = JSON.parse(admin).data;
+  const item = data.find((x) => x.title === '隐藏文章标题XYZ');
+  assert.equal(item?.status, 'hidden', '返回 status 供客户端渲染「隐藏」角标');
   cookie = saved;
 });
 

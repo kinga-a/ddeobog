@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </a>
                         <div class="information">
                             <a href="${_.permalink}" class="title" title="${_.title}" target="_blank" rel="noopener noreferrer">
-                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span>${_.title}
+                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span><span class="badge" style="display: ${_.status === 'hidden' ? 'inline-block' : 'none'}">隐藏</span>${_.title}
                             </a>
                             <a class="abstract" href="${_.permalink}" title="文章摘要" target="_blank" rel="noopener noreferrer">${_.abstract}</a>
                             <div class="meta">
@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="line"></div>
                         <div class="information">
                             <a href="${_.permalink}" class="title" title="${_.title}" target="_blank" rel="noopener noreferrer">
-                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span>${_.title}
+                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span><span class="badge" style="display: ${_.status === 'hidden' ? 'inline-block' : 'none'}">隐藏</span>${_.title}
                             </a>
                             <div class="meta">
                                 <ul class="items">
@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="line"></div>
                         <div class="information">
                             <a href="${_.permalink}" class="title" title="${_.title}" target="_blank" rel="noopener noreferrer">
-                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span>${_.title}
+                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span><span class="badge" style="display: ${_.status === 'hidden' ? 'inline-block' : 'none'}">隐藏</span>${_.title}
                             </a>
                             <a class="abstract" href="${_.permalink}" title="文章摘要" target="_blank" rel="noopener noreferrer">${_.abstract}</a>
                         </div>
@@ -121,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="line"></div>
                         <div class="information">
                             <a href="${_.permalink}" class="title" title="${_.title}" target="_blank" rel="noopener noreferrer">
-                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span>${_.title}
+                                <span class="badge" style="display: ${_.type === 'sticky' ? 'inline-block' : 'none'}">置顶</span><span class="badge" style="display: ${_.status === 'hidden' ? 'inline-block' : 'none'}">隐藏</span>${_.title}
                             </a>
                             <a class="abstract" href="${_.permalink}" title="文章摘要" target="_blank" rel="noopener noreferrer">${_.abstract}</a>
                             <div class="meta">

@@ -3,7 +3,7 @@
  */
 import { thumbnail, parseStickIds } from '../render/html.js';
 
-export async function handleJoeApi({ db, request, url, options = {} }) {
+export async function handleJoeApi({ db, request, url, user = null, options = {} }) {
   // 注意：不能用 `request.formData().catch(...)`。
   // EdgeOne 边缘运行时的 Request 在没有 Content-Type 时是**同步抛错**
   // （"Content-Type header is empty"），此时 .catch 还没挂上，异常会直接
@@ -28,11 +28,16 @@ export async function handleJoeApi({ db, request, url, options = {} }) {
       const pageSize = Math.min(parseInt(get('pageSize') || '10', 10), 50);
       const type = get('type') || 'created'; // created|views|commentsNum|agree
       const orderMap = { created: 'created', views: 'views', commentsNum: 'commentsNum', agree: 'agree' };
+      // 登录管理员在首页 tab 里也要看到隐藏文章。
+      // 这个接口必须跟着一起改：joe.index.js 的 initDom() 会清空服务端渲染的
+      // 列表、拿这里的数据重画，只改 renderIndex 的话隐藏文章会在 JS 跑起来后消失。
+      // user 由 main.js 统一解析好传进来，不用在这里重读一遍会话。
       const { items } = await db.listContents({
         type: 'post',
         page,
         pageSize,
         order: orderMap[type] || 'created',
+        allStatus: !!user,
       });
 
       // 顶置文章（后台「顶置文章IDs」，逗号分隔的 cid）。
@@ -85,6 +90,9 @@ export async function handleJoeApi({ db, request, url, options = {} }) {
             lazyload: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
             time: fmt(p.created, 'YYYY-MM-DD'),
             mode: 'default',
+            // 客户端据此渲染「隐藏」角标。匿名请求拿不到 hidden 条目，
+            // 所以这个字段对匿名用户始终是 publish，角标不会误显示。
+            status: p.status,
           };
         })
       );
