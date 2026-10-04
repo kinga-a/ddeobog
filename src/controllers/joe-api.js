@@ -34,8 +34,33 @@ export async function handleJoeApi({ db, request, url, options = {} }) {
         pageSize,
         order: orderMap[type] || 'created',
       });
+
+      // 顶置文章（后台「顶置文章IDs」，逗号分隔的 cid）。
+      // 首页列表不是服务端直出：joe.index.js 的 initDom() 会先清空 .joe_list，
+      // 再拿 publish_list 的数据重画，所以 renderIndex 里的排序会被整个覆盖，
+      // 置顶必须在这里实现才生效。
+      // 第 1 页把置顶文章按填写顺序前置；后续页把它们从结果里剔除，
+      // 保证同一篇文章在无限滚动列表里只出现一次。
+      const stickIds = String(options?.joe?.JStickPosts || '')
+        .split(',')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => Number.isInteger(n) && n > 0);
+      let list = items;
+      if (stickIds.length) {
+        const stickSet = new Set(stickIds.map(String));
+        list = list.filter((p) => !stickSet.has(String(p.cid)));
+        if (page === 1) {
+          const sticks = [];
+          for (const cid of stickIds) {
+            const p = await db.getContent(cid);
+            if (p && p.type === 'post' && p.status === 'publish') sticks.push(p);
+          }
+          list = [...sticks, ...list];
+        }
+      }
+
       const data = await Promise.all(
-        items.map(async (p) => {
+        list.map(async (p) => {
           const cats = [];
           for (const mid of p.categories || []) {
             const m = await db.getMeta(mid);

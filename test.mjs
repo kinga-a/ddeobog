@@ -1029,6 +1029,41 @@ await test('分页链接是路径式，且真能翻到第 2 页', async () => {
   );
 });
 
+// 回归点：首页列表不是服务端直出——joe.index.js 的 initDom() 会先清空 .joe_list，
+// 再拿 publish_list 的数据重画。置顶排序如果只写在 renderIndex 里会被这次重画整个
+// 覆盖，后台配了「顶置文章IDs」首页也看不到置顶效果。必须在接口层实现。
+// 放在分页测试之后：需要至少 4 篇文章才能验证跨页去重。
+await test('置顶文章排最前且全列表不重复', async () => {
+  const prev = await BLOG_KV.get('opt:theme:joe');
+  try {
+    // 用 pageSize=2 强制分页，才能验证跨页去重
+    const all = await (await call('POST', '/joe/api', {
+      form: { routeType: 'publish_list', page: 1, pageSize: 50, type: 'created' },
+    })).json();
+    assert.ok(all.data.length >= 4, `需要至少 4 篇才能测跨页，实际 ${all.data.length} 篇`);
+
+    // 置顶「自然顺序最后一篇」，这样排序变化最明显
+    const target = all.data[all.data.length - 1];
+    await BLOG_KV.put('opt:theme:joe', JSON.stringify({ JStickPosts: String(target.cid) }));
+
+    const p1 = await (await call('POST', '/joe/api', {
+      form: { routeType: 'publish_list', page: 1, pageSize: 2, type: 'created' },
+    })).json();
+    assert.equal(p1.data[0].cid, target.cid, `置顶文章 ${target.cid} 没排在第一位，实际首位是 ${p1.data[0].cid}`);
+
+    // 置顶文章被前置后，后续页必须把它剔除，否则无限滚动会出现重复卡片
+    const p2 = await (await call('POST', '/joe/api', {
+      form: { routeType: 'publish_list', page: 2, pageSize: 2, type: 'created' },
+    })).json();
+    assert.ok(!p2.data.some((d) => d.cid === target.cid), `置顶文章 ${target.cid} 在第 2 页重复出现`);
+
+    const cids = p1.data.map((d) => d.cid);
+    assert.equal(new Set(cids).size, cids.length, `第 1 页内部重复：${cids.join(',')}`);
+  } finally {
+    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
+    else await BLOG_KV.put('opt:theme:joe', prev);
+  }
+});
 // 搜索提交按钮：两处（顶栏胶囊 + 展开面板）都应为中文，且不再残留英文
 await test('搜索提交按钮为中文', async () => {
   const html = await (await call('GET', '/')).text();
