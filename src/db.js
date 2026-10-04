@@ -234,10 +234,21 @@ export class Database {
   }
 
   /**
-   * 内容列表查询
+   * 内容列表查询（返回完整内容，兼容旧调用）
    * @param {object} q type/status/page/pageSize/categoryMid/tagMid/keywords/order/year/month/authorId
    */
   async listContents(q = {}) {
+    const result = await this.listContentsIndex(q);
+    // 兼容旧代码：逐个加载完整内容（仅在确实需要正文时使用）
+    const items = await Promise.all(result.items.map((e) => this.getContent(e.cid)));
+    return { ...result, items: items.filter(Boolean) };
+  }
+
+  /**
+   * 内容列表查询（仅返回索引元数据，不加载正文，高性能）
+   * @param {object} q type/status/page/pageSize/categoryMid/tagMid/keywords/order/year/month/authorId
+   */
+  async listContentsIndex(q = {}) {
     const {
       type = 'post',
       status = 'publish',
@@ -263,18 +274,10 @@ export class Database {
     if (month)
       list = list.filter((e) => new Date(e.created * 1000).getMonth() + 1 === month);
     if (keywords) {
-      // 关键词搜索：索引中只有标题，正文需要读取文章行（个人博客规模可接受）
+      // 关键词搜索：仅在索引标题中匹配，避免 N+1 读取正文
+      // 如需全文搜索，建议引入专用搜索引擎（MeiliSearch/Algolia/Typesense）
       const kw = String(keywords).toLowerCase();
-      const matched = [];
-      for (const e of list) {
-        if (e.title.toLowerCase().includes(kw)) {
-          matched.push(e);
-          continue;
-        }
-        const row = await this.getContent(e.cid);
-        if (row && row.text.toLowerCase().includes(kw)) matched.push(e);
-      }
-      list = matched;
+      list = list.filter((e) => e.title.toLowerCase().includes(kw));
     }
     if (order === 'views' || order === 'agree') {
       const stat = await this.kv.getJSON(`stat:${order === 'views' ? 'views' : 'agree'}`);
@@ -286,12 +289,29 @@ export class Database {
     }
     const total = list.length;
     const start = (page - 1) * pageSize;
-    const items = [];
-    for (const e of list.slice(start, start + pageSize)) {
-      const row = await this.getContent(e.cid);
-      if (row) items.push(row);
-    }
+    const items = list.slice(start, start + pageSize);
     return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
+  }
+
+  /**
+   * 批量获取浏览/点赞统计
+   * @param {number[]} cids
+   * @returns {Map<number, {views: number, agree: number}>}
+   */
+  async getStatsBatch(cids) {
+    if (!cids.length) return new Map();
+    const [viewsMap, agreeMap] = await Promise.all([
+      this.kv.getJSON('stat:views'),
+      this.kv.getJSON('stat:agree'),
+    ]);
+    const result = new Map();
+    for (const cid of cids) {
+      result.set(cid, {
+        views: (viewsMap?.[cid] || 0),
+        agree: (agreeMap?.[cid] || 0),
+      });
+    }
+    return result;
   }
 
   /** 上一篇/下一篇（按时间相邻的已发布同类型内容） */
@@ -328,6 +348,14 @@ export class Database {
     const hit = idx.find((m) => m.slug === slug && m.type === type);
     return hit ? await this.getMeta(hit.mid) : null;
   }
+
+  /** 批量获取分类/标签详情 */
+  async getMetasBatch(mids) {
+    if (!mids.length) return [];
+    const rows = await Promise.all(mids.map((mid) => this.kv.getJSON(`meta:${mid}`)));
+    return rows.filter(Boolean);
+  }
+
   async createMeta({ name, slug, type, description = '' }) {
     const mid = await this.nextId('mid');
     const meta = { mid, name, slug: slug || name, type, description, count: 0, order: 0, parent: 0 };
@@ -374,21 +402,21 @@ export class Database {
     }
     return true;
   }
-  /** 内容分类/标签变更后同步计数（全量重算，规模可接受） */
+  /** 内容分类/标签变更后同步计数（增量更新，避免全量扫描） */
   async #syncMetaCounts(newCats = [], newTags = [], oldCats = [], oldTags = []) {
     const affected = new Set([...newCats, ...newTags, ...oldCats, ...oldTags]);
     if (!affected.size) return;
-    const postIdx = await this.#loadPostIndex();
-    const counts = {};
-    for (const e of postIdx) {
-      if (e.status !== 'publish') continue;
-      for (const m of e.categories || []) counts[`c${m}`] = (counts[`c${m}`] || 0) + 1;
-      for (const m of e.tags || []) counts[`t${m}`] = (counts[`t${m}`] || 0) + 1;
-    }
+    // 仅更新受影响的 meta：+1 或 -1
     for (const mid of affected) {
       const meta = await this.getMeta(mid);
-      if (meta) {
-        meta.count = counts[`${meta.type === 'category' ? 'c' : 't'}${mid}`] || 0;
+      if (!meta) continue;
+      const key = `${meta.type === 'category' ? 'c' : 't'}${mid}`;
+      // 计算增量：新增的计 +1，移除的计 -1
+      let delta = 0;
+      if (newCats.includes(mid) || newTags.includes(mid)) delta += 1;
+      if (oldCats.includes(mid) || oldTags.includes(mid)) delta -= 1;
+      if (delta !== 0) {
+        meta.count = Math.max(0, (meta.count || 0) + delta);
         await this.kv.putJSON(`meta:${mid}`, meta);
       }
     }
@@ -455,41 +483,47 @@ export class Database {
     if (row.status === 'approved') await this.#bumpCommentsNum(row.cid, -1);
     return true;
   }
-  /** 某内容的已通过评论（含嵌套结构） */
+  /** 某内容的已通过评论（含嵌套结构）——批量加载 */
   async listComments(cid) {
     const idx = await this.#loadCmtIndex();
-    const rows = [];
-    for (const c of idx) {
-      if (c.cid === cid && c.status === 'approved') {
-        const row = await this.kv.getJSON(`cmt:${c.coid}`);
-        if (row) rows.push(row);
-      }
-    }
-    rows.sort((a, b) => a.created - b.created);
-    return rows;
+    const coids = idx
+      .filter((c) => c.cid === cid && c.status === 'approved')
+      .map((c) => c.coid);
+    if (!coids.length) return [];
+    const rows = await Promise.all(coids.map((coid) => this.kv.getJSON(`cmt:${coid}`)));
+    return rows.filter(Boolean).sort((a, b) => a.created - b.created);
   }
-  /** 后台评论管理 */
+
+  /** 批量加载评论详情 */
+  async loadCommentsBatch(coids) {
+    if (!coids.length) return [];
+    const rows = await Promise.all(coids.map((coid) => this.kv.getJSON(`cmt:${coid}`)));
+    return rows.filter(Boolean);
+  }
+
+  /** 后台评论管理——批量加载 */
   async listAllComments({ status, page = 1, pageSize = 20 }) {
     const idx = await this.#loadCmtIndex();
     let list = [...idx].sort((a, b) => b.created - a.created);
     if (status) list = list.filter((c) => c.status === status);
     const total = list.length;
-    const items = [];
-    for (const c of list.slice((page - 1) * pageSize, page * pageSize)) {
-      const row = await this.kv.getJSON(`cmt:${c.coid}`);
-      if (row) items.push(row);
-    }
-    return { items, total, page, pageSize };
+    const pageItems = list.slice((page - 1) * pageSize, page * pageSize);
+    const coids = pageItems.map((c) => c.coid);
+    const items = await this.loadCommentsBatch(coids);
+    // 保持原排序
+    const byCoid = new Map(items.map((r) => [r.coid, r]));
+    const ordered = coids.map((id) => byCoid.get(id)).filter(Boolean);
+    return { items: ordered, total, page, pageSize };
   }
+
   async recentComments(n = 5) {
     const idx = await this.#loadCmtIndex();
-    const list = [...idx].sort((a, b) => b.created - a.created).slice(0, n);
-    const out = [];
-    for (const c of list) {
-      const row = await this.kv.getJSON(`cmt:${c.coid}`);
-      if (row && row.status === 'approved') out.push(row);
-    }
-    return out;
+    const coids = [...idx]
+      .sort((a, b) => b.created - a.created)
+      .slice(0, n)
+      .filter((c) => c.status === 'approved')
+      .map((c) => c.coid);
+    return await this.loadCommentsBatch(coids);
   }
 
   // ---------- 浏览/点赞 ----------

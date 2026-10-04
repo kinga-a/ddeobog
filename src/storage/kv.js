@@ -24,15 +24,35 @@ export class KV {
   async delete(key) {
     await this.binding.delete(key);
   }
-  /** 前缀遍历所有 key（自动翻页） */
+
+  /** 批量获取多个 key（并行） */
+  async getBatch(keys) {
+    if (!keys.length) return new Map();
+    const results = await Promise.all(keys.map((k) => this.getJSON(k)));
+    const map = new Map();
+    keys.forEach((k, i) => map.set(k, results[i]));
+    return map;
+  }
+
+  /** 批量写入多个 key（并行） */
+  async putBatch(entries) {
+    if (!entries.length) return;
+    await Promise.all(entries.map(([k, v]) => this.putJSON(k, v)));
+  }
+
+  /** 批量删除多个 key（并行） */
+  async deleteBatch(keys) {
+    if (!keys.length) return;
+    await Promise.all(keys.map((k) => this.delete(k)));
+  }
+
+  /** 前缀遍历所有 key（自动翻页，增大单页限制减少往返） */
   async listKeys(prefix = '', limit = 10000) {
     const out = [];
     let cursor;
     let complete = false;
     while (!complete && out.length < limit) {
-      // cursor 必须是 string 或干脆不传：平台实现对 undefined 做严格类型校验，
-      // 首次分页传 cursor: undefined 会抛 "cursor type invalid. expect: 'string'"。
-      const opts = { prefix, limit: 256 };
+      const opts = { prefix, limit: 1000 };
       if (cursor) opts.cursor = cursor;
       const res = await this.binding.list(opts);
       if (!res) break;

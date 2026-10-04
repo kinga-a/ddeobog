@@ -15,6 +15,7 @@
  */
 import { CONFIG } from '../config.js';
 import * as theme from '../render/theme-joe.js';
+import { commentsBlock } from '../render/theme-joe.js';
 import { renderMarkdown, plainExcerpt } from '../render/markdown.js';
 import { escapeHtml } from '../render/html.js';
 import { sameOrigin } from '../auth/session.js';
@@ -53,14 +54,17 @@ export async function handleFrontend(ctx) {
     return await routeInner(ctx);
   }
 
-  const list = await db.listContents({ type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
-  const items = await Promise.all(list.items.map(async (p) => ({
-    ...p,
-    views: await db.getStat(p.cid, 'views'),
-    agree: await db.getStat(p.cid, 'agree'),
-  })));
-  Object.assign(ctx, { list, page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
-  return html(await theme.renderIndex(ctx), { 'Cache-Control': 'public, max-age=60' });
+  const list = await db.listContentsIndex({ type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
+  // 批量获取统计数据
+  const cids = list.items.map((e) => e.cid);
+  const statsMap = await db.getStatsBatch(cids);
+  const items = list.items.map((e) => ({
+    ...e,
+    views: statsMap.get(e.cid)?.views || 0,
+    agree: statsMap.get(e.cid)?.agree || 0,
+  }));
+  Object.assign(ctx, { list: { ...list, items }, page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
+  return html(await theme.renderIndex(ctx), { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' });
 }
 
 async function routeInner(ctx) {
@@ -175,9 +179,42 @@ async function renderSingle(ctx, post) {
   }
   ctx.post = post;
   ctx.isPost = post.type === 'post';
+
+  // 预加载渲染所需数据（并行化，避免渲染时串行查询）
+  const [
+    { cats, tags },
+    author,
+    { prev, next },
+    stats,
+    relatedList,
+    commentsHtml,
+  ] = await Promise.all([
+    (async () => {
+      const { contentMetas } = await import('../render/theme-joe.js');
+      return contentMetas(db, post);
+    })(),
+    db.getUser(post.authorId).then((u) => u || { screenName: '博主', mail: '' }),
+    db.prevNext(post.cid, post.type),
+    db.getStatsBatch([post.cid]),
+    db.listContentsIndex({ type: 'post', pageSize: 4, tagMid: post.tags?.[0] }),
+    (async () => {
+      const { commentsBlock } = await import('../render/theme-joe.js');
+      return commentsBlock(ctx, post);
+    })(),
+  ]);
+
+  const views = stats.get(post.cid)?.views || 0;
+  const agree = stats.get(post.cid)?.agree || 0;
+  const related = relatedList.items.filter((r) => r.cid !== post.cid).slice(0, 3);
+
+  // 存入 ctx 供 renderPost 直接使用，避免重复查询
+  Object.assign(ctx, {
+    preloaded: { cats, tags, author, prev, next, views, agree, related, commentsHtml },
+  });
+
   // 插件钩子：内容渲染前
   post.text = await runHooks('renderContent', post.text, { post, ctx });
-  return html(await theme.renderPost(ctx));
+  return html(await theme.renderPost(ctx), { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' });
 }
 
 function renderProtected(ctx, post) {
@@ -213,17 +250,23 @@ async function renderArchive(ctx, { type, slug, page, titleFor, labelFor, baseUr
   if (meta) q[type === 'tag' ? 'tagMid' : 'categoryMid'] = meta.mid;
   if (authorId) q.authorId = authorId;
   if (keywords) q.keywords = keywords;
-  const list = await db.listContents(q);
+  const list = await db.listContentsIndex(q);
+  // 批量获取统计数据
+  const cids = list.items.map((e) => e.cid);
+  const statsMap = await db.getStatsBatch(cids);
+  const items = list.items.map((e) => ({
+    ...e,
+    views: statsMap.get(e.cid)?.views || 0,
+    agree: statsMap.get(e.cid)?.agree || 0,
+  }));
   Object.assign(ctx, {
-    list,
+    list: { ...list, items },
     page,
     archiveTitle: titleFor(meta),
-    // 面包屑用短名：「默认分类」而不是「分类 默认分类 下的文章」——
-    // 完整标题就在下方的 .joe_archive__title 里，重复一遍又长又啰嗦
     archiveLabel: labelFor ? labelFor(meta) : titleFor(meta),
     archiveBaseUrl: baseUrlFor(meta),
   });
-  return html(await theme.renderArchive(ctx));
+  return html(await theme.renderArchive(ctx), { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' });
 }
 
 async function notFound(ctx) {
@@ -301,7 +344,8 @@ function commentError(msg) {
 async function handleFeed(ctx) {
   const { db, url } = ctx;
   const siteUrl = ctx.siteUrl;
-  const { items } = await db.listContents({ type: 'post', pageSize: 20 });
+  const list = await db.listContentsIndex({ type: 'post', pageSize: 20 });
+  const items = await Promise.all(list.items.map((e) => db.getContent(e.cid)));
   const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>${escapeHtml(ctx.options.title)}</title>
@@ -311,6 +355,7 @@ async function handleFeed(ctx) {
   <link rel="alternate" href="${siteUrl}/" />
   <link rel="self" href="${siteUrl}/feed/" />
 ${items
+  .filter(Boolean)
   .map(
     (p) => `  <entry>
     <title>${escapeHtml(p.title)}</title>
@@ -324,6 +369,6 @@ ${items
   .join('\n')}
 </feed>`;
   return new Response(feed, {
-    headers: { 'Content-Type': 'application/atom+xml; charset=utf-8' },
+    headers: { 'Content-Type': 'application/atom+xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
   });
 }

@@ -159,16 +159,21 @@ async function slideoutBlock(ctx) {
   const avatar = options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, 100, avatarSource);
   const link = options.joe.JAside_Author_Link || '#';
 
-  const postsIdx = await db.listContents({ type: 'post', pageSize: 1 });
-  const commentsIdx = await db.listAllComments({ status: 'approved', pageSize: 1 });
-  // listMetas 返回的是 { name, slug, ... }，没有 permalink，得自己拼
-  const metaLinks = async (type, prefix) =>
-    (await db.listMetas(type)).map((m) => ({
-      ...m,
-      permalink: `${prefix}/${encodeURIComponent(m.slug)}/`,
-    }));
-  const categories = await metaLinks('category', '/category');
-  const tags = await metaLinks('tag', '/tag');
+  // 并行查询：文章总数、评论总数、分类、标签
+  const [postsIdx, commentsIdx, catIdx, tagIdx] = await Promise.all([
+    db.listContents({ type: 'post', pageSize: 1 }),
+    db.listAllComments({ status: 'approved', pageSize: 1 }),
+    db.listMetas('category'),
+    db.listMetas('tag'),
+  ]);
+
+  const metaLinks = (list, prefix) => list.map((m) => ({
+    name: m.name,
+    permalink: `${prefix}/${encodeURIComponent(m.slug)}/`,
+  }));
+
+  const categories = metaLinks(catIdx, '/category');
+  const tags = metaLinks(tagIdx, '/tag');
 
   const icon = (svg, size) =>
     `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${svg}</svg>`;
@@ -224,10 +229,14 @@ async function headerBlock(ctx) {
   // 主题 CSS 期望 .result .item > .sort(排名徽标) + .text(标题) + .views(阅读量)，
   // 前三条徽标自带红/橙/黄配色，hover 底色也由主题给。
   const suggestNum = parseInt(options.joe.JSearch_Hot_Num || '5', 10) || 5;
-  const hot = await db.listContents({ type: 'post', pageSize: suggestNum, order: 'views' });
-  const hotViews = await Promise.all(
-    hot.items.map(async (p) => ({ ...p, views: await db.getStat(p.cid, 'views') }))
-  );
+  // 使用 listContentsIndex 避免加载正文，批量获取统计
+  const hotIndex = await db.listContentsIndex({ type: 'post', pageSize: suggestNum, order: 'views' });
+  const hotCids = hotIndex.items.map((e) => e.cid);
+  const statsMap = await db.getStatsBatch(hotCids);
+  const hotViews = hotIndex.items.map((e) => ({
+    ...e,
+    views: statsMap.get(e.cid)?.views || 0,
+  }));
   const suggestHtml = hotViews
     .map(
       (p, i) =>
@@ -283,17 +292,37 @@ async function headerBlock(ctx) {
 async function asideBlock(ctx) {
   const { options, db, user } = ctx;
   const a = (p) => assetsUrl(options, p);
-  const owner = (await db.listUsers()).find((u) => u.group === 'administrator') || {};
   const avatarSource = options.joe.JAvatarSource || 'weavatar';
-  const postsIdx = await db.listContents({ type: 'post', pageSize: 1 });
+
+  // 并行查询所有独立数据
+  const [
+    owner,
+    postsIdx,
+    commentsIdx,
+    hotIndex,
+    recentComments,
+    tags,
+  ] = await Promise.all([
+    db.listUsers().then((users) => users.find((u) => u.group === 'administrator') || {}),
+    db.listContents({ type: 'post', pageSize: 1 }),
+    db.listAllComments({ status: 'approved', pageSize: 1 }),
+    db.listContentsIndex({ type: 'post', pageSize: parseInt(options.joe.JAside_Hot_Num || '5', 10) || 5, order: 'views' }),
+    db.recentComments(5),
+    db.listMetas('tag'),
+  ]);
+
+  // 批量获取热门文章统计
+  const hotCids = hotIndex.items.map((e) => e.cid);
+  const statsMap = await db.getStatsBatch(hotCids);
+  const hotViews = hotIndex.items.map((e) => ({
+    ...e,
+    views: statsMap.get(e.cid)?.views || 0,
+  }));
+
   const stat = {
     posts: postsIdx.total,
-    comments: (await db.listAllComments({ status: 'approved', pageSize: 1 })).total,
+    comments: commentsIdx.total,
   };
-  const hot = await db.listContents({ type: 'post', pageSize: parseInt(options.joe.JAside_Hot_Num || '5', 10) || 5, order: 'views' });
-  const hotViews = await Promise.all(hot.items.map(async (p) => ({ ...p, views: await db.getStat(p.cid, 'views') })));
-  const recentComments = await db.recentComments(5);
-  const tags = await db.listMetas('tag');
 
   let html = `<aside class="joe_aside">
   <section class="joe_aside__item author">
@@ -504,15 +533,19 @@ export function permalink(content) {
   return `/archives/${content.cid}/`;
 }
 
-/** 分类/标签对象渲染辅助 */
+/** 分类/标签对象渲染辅助（批量加载） */
 export async function contentMetas(db, content) {
+  const allMids = [...(content.categories || []), ...(content.tags || [])];
+  if (!allMids.length) return { cats: [], tags: [] };
+  const metas = await db.getMetasBatch(allMids);
+  const byMid = new Map(metas.map((m) => [m.mid, m]));
   const cats = [], tags = [];
   for (const mid of content.categories || []) {
-    const m = await db.getMeta(mid);
+    const m = byMid.get(mid);
     if (m) cats.push({ ...m, permalink: `/category/${encodeURIComponent(m.slug)}/` });
   }
   for (const mid of content.tags || []) {
-    const m = await db.getMeta(mid);
+    const m = byMid.get(mid);
     if (m) tags.push({ ...m, permalink: `/tag/${encodeURIComponent(m.slug)}/` });
   }
   return { cats, tags };
@@ -526,12 +559,13 @@ export async function renderIndex(ctx) {
   const { list, page } = ctx;
   const itemsHtml = list.items.map((p) => indexItem(ctx, p)).join('');
   // 标题栏右侧的「分类 / 标签」展开按钮：默认收起，点开显示全部，点别处收起
-  const metaLinks = async (type, prefix) =>
-    (await ctx.db.listMetas(type)).map((m) => ({
-      name: m.name,
-      href: `${prefix}/${encodeURIComponent(m.slug)}/`,
-    }));
-  const [catMeta, tagMeta] = await Promise.all([metaLinks('category', '/category'), metaLinks('tag', '/tag')]);
+  // 批量加载分类和标签
+  const [catIdx, tagIdx] = await Promise.all([
+    ctx.db.listMetas('category'),
+    ctx.db.listMetas('tag'),
+  ]);
+  const catMeta = catIdx.map((m) => ({ name: m.name, href: `/category/${encodeURIComponent(m.slug)}/` }));
+  const tagMeta = tagIdx.map((m) => ({ name: m.name, href: `/tag/${encodeURIComponent(m.slug)}/` }));
   // 胶囊按钮里的线性图标，跟随文字颜色（currentColor）
   const filterIcon = (d) =>
     `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="${d}" /></svg>`;
@@ -591,6 +625,8 @@ export async function renderIndex(ctx) {
 
 function indexItem(ctx, p) {
   const a = (path) => assetsUrl(ctx.options, path);
+  // p.text 可能不存在（使用 listContentsIndex 时），此时摘要回退到空或 fields.abstract
+  const excerpt = p.text ? plainExcerpt(p.text, 90) : (p.fields?.abstract || '');
   return `<li class="joe_list__item default">
   <div class="line"></div>
   <a href="${permalink(p)}" class="thumbnail" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">
@@ -599,7 +635,7 @@ function indexItem(ctx, p) {
   </a>
   <div class="information">
     <a href="${permalink(p)}" class="title" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.title)}</a>
-    <a class="abstract" href="${permalink(p)}" title="文章摘要" target="_blank" rel="noopener noreferrer">${escapeHtml(p.fields?.abstract || plainExcerpt(p.text, 90))}</a>
+    <a class="abstract" href="${permalink(p)}" title="文章摘要" target="_blank" rel="noopener noreferrer">${escapeHtml(excerpt)}</a>
     <div class="meta">
       <ul class="items">
         <li>${formatDate(p.created, 'Y-m-d')}</li>
@@ -615,14 +651,10 @@ function indexItem(ctx, p) {
 /** 文章/页面 */
 export async function renderPost(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
-  const { post, db } = ctx;
+  const { post, db, preloaded } = ctx;
   const avatarSource = ctx.options.joe?.JAvatarSource || 'weavatar';
-  const { cats, tags } = await contentMetas(db, post);
-  const author = (await db.getUser(post.authorId)) || { screenName: '博主', mail: '' };
-  const { prev, next } = await db.prevNext(post.cid, post.type);
-  const views = await db.getStat(post.cid, 'views');
-  const agree = await db.getStat(post.cid, 'agree');
-  const related = (await db.listContents({ type: 'post', pageSize: 4, tagMid: post.tags?.[0] })).items.filter((r) => r.cid !== post.cid).slice(0, 3);
+  // 使用预加载数据，避免重复查询
+  const { cats, tags, author, prev, next, views, agree, related, commentsHtml } = preloaded || {};
 
   const catHtml = cats.length
     ? `<div class="joe_detail__category">${cats.slice(0, 5).map((c, i) => `<a href="${c.permalink}" class="item item-${i}" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</a>`).join('')}</div>`
@@ -682,7 +714,7 @@ export async function renderPost(ctx) {
           ${prev ? `<li class="joe_post__pagination-item prev"><a href="${permalink(prev)}" title="${escapeHtml(prev.title)}">上一篇</a></li>` : ''}
           ${next ? `<li class="joe_post__pagination-item next"><a href="${permalink(next)}" title="${escapeHtml(next.title)}">下一篇</a></li>` : ''}
         </ul>
-        ${await commentsBlock(ctx, post)}
+        ${commentsHtml}
       </div>
     </div>
     ${await asideBlock(ctx)}
@@ -698,7 +730,7 @@ export async function renderPost(ctx) {
 }
 
 /** 评论区块（Joe 结构 + Owo 表情 + 楼中楼） */
-async function commentsBlock(ctx, post) {
+export async function commentsBlock(ctx, post) {
   if (!post.allowComment || ctx.options.joe.JCommentStatus === 'off') {
     return `<div class="joe_comment"><h3 class="joe_comment__title">评论</h3><div class="joe_comment__close"><span>博主关闭了评论</span></div></div>`;
   }
