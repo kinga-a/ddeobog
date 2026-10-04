@@ -445,6 +445,34 @@ await test('分享面板的 active 切换只有一处实现', async () => {
     `分享面板的 active 切换必须且只能在 joe.global.js 里实现，实际出现在：${impl.join(', ')}`);
 });
 
+// 回归点：阅读去重曾是「cid 数组 + 永不过期」，一旦记过就永远不再计数。
+// 数据重置后服务端计数归 0、浏览器仍记着「已统计」，阅读量就永久卡在 0。
+// 现在改成 cid → 时间戳 的映射并设有效期；旧的数组格式一律视为已过期。
+await test('阅读去重有时间窗，且旧数组格式会重新计一次', async () => {
+  const dir = 'usr/themes/joe/assets/js/';
+  const raw = await readFile(`${dir}joe.post_page.js`, 'utf8');
+  const min = await readFile(`${dir}joe.post_page.min.js`, 'utf8');
+
+  // 永久去重的写法不能回来
+  assert.ok(!/viewsArr\.includes\(cid\)/.test(raw), '阅读去重又变回永不过期的 viewsArr.includes');
+  assert.ok(!/viewsArr\.push\(cid\)/.test(raw), '阅读去重又变回只往数组里 push cid');
+
+  // 时间窗 + 时间戳映射
+  assert.ok(/VIEWS_DEDUP_HOURS\s*=\s*\d+/.test(raw), '没有定义去重时间窗 VIEWS_DEDUP_HOURS');
+  assert.ok(/viewMap\[cid\]\s*=\s*now/.test(raw), '没有记录 cid 的计次时间戳');
+  assert.ok(/Array\.isArray\(parsed\)/.test(raw), '没有兼容旧的 cid 数组格式');
+
+  // 页面加载的是 min。注意 min 里常量名会被内联（VIEWS_DEDUP_HOURS → _=24），
+  // 所以 min 侧只断言压缩后仍存活的结构性标记，不去匹配变量名。
+  for (const probe of ['Array.isArray', 'handle_views', 'localStorage.setItem']) {
+    assert.ok(min.includes(probe), `joe.post_page.min.js 里缺少 ${probe}，改动不会生效`);
+  }
+  assert.ok(!/viewsArr\.includes\(cid\)/.test(min), 'joe.post_page.min.js 里仍是永久去重');
+  // 时间窗确实进了产物：24 小时换算成毫秒
+  assert.ok(/\b24\b/.test(min) && /3600\*1e3/.test(min),
+    'joe.post_page.min.js 里看不到 24 小时的去重窗口');
+});
+
 await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', async () => {
   const html = await (await call('GET', '/')).text();
   const seg = html.slice(html.indexOf('<div class="joe_action">'));

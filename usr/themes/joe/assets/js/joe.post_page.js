@@ -74,11 +74,30 @@ document.addEventListener('DOMContentLoaded', () => {
 		});
 	}
 
-	/* 激活浏览功能 */
+	/* 激活浏览功能
+	   去重维度是「浏览器 + 时间窗」：同一篇文章在 VIEWS_DEDUP_HOURS 小时内
+	   只计一次，超过窗口再次访问重新计。
+	   旧实现存的是 cid 数组且永不过期——一旦记过就永远不再计数。数据重置后
+	   服务端计数归 0，浏览器却仍记着「已统计」，阅读量就永久卡在 0。 */
+	const VIEWS_DEDUP_HOURS = 24;
 	{
-		let viewsArr = localStorage.getItem(encryption('views')) ? JSON.parse(decrypt(localStorage.getItem(encryption('views')))) : [];
-		const flag = viewsArr.includes(cid);
-		if (!flag) {
+		const key = encryption('views');
+		const now = Date.now();
+		const dedupWindow = VIEWS_DEDUP_HOURS * 3600 * 1000;
+		let viewMap = {};
+		try {
+			const parsed = localStorage.getItem(key) ? JSON.parse(decrypt(localStorage.getItem(key))) : null;
+			if (Array.isArray(parsed)) {
+				// 旧格式（cid 数组，没有时间戳）：一律当作已过期，让它重新计一次
+				parsed.forEach(c => { viewMap[c] = 0; });
+			} else if (parsed && typeof parsed === 'object') {
+				viewMap = parsed;
+			}
+		} catch (e) {
+			viewMap = {};
+		}
+		const last = Number(viewMap[cid]) || 0;
+		if (!last || now - last >= dedupWindow) {
 			$.ajax({
 				url: Joe.BASE_API,
 				type: 'POST',
@@ -87,10 +106,12 @@ document.addEventListener('DOMContentLoaded', () => {
 				success(res) {
 					if (res.code !== 1) return;
 					$('#Joe_Article_Views').html(`${res.data.views} 阅读`);
-					viewsArr.push(cid);
-					const name = encryption('views');
-					const val = encryption(JSON.stringify(viewsArr));
-					localStorage.setItem(name, val);
+					viewMap[cid] = now;
+					// 顺手清掉过期条目，避免 localStorage 无限堆积
+					Object.keys(viewMap).forEach(c => {
+						if (now - (Number(viewMap[c]) || 0) >= dedupWindow) delete viewMap[c];
+					});
+					localStorage.setItem(key, encryption(JSON.stringify(viewMap)));
 				}
 			});
 		}
