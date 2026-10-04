@@ -23,7 +23,6 @@ export const JOE_DEFAULTS = {
   JAside_Hot_Num: '5',
   JAside_Newreply_Status: 'on',
   JAside_Timelife_Status: 'on',
-  JAside_3DTag: 'off',
   JAside_Flatterer: 'on',
   JCommentStatus: 'on',
   JIndex_Hot: 'off',
@@ -39,6 +38,7 @@ export const JOE_DEFAULTS = {
   JICP: '',
   JAssetsURL: '',
   JAvatarSource: 'weavatar',
+  JStickPosts: '',
 };
 
 export function assetsUrl(opts, path) {
@@ -117,7 +117,6 @@ function scripts(ctx, extra = []) {
     a('assets/js/joe.global.min.js'),
     a('assets/js/joe.short.min.js'),
     a('assets/js/joe.search.js'),
-    a('assets/lib/tagcanvas@latest/tagcanvas.min.js'),
     ...extra,
   ];
   return list.map((s) => `<script src="${s}"></script>`).join('\n');
@@ -376,36 +375,6 @@ async function asideBlock(ctx) {
     </section>`;
   }
 
-  if (options.joe.JAside_3DTag === 'on' && tags.length) {
-    html += `<section class="joe_aside__item tags">
-      <div class="joe_aside__item-title"><span class="text">标签云</span><span class="line"></span></div>
-      <div class="joe_aside__item-contain">
-        <div class="tag"></div>
-        <ul class="list" style="display: none;">
-          ${tags.map((t) => `<li data-url="/tag/${encodeURIComponent(t.slug)}/" data-label="${escapeHtml(t.name)}"></li>`).join('')}
-        </ul>
-      </div>
-    </section>`;
-        html += `<!-- 3DTAG DEBUG --><script src="https://cdn.jsdelivr.net/npm/tagcanvas@latest/tagcanvas.min.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    try {
-        TagCanvas.Start('tag', 'list', {
-            textColour: '#fff',
-            outlineThickness: 1,
-            outlineColour: '#f00',
-            reverse: true,
-            depth: 0.8,
-            maxSpeed: 0.05,
-            weight: true
-        });
-    } catch(e) {
-        // TagCanvas failed to load
-        document.getElementById('tag').innerHTML = 'TagCanvas requires canvas support';
-    }
-});</script>`;
-  }
-
   if (options.joe.JAside_Flatterer === 'on') {
     html += `<section class="joe_aside__item flatterer">
       <div class="joe_aside__item-title"><span class="text">舔狗日记</span><span class="line"></span></div>
@@ -473,7 +442,7 @@ async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = ''
   <meta name="renderer" content="webkit" />
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, shrink-to-fit=no, viewport-fit=cover">
   <link rel="shortcut icon" href="${escapeHtml(options.joe.JFavicon)}" />
-  <title>${title}</title>
+  ${title}
   ${meta}
   ${cssLinks(ctx, css)}
   ${headBlock(ctx)}
@@ -484,25 +453,6 @@ async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = ''
     ${await headerBlock(ctx)}
     ${ctx.contentBody || ''}
     ${footerBlock(ctx)}
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        if (document.getElementById('tag') && document.getElementById('list')) {
-          try {
-            TagCanvas.Start('tag', 'list', {
-              textColour: '#fff',
-              outlineThickness: 1,
-              outlineColour: '#f00',
-              reverse: true,
-              depth: 0.8,
-              maxSpeed: 0.05,
-              weight: true
-            });
-          } catch(e) {
-            document.getElementById('tag').innerHTML = 'TagCanvas requires canvas support';
-          }
-        }
-      });
-    </script>
   </div>
 </body>
 </html>`;
@@ -597,7 +547,34 @@ export async function contentMetas(db, content) {
 export async function renderIndex(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page } = ctx;
-  const itemsHtml = list.items.map((p) => indexItem(ctx, p)).join('');
+  
+  // 处理顶置文章
+  let items = list.items;
+  const stickPostIds = options.joe.JStickPosts
+    ? options.joe.JStickPosts.split(',').map(id => id.trim()).filter(id => id)
+    : [];
+  
+  if (stickPostIds.length > 0) {
+    // 分离顶置文章和普通文章
+    const stickPosts = [];
+    const regularPosts = [];
+    
+    for (const post of items) {
+      if (stickPostIds.includes(String(post.cid))) {
+        stickPosts.push(post);
+      } else {
+        regularPosts.push(post);
+      }
+    }
+    
+    // 按照JStickPosts中指定的顺序排序顶置文章
+    stickPosts.sort((a, b) => stickPostIds.indexOf(String(a.cid)) - stickPostIds.indexOf(String(b.cid)));
+    
+    // 重新组合文章列表：顶置文章在前
+    items = [...stickPosts, ...regularPosts];
+  }
+  
+  const itemsHtml = items.map((p) => indexItem(ctx, p)).join('');
   // 标题栏右侧的「分类 / 标签」展开按钮：默认收起，点开显示全部，点别处收起
   // 批量加载分类和标签
   const [catIdx, tagIdx] = await Promise.all([
