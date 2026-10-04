@@ -550,8 +550,8 @@ export async function renderIndex(ctx) {
   
   // 处理顶置文章
   let items = list.items;
-  const stickPostIds = options.joe.JStickPosts
-    ? options.joe.JStickPosts.split(',').map(id => id.trim()).filter(id => id)
+  const stickPostIds = ctx.options.joe.JStickPosts
+    ? ctx.options.joe.JStickPosts.split(',').map(id => id.trim()).filter(id => id)
     : [];
   
   if (stickPostIds.length > 0) {
