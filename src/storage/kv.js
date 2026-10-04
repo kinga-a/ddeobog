@@ -46,13 +46,15 @@ export class KV {
     await Promise.all(keys.map((k) => this.delete(k)));
   }
 
-  /** 前缀遍历所有 key（自动翻页，增大单页限制减少往返） */
+  /** 前缀遍历所有 key（自动翻页，平台限制单页最大 256） */
   async listKeys(prefix = '', limit = 10000) {
     const out = [];
     let cursor;
     let complete = false;
     while (!complete && out.length < limit) {
-      const opts = { prefix, limit: 1000 };
+      // EdgeOne KV 单页 limit 最大 256
+      const pageLimit = Math.min(256, limit - out.length);
+      const opts = { prefix, limit: pageLimit };
       if (cursor) opts.cursor = cursor;
       const res = await this.binding.list(opts);
       if (!res) break;
