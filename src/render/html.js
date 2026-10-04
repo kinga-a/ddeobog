@@ -74,3 +74,23 @@ export function thumbnail(content, themeAssets) {
 }
 
 export { escapeHtml };
+
+/**
+ * 解析后台「顶置文章IDs」（option theme:joe 的 JStickPosts）。
+ * 逗号分隔的 cid，按填写顺序返回字符串形式并去重；非法项直接丢掉。
+ * 排序（renderIndex / publish_list）和角标（indexItem / publish_list）共用它，
+ * 避免同一个设置在两处解析出不同结果。
+ */
+export function parseStickIds(options) {
+  const raw = options?.joe?.JStickPosts;
+  if (!raw) return [];
+  const seen = new Set();
+  const out = [];
+  for (const part of String(raw).split(',')) {
+    const id = part.trim();
+    if (!/^\d+$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}

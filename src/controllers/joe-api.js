@@ -1,7 +1,7 @@
 /**
  * Joe 主题开放 API（/joe/api）—— 兼容 Joe 原版 routeType 协议
  */
-import { thumbnail } from '../render/html.js';
+import { thumbnail, parseStickIds } from '../render/html.js';
 
 export async function handleJoeApi({ db, request, url, options = {} }) {
   // 注意：不能用 `request.formData().catch(...)`。
@@ -41,18 +41,15 @@ export async function handleJoeApi({ db, request, url, options = {} }) {
       // 置顶必须在这里实现才生效。
       // 第 1 页把置顶文章按填写顺序前置；后续页把它们从结果里剔除，
       // 保证同一篇文章在无限滚动列表里只出现一次。
-      const stickIds = String(options?.joe?.JStickPosts || '')
-        .split(',')
-        .map((s) => parseInt(s.trim(), 10))
-        .filter((n) => Number.isInteger(n) && n > 0);
+      const stickIds = parseStickIds(options);
+      const stickSet = new Set(stickIds);
       let list = items;
-      if (stickIds.length) {
-        const stickSet = new Set(stickIds.map(String));
+      if (stickSet.size) {
         list = list.filter((p) => !stickSet.has(String(p.cid)));
         if (page === 1) {
           const sticks = [];
           for (const cid of stickIds) {
-            const p = await db.getContent(cid);
+            const p = await db.getContent(parseInt(cid, 10));
             if (p && p.type === 'post' && p.status === 'publish') sticks.push(p);
           }
           list = [...sticks, ...list];
@@ -76,7 +73,10 @@ export async function handleJoeApi({ db, request, url, options = {} }) {
             commentsNum: p.commentsNum || 0,
             agree: await db.getStat(p.cid, 'agree'),
             category: cats,
-            type: p.status === 'sticky' ? 'sticky' : p.type,
+            // 角标靠 type==='sticky' 判断（joe.index.js 里就是这么渲染的）。
+            // 后台的「顶置文章IDs」不改文章的 status，所以这里要把置顶的
+            // 显式标成 sticky，否则角标永远不显示。
+            type: p.status === 'sticky' || stickSet.has(String(p.cid)) ? 'sticky' : p.type,
             // 必须始终给得出图，否则客户端渲染会写出字面量 "undefined"：
             // joe.index.js 的 initDom() 会清空服务端渲染的列表，改用 publish_list
             // 的数据重画，取的是 _.image[0]——空数组取出来就是 undefined，

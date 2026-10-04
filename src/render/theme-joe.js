@@ -3,7 +3,7 @@
  * 服务端输出与 Joe DOM 结构一致的 HTML
  */
 import { renderMarkdown, escapeHtml, plainExcerpt, splitMore } from './markdown.js';
-import { pageNav, avatarUrl, formatDate, thumbnail } from './html.js';
+import { pageNav, avatarUrl, formatDate, thumbnail, parseStickIds } from './html.js';
 
 export const THEME_NAME = 'joe';
 const LAZYLOAD = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
@@ -550,9 +550,7 @@ export async function renderIndex(ctx) {
   
   // 处理顶置文章
   let items = list.items;
-  const stickPostIds = ctx.options.joe.JStickPosts
-    ? ctx.options.joe.JStickPosts.split(',').map(id => id.trim()).filter(id => id)
-    : [];
+  const stickPostIds = parseStickIds(ctx.options);
   
   if (stickPostIds.length > 0) {
     // 分离顶置文章和普通文章
@@ -653,6 +651,12 @@ function indexItem(ctx, p) {
   const a = (path) => assetsUrl(ctx.options, path);
   // p.text 可能不存在（使用 listContentsIndex 时），此时摘要回退到空或 fields.abstract
   const excerpt = p.text ? plainExcerpt(p.text, 90) : (p.fields?.abstract || '');
+  // 顶置角标：与 joe.index.js 前端渲染保持同构（同一段 class 与 display）。
+  // .badge 的 CSS 里没有 display，而 span 默认 inline 会吃掉 height/line-height，
+  // 所以 inline-block 是必须的，不能省。
+  const stickBadge = parseStickIds(ctx.options).includes(String(p.cid))
+    ? '<span class="badge" style="display: inline-block">置顶</span>'
+    : '';
   return `<li class="joe_list__item default">
   <div class="line"></div>
   <a href="${permalink(p)}" class="thumbnail" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">
@@ -660,7 +664,7 @@ function indexItem(ctx, p) {
     <time datetime="${formatDate(p.created, 'Y-m-d')}">${formatDate(p.created, 'Y-m-d')}</time>
   </a>
   <div class="information">
-    <a href="${permalink(p)}" class="title" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.title)}</a>
+    <a href="${permalink(p)}" class="title" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">${stickBadge}${escapeHtml(p.title)}</a>
     <a class="abstract" href="${permalink(p)}" title="文章摘要" target="_blank" rel="noopener noreferrer">${escapeHtml(excerpt)}</a>
     <div class="meta">
       <ul class="items">

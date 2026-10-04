@@ -473,6 +473,43 @@ await test('阅读去重有时间窗，且旧数组格式会重新计一次', as
     'joe.post_page.min.js 里看不到 24 小时的去重窗口');
 });
 
+// 置顶角标有两条渲染路径：服务端直出（indexItem）和前端 initDom 重画
+//（joe.index.js → publish_list）。前端那段一直都在，缺的是服务端那份和接口的
+// type 标记；两边必须给出一样的结果，否则 JS 一跑角标就消失了。
+await test('置顶角标：服务端直出与接口标记一致', async () => {
+  const dir = 'usr/themes/joe/assets/js/';
+  const js = await readFile(`${dir}joe.index.js`, 'utf8');
+  const badgeRe = /<span class="badge"[^>]*>置顶<\/span>/;
+  assert.ok(badgeRe.test(js), 'joe.index.js 里没有「置顶」角标的渲染片段');
+  // 四个排序页签都要有，否则切换排序后角标会消失
+  const badgeCount = (js.match(/<span class="badge"[^>]*>置顶<\/span>/g) || []).length;
+  assert.ok(badgeCount >= 4, `joe.index.js 的角标渲染片段只有 ${badgeCount} 处，排序切换后可能丢角标`);
+
+  // 接口侧：置顶文章必须标成 sticky，否则前端不会显示角标
+  const prev = await BLOG_KV.get('opt:theme:joe');
+  try {
+    const all = await (await call('POST', '/joe/api', {
+      form: { routeType: 'publish_list', page: 1, pageSize: 50, type: 'created' },
+    })).json();
+    const target = all.data[all.data.length - 1];
+    await BLOG_KV.put('opt:theme:joe', JSON.stringify({ JStickPosts: String(target.cid) }));
+
+    const p1 = await (await call('POST', '/joe/api', {
+      form: { routeType: 'publish_list', page: 1, pageSize: 50, type: 'created' },
+    })).json();
+    const sticky = p1.data.filter((d) => d.type === 'sticky');
+    assert.equal(sticky.length, 1, `应恰好有 1 篇标成 sticky，实际 ${sticky.length}`);
+    assert.equal(sticky[0].cid, target.cid, '标成 sticky 的不是被置顶的那篇');
+
+    // 服务端直出：首页 HTML 里置顶文章应带角标，普通文章不带
+    const html = await (await call('GET', '/')).text();
+    assert.ok(/class="badge"[^>]*>置顶<\/span>/.test(html), '首页服务端直出的 HTML 里没有置顶角标');
+  } finally {
+    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
+    else await BLOG_KV.put('opt:theme:joe', prev);
+  }
+});
+
 await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', async () => {
   const html = await (await call('GET', '/')).text();
   const seg = html.slice(html.indexOf('<div class="joe_action">'));
@@ -1103,6 +1140,12 @@ await test('置顶文章排最前且全列表不重复', async () => {
 
     const cids = p1.data.map((d) => d.cid);
     assert.equal(new Set(cids).size, cids.length, `第 1 页内部重复：${cids.join(',')}`);
+
+    // 角标：joe.index.js 用 type==='sticky' 决定要不要渲染「置顶」徽章。
+    // 后台的 JStickPosts 不会改文章 status，所以接口必须显式标出来。
+    assert.equal(p1.data[0].type, 'sticky', `置顶文章 ${target.cid} 的 type 不是 sticky，角标不会显示`);
+    assert.ok(!p2.data.some((d) => d.type === 'sticky'), '非置顶文章被误标成 sticky');
+    assert.ok(p2.data.every((d) => d.type !== 'sticky'), '第 2 页不该出现置顶文章');
   } finally {
     if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
     else await BLOG_KV.put('opt:theme:joe', prev);
