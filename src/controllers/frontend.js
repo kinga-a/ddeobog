@@ -66,7 +66,7 @@ export async function handleFrontend(ctx) {
     agree: statsMap.get(e.cid)?.agree || 0,
   }));
   Object.assign(ctx, { list: { ...list, items }, page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
-  return html(await theme.renderIndex(ctx), { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' });
+  return html(await theme.renderIndex(ctx));
 }
 
 async function routeInner(ctx) {
@@ -196,15 +196,10 @@ async function renderSingle(ctx, post) {
   const { db, request } = ctx;
   // 密码保护。解锁凭据放在 HttpOnly cookie 里，密码本身只出现在 POST 的请求体中，
   // 不再拼进 URL —— 那样会进浏览器历史、CDN/服务器访问日志和 Referer 头。
-  let unlockedByCookie = false;
   if (post.password) {
     const token = parseCookies(request)[CONFIG.POST_PWD_COOKIE];
     const grant = await db.getPostAccess(token);
-    if (grant && grant.cid === post.cid) {
-      unlockedByCookie = true;
-    } else {
-      return renderProtected(ctx, post);
-    }
+    if (!grant || grant.cid !== post.cid) return renderProtected(ctx, post);
   }
   ctx.post = post;
   ctx.isPost = post.type === 'post';
@@ -243,12 +238,9 @@ async function renderSingle(ctx, post) {
 
   // 插件钩子：内容渲染前
   post.text = await runHooks('renderContent', post.text, { post, ctx });
-  // 公开文章可以走 CDN 缓存；管理员预览的隐藏文章、以及用 cookie 解锁的密码文章不行——
-  // 否则这份响应会被边缘节点缓存下来，原样发给所有人。
-  const cacheable = !ctx.postPreview && !unlockedByCookie;
-  return html(await theme.renderPost(ctx), {
-    'Cache-Control': cacheable ? 'public, max-age=60, stale-while-revalidate=300' : 'no-store',
-  });
+  // 管理员预览的隐藏文章、用 cookie 解锁的密码文章都走这里，
+  // 所以不能缓存——html() 默认已给 no-store，这里不再单独设头。
+  return html(await theme.renderPost(ctx));
 }
 
 /**
@@ -297,7 +289,6 @@ function renderProtected(ctx, post, opts = {}) {
     </form>
   </div></div></div>`;
   return html(theme404Layout(ctx, `密码保护 - ${ctx.options.title}`), {
-    'Cache-Control': 'no-store',
     ...(opts.status ? { status: opts.status } : {}),
   });
 }
@@ -338,7 +329,7 @@ async function renderArchive(ctx, { type, slug, page, titleFor, labelFor, baseUr
     archiveLabel: labelFor ? labelFor(meta) : titleFor(meta),
     archiveBaseUrl: baseUrlFor(meta),
   });
-  return html(await theme.renderArchive(ctx), { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' });
+  return html(await theme.renderArchive(ctx));
 }
 
 async function notFound(ctx) {
@@ -353,7 +344,16 @@ function html(body, init = {}) {
   return new Response(body, {
     ...(status ? { status } : {}),
     ...(statusText ? { statusText } : {}),
-    headers: { 'Content-Type': 'text/html; charset=utf-8', ...extra, ...(headers || {}) },
+    // HTML 默认一律不缓存，写在默认位而不是逐个调用点：页面里有浏览数、点赞、
+    // 评论数这类每次请求都在变的内容，缓存下来只会显示陈旧值；
+    // 管理员预览的隐藏文章和用 cookie 解锁的密码文章也走这里，不能让边缘节点存。
+    // 真要缓存某类 HTML，显式传 headers 覆盖即可。
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...extra,
+      ...(headers || {}),
+    },
   });
 }
 

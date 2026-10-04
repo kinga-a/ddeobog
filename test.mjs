@@ -1323,6 +1323,28 @@ await test('密码文章：旧的明文密码仍能解开（存量兼容）', as
 });
 
 
+// ================= 缓存策略：HTML 一律 no-store =================
+await test('缓存策略：公开 HTML 也不缓存（首页/文章/404）', async () => {
+  for (const p of ['/', '/archives/1/', '/not-exist-xyz/']) {
+    const r = await call('GET', p);
+    assert.match(r.headers.get('Cache-Control') || '', /no-store/, `${p} 应为 no-store`);
+  }
+});
+
+await test('缓存策略：不再出现 60s 的 public 缓存头', async () => {
+  // 这条是被显式否掉的方案：修好 html() 之后若还留着 public，
+  // 页面里的浏览数/点赞/评论数会显示陈旧值。
+  for (const p of ['/', '/archives/1/']) {
+    const cc = (await call('GET', p)).headers.get('Cache-Control') || '';
+    assert.ok(!cc.includes('public'), `${p} 不应声明 public 缓存，实际: ${cc}`);
+  }
+});
+
+await test('缓存策略：RSS 保持原有缓存（XML 不在「HTML 一律不缓存」内）', async () => {
+  const r = await call('GET', '/feed/');
+  assert.match(r.headers.get('Cache-Control') || '', /public/, 'feed 仍可缓存');
+});
+
 // ================= 汇总 =================
 console.log('\n========== 测试结果 ==========');
 for (const r of results) console.log(r);
