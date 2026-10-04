@@ -1358,6 +1358,56 @@ await test('密码文章：旧的明文密码仍能解开（存量兼容）', as
 });
 
 
+// ================= 后台 Markdown 工具条 =================
+await test('工具条：撰写页渲染出工具条容器和全部动作按钮', async () => {
+  await loginAdmin();
+  const html = await call('GET', '/admin/post').then((r) => r.text());
+  assert.ok(html.includes('id="joe-md-bar"'), '工具条容器应存在');
+  assert.ok(html.includes('class="md-bar__sep"'), '应有分组分隔线');
+  assert.ok(html.includes('role="toolbar"'), '应有 toolbar 语义');
+  // data-md 的取值要和 joe.admin-md.js 里的 ACTS 对得上
+  const acts = [...html.matchAll(/data-md="([a-z0-9]+)"/g)].map((m) => m[1]);
+  for (const a of ['h1', 'h2', 'h3', 'bold', 'italic', 'strike', 'code', 'quote',
+    'codeblock', 'ul', 'ol', 'hr', 'link', 'image', 'table', 'more', 'undo', 'redo']) {
+    assert.ok(acts.includes(a), `缺少按钮 ${a}`);
+  }
+});
+
+await test('工具条：按钮与输入框配对，且引入行为脚本', async () => {
+  await loginAdmin();
+  const html = await call('GET', '/admin/post').then((r) => r.text());
+  assert.ok(html.includes('id="joe-md-text"'), 'textarea 应有约定的 id');
+  assert.ok(html.includes('name="text"'), 'textarea 仍须保留原 name，否则保存会丢正文');
+  assert.ok(html.includes('joe.admin-md.min.js'), '应引入工具条行为脚本');
+});
+
+await test('工具条：不提供渲染器不支持的语法按钮', async () => {
+  await loginAdmin();
+  const html = await call('GET', '/admin/post').then((r) => r.text());
+  // markdown.js 不认任务列表，给了按钮用户只会得到字面量 "[ ]"
+  assert.ok(!/data-md="task"/.test(html), '不应有任务列表按钮');
+  const acts = [...html.matchAll(/data-md="([a-z0-9]+)"/g)].map((m) => m[1]);
+  const dup = acts.filter((a, i) => acts.indexOf(a) !== i);
+  assert.equal(dup.length, 0, `动作不应重复: ${dup.join(',')}`);
+});
+
+await test('工具条：页面编辑器同样带工具条', async () => {
+  await loginAdmin();
+  const html = await call('GET', '/admin/page').then((r) => r.text());
+  assert.ok(html.includes('id="joe-md-bar"'), '页面编辑器也应可用');
+});
+
+await test('工具条：按钮均为 type=button，不会误触发表单提交', async () => {
+  await loginAdmin();
+  const html = await call('GET', '/admin/post').then((r) => r.text());
+  const btns = [...html.matchAll(/<button[^>]*data-md="[^"]*"[^>]*>/g)].map((m) => m[0]);
+  assert.equal(btns.length, 18, `应为 18 个按钮，实际 ${btns.length}`);
+  for (const b of btns) {
+    assert.ok(b.includes('type="button"'), `按钮缺少 type=button: ${b}`);
+  }
+});
+
+
 // ================= 缓存策略：HTML 一律 no-store =================
 await test('缓存策略：公开 HTML 也不缓存（首页/文章/404）', async () => {
   for (const p of ['/', '/archives/1/', '/not-exist-xyz/']) {

@@ -379,6 +379,52 @@ async function pagesList(ctx) {
   return html(adminLayout(ctx, { title: '管理页面', active: 'pages', body }));
 }
 
+/**
+ * Markdown 工具条按钮表。data-md 的取值必须和
+ * usr/themes/joe/assets/js/joe.admin-md.js 里的 ACTS 一一对应。
+ *
+ * 按钮由服务端渲染而不是前端拼，测试才能对着 HTML 断言具体动作。
+ * 能放哪些动作以 src/render/markdown.js 实际支持什么为准：那里不支持的
+ * 语法不放按钮，否则用户会得到一段原样显示的字符（比如任务列表
+ * `- [ ]` 会渲染成 `<li>[ ] xxx</li>`）。'|' 是分组分隔线。
+ */
+const MD_ACTIONS = [
+  ['h1', 'H1', '', '一级标题'],
+  ['h2', 'H2', '', '二级标题'],
+  ['h3', 'H3', '', '三级标题'],
+  '|',
+  ['bold', '', 'fa-bold', '加粗 · Ctrl+B'],
+  ['italic', '', 'fa-italic', '斜体 · Ctrl+I'],
+  ['strike', '', 'fa-strikethrough', '删除线'],
+  ['code', '', 'fa-code', '行内代码'],
+  '|',
+  ['quote', '', 'fa-quote-left', '引用'],
+  ['codeblock', '', 'fa-file-code-o', '代码块'],
+  ['ul', '', 'fa-list-ul', '无序列表'],
+  ['ol', '', 'fa-list-ol', '有序列表'],
+  ['hr', '', 'fa-minus', '分隔线'],
+  '|',
+  ['link', '', 'fa-link', '链接 · Ctrl+K'],
+  ['image', '', 'fa-picture-o', '图片'],
+  ['table', '', 'fa-table', '表格'],
+  ['more', '', 'fa-scissors', '插入摘要分隔 <!--more-->'],
+  '|',
+  ['undo', '', 'fa-undo', '撤销 · Ctrl+Z'],
+  ['redo', '', 'fa-repeat', '重做 · Ctrl+Shift+Z'],
+];
+
+const mdToolbar = () => {
+  const inner = MD_ACTIONS.map((row) => {
+    if (row === '|') return '<span class="md-bar__sep" aria-hidden="true"></span>';
+    const [act, label, icon, title] = row;
+    const face = icon
+      ? `<i class="fa ${icon}" aria-hidden="true"></i>`
+      : `<span>${esc(label)}</span>`;
+    return `<button type="button" class="md-bar__btn" data-md="${act}" title="${esc(title)}" aria-label="${esc(title)}">${face}</button>`;
+  }).join('');
+  return `<div class="md-bar" id="joe-md-bar" role="toolbar" aria-label="Markdown 快捷插入">${inner}<span class="md-bar__hint">支持 Markdown</span></div>`;
+};
+
 async function postEditor(ctx, kind) {
   const { db, url, user } = ctx;
   const cid = parseInt(url.searchParams.get('cid') || '0', 10);
@@ -410,7 +456,8 @@ async function postEditor(ctx, kind) {
       ? `<div class="item"><label>缩略名（URL 路径）</label><input type="text" name="slug" value="${esc(post?.slug || '')}" placeholder="about" pattern="[a-zA-Z0-9_-]+"><div class="hint">访问路径 /缩略名/，留空自动生成</div></div>`
       : ''}
     <div class="item"><label>内容（支持 Markdown，<!--more--> 之前为摘要）</label>
-      <textarea name="text" style="min-height:320px;font-family:Consolas,monospace">${esc(post?.text || '')}</textarea></div>
+      ${mdToolbar()}
+      <textarea name="text" id="joe-md-text" class="md-textarea" style="min-height:320px">${esc(post?.text || '')}</textarea></div>
     <div class="row">
       <div class="item"><label>状态</label>
         <select name="status">
@@ -437,7 +484,8 @@ async function postEditor(ctx, kind) {
     <button class="btn primary" type="submit">${isNew ? '发布' : '保存修改'}</button>
     <a class="btn" href="/admin/${isPage ? 'pages' : 'posts'}">返回列表</a>
   </form>
-  </div>`;
+  </div>
+  <script src="/usr/themes/joe/assets/js/joe.admin-md.min.js" defer></script>`;
   return html(adminLayout(ctx, { title: isNew ? '撰写' : '编辑', active: isPage ? 'page' : 'post', body }));
 }
 
