@@ -614,16 +614,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* 座右铭 */
   {
+    const DEFAULT_MOTTO = "有钱终成眷属，没钱亲眼目睹";
     let motto = Joe.MOTTO;
-    if (!motto) motto = "有钱终成眷属，没钱亲眼目睹";
+    if (!motto) motto = DEFAULT_MOTTO;
+    // 接口挂掉/超时/返回空时退回默认文案，否则侧栏那块会空着，像渲染坏了。
+    // 上面那句 if (!motto) 只在格言未设置时兜底，接口失败它管不着。
+    const paint = (text) => {
+      const t = String(text == null ? "" : text).trim();
+      $(".joe_motto").html(t || DEFAULT_MOTTO);
+    };
     if (motto.includes("http")) {
       $.ajax({
         url: motto,
         dataType: "text",
-        success: (res) => $(".joe_motto").html(res),
+        success: paint,
+        error: () => paint(),
       });
     } else {
-      $(".joe_motto").html(motto);
+      paint(motto);
     }
   }
 
