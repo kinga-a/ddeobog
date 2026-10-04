@@ -150,6 +150,14 @@ export function renderMarkdown(src) {
       continue;
     }
 
+    // 同一排多张图（一行里只有图片、至少两张）。必须排在单图分支之前。
+    const gallery = renderGallery(trimmed);
+    if (gallery) {
+      out.push(gallery);
+      i++;
+      continue;
+    }
+
     // 图片独占一行（Joe 风格大图）
     const imgOnly = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
     if (imgOnly) {
@@ -215,6 +223,29 @@ function isVideoUrl(url) {
   // 先剥掉 ?query 与 #hash 再看扩展名，否则签名链接（a.mp4?sign=xx&t=yy）
   // 会被判成非视频，而这类链接恰恰最常见。
   return /\.(mp4|webm|ogv|ogg|mov|m4v)$/i.test(String(url).split(/[?#]/)[0]);
+}
+
+/**
+ * 一行里只有图片、且至少两张时，并排展示。
+ *
+ * 为什么必须单独处理：正文里不带 class 的 <img> 会命中主题的
+ * `.joe_detail__article img:not([class]){display:block}`，两张图只能上下堆叠。
+ * 所以这里给每张图带上 class 跳开那条规则，外层再套一层 flex。
+ *
+ * 只在「整行都是图片」时才并排；图旁边有文字就仍走普通段落，免得
+ * 「说明文字 ![图]」这种写法被误判成图集。
+ */
+function renderGallery(line) {
+  if (!/^(?:!\[[^\]]*\]\([^)]+\)\s*){2,}$/.test(line)) return null;
+  const imgs = line.match(/!\[([^\]]*)\]\(([^)]+)\)/g).map((tag) => {
+    const p = tag.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    // 第二个分组可能带 "title"，与单图分支一致取空白前的地址
+    return (
+      `<img src="${escapeHtml(p[2].split(/\s+/)[0])}" alt="${escapeHtml(p[1])}" ` +
+      `class="joe_detail__article-gallery__item" loading="lazy" />`
+    );
+  });
+  return `<div class="joe_detail__article-gallery">${imgs.join('')}</div>`;
 }
 
 /**

@@ -7,3 +7,10 @@
 .joe_detail__article-media video{max-width:100%;height:auto;border-radius:4px;background:#000}
 .joe_detail__article-media figcaption{margin-top:8px;font-size:13px;color:var(--routine);opacity:.75}
 @media (max-width:768px){.joe_detail__article-media video{width:100%}}
+
+/* 一行多图的并排容器。子项必须带 class，否则会命中
+   .joe_detail__article img:not([class]){display:block} 被压成上下堆叠。 */
+.joe_detail__article-gallery{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+.joe_detail__article-gallery__item{flex:1 1 0;min-width:0;max-width:100%;height:auto;display:block;border-radius:var(--radius-inner);transition:transform .35s}
+.joe_detail__article-gallery__item:hover{transform:translateY(-3px)}
+@media (max-width:560px){.joe_detail__article-gallery{flex-direction:column}}

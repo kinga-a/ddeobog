@@ -184,3 +184,60 @@ test('缺 src 或 src 为空的 {dplayer} 原样保留', () => {
     assert.match(html, /dplayer/);
   }
 });
+
+/* ---------- 同一排多张图 ---------- */
+
+const two = '![左](https://x.cn/a.png) ![右](https://x.cn/b.png)';
+
+test('一行两张图并排输出 gallery 容器', () => {
+  const html = renderMarkdown(two);
+  assert.match(html, /<div class="joe_detail__article-gallery">/);
+  assert.equal((html.match(/<img /g) || []).length, 2);
+  assert.doesNotMatch(html, /<p>/, '整行都是图时不该再套 <p>');
+});
+
+test('gallery 子项必须带 class，否则会被 display:block 压回堆叠', () => {
+  // 这是本功能的命门：主题有 .joe_detail__article img:not([class]){display:block}
+  const html = renderMarkdown(two);
+  const imgs = html.match(/<img [^>]*>/g) || [];
+  assert.equal(imgs.length, 2);
+  for (const tag of imgs) {
+    assert.match(tag, /class="joe_detail__article-gallery__item"/, `${tag} 缺 class`);
+  }
+});
+
+test('三张图并排', () => {
+  const html = renderMarkdown('![1](https://x.cn/1.png) ![2](https://x.cn/2.png) ![3](https://x.cn/3.png)');
+  assert.equal((html.match(/<img /g) || []).length, 3);
+  assert.match(html, /joe_detail__article-gallery"/);
+});
+
+test('单图仍走原单图分支，行为不变', () => {
+  const html = renderMarkdown('![单独](https://x.cn/a.png)');
+  assert.match(html, /class="joe_detail__article-image"/);
+  assert.doesNotMatch(html, /article-gallery/);
+});
+
+test('图片分两行时各自仍是单图，不并排', () => {
+  const html = renderMarkdown('![左](https://x.cn/a.png)\n![右](https://x.cn/b.png)');
+  assert.doesNotMatch(html, /article-gallery/);
+  assert.equal((html.match(/joe_detail__article-image/g) || []).length, 2);
+});
+
+test('图片旁边有文字时不并排，仍是段落', () => {
+  const html = renderMarkdown(`说明：${two}`);
+  assert.doesNotMatch(html, /article-gallery/);
+  assert.match(html, /<p>说明：/);
+});
+
+test('gallery 里的 title 被剥掉，只取地址', () => {
+  const html = renderMarkdown('![左](https://x.cn/a.png "标题A") ![右](https://x.cn/b.png)');
+  assert.match(html, /src="https:\/\/x\.cn\/a\.png"/);
+  assert.doesNotMatch(html, /标题A/);
+});
+
+test('gallery 里的 alt 尖括号被转义', () => {
+  const html = renderMarkdown('![<b>x](https://x.cn/a.png) ![右](https://x.cn/b.png)');
+  assert.doesNotMatch(html, /alt="<b>/);
+  assert.match(html, /alt="&lt;b&gt;x"/);
+});
