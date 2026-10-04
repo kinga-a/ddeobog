@@ -555,6 +555,7 @@ export async function contentMetas(db, content) {
 /* ==================== 页面渲染 ==================== */
 
 /** 首页 */
+// cache-bust comment for deployment
 export async function renderIndex(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page } = ctx;
