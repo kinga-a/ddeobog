@@ -188,6 +188,28 @@ function slugId(text) {
   );
 }
 
+/**
+ * Typecho DPlayer 插件的短代码。
+ *
+ * 文章 10 用的是 `{dplayer src="…"}`，这是从原 Typecho 站搬过来的内容，
+ * 而本项目的渲染器从来没有解析过短代码，所以它以字面量形式被转义后直接输出到
+ * 页面上（`{dplayer src=&quot;…&quot;/}`）——视频当然出不来。
+ *
+ * 只认 dplayer 这一个：全站只有文章 10 用到，且主题自带的 joe-dplayer 组件是拿
+ * `player` 基础地址拼 iframe 的，没有该属性会拼出 `undefinedhttps://…`，用不了。
+ * 所以直接渲染原生 <video>，不引入任何播放器依赖。
+ */
+const DPLAYER_RE = /\{dplayer\b([^}]*)\}/g;
+
+/** 解析 `k="v"` / `k='v'` 形式的属性串。 */
+function shortcodeAttrs(attrs) {
+  const map = {};
+  const re = /([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m;
+  while ((m = re.exec(attrs))) map[m[1].toLowerCase()] = m[2] ?? m[3];
+  return map;
+}
+
 // 判断是否为可直接播放的视频地址。只认扩展名，不发任何探测请求。
 function isVideoUrl(url) {
   // 先剥掉 ?query 与 #hash 再看扩展名，否则签名链接（a.mp4?sign=xx&t=yy）
@@ -217,9 +239,25 @@ function renderVideo(url, alt) {
 
 /** 行内格式 */
 export function inline(s) {
-  let t = escapeHtml(s);
-  // 行内代码（优先处理）
-  t = t.replace(/`([^`]+)`/g, (_, code) => `\u0001${code}\u0002`);
+  // 顺序要紧：先摘行内代码，再摘 dplayer 短代码，最后才 escapeHtml。
+  // 而且行内代码必须存成「只剩数字下标」的占位符，不能把原文包在 \u0001…\u0002 里——
+  // 那样 DPLAYER_RE 照样能匹配到里面的 {dplayer}，最后就会把播放器塞进 <code>。
+  // 转义后属性里的引号会变成 &quot;，所以短代码必须在转义前摘出来；
+  // 而生成的 <video> 又绝不能再被转义一次。
+  const codes = [];
+  const media = [];
+  let pre = String(s)
+    // 行内代码（优先处理）
+    .replace(/`([^`]+)`/g, (_, code) => `\u0001${codes.push(code) - 1}\u0001`)
+    .replace(DPLAYER_RE, (whole, attrs) => {
+      const a = shortcodeAttrs(attrs);
+      const src = (a.src || '').trim();
+      // 只放行 http(s)。像 javascript: 这类原样保留，不产出任何标签。
+      if (!/^https?:\/\//i.test(src)) return whole;
+      media.push(renderVideo(src, a.title || ''));
+      return `\u0003${media.length - 1}\u0003`;
+    });
+  let t = escapeHtml(pre);
   // 图片
   t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (_, alt, src) =>
     `<img src="${src}" alt="${alt}" loading="lazy" />`
@@ -238,6 +276,9 @@ export function inline(s) {
   t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
   t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>');
   // 行内代码还原
-  t = t.replace(/\u0001([^\u0002]*)\u0002/g, '<code>$1</code>');
+  t = t.replace(/\u0001(\d+)\u0001/g, (_, idx) => `<code>${escapeHtml(codes[Number(idx)] ?? '')}</code>`);
+  // 短代码还原。必须排在最后：提前塞回去的话，src 会被上面的自动链接规则
+  // 咬走，变成播放器里套一个超链接。
+  t = t.replace(/\u0003(\d+)\u0003/g, (_, idx) => media[Number(idx)] ?? '');
   return t;
 }
