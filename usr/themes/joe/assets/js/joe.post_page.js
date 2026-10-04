@@ -189,16 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 	}
 
-	/* 分享 */
-	{
-		if ($('.joe_detail__operate-share').length) {
-			$('.joe_detail__operate-share > svg').on('click', e => {
-				e.stopPropagation();
-				$('.joe_detail__operate-share').toggleClass('active');
-			});
-			$(document).on('click', () => $('.joe_detail__operate-share').removeClass('active'));
-		}
-	}
+	/* 分享：切换逻辑只保留 joe.global.js 里的那一份。
+	   这里原本还有一份同样绑在 svg 上的 click 处理器，两者同时生效会各
+	   toggle 一次 —— active 刚加上就被对方翻回去，点多少次面板都不展开。 */
 });
 
 /* 写在load事件里，为了解决图片未加载完成，滚动距离获取会不准确的问题 */

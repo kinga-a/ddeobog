@@ -429,6 +429,22 @@ await test('主题：.min.js 必须由同名 .js 生成（页面加载的是 min
   assert.ok(/classList\.toggle\("active"\)/.test(min), 'joe.global.min.js 里没有展开/收起逻辑');
 });
 
+// 回归点：分享面板的 active 切换曾在 joe.global.js 和 joe.post_page.js 里各实现一份。
+// 两个处理器同时绑在同一个 svg 上，点击时各 toggle 一次 .active——刚加上就被对方翻回去，
+// 点多少次面板都不展开。切换逻辑必须只存在于一个文件里。
+await test('分享面板的 active 切换只有一处实现', async () => {
+  const dir = 'usr/themes/joe/assets/js/';
+  const impl = [];
+  for (const f of ['joe.global.js', 'joe.post_page.js']) {
+    const raw = await readFile(`${dir}${f}`, 'utf8');
+    const mentionsShare = raw.includes('joe_detail__operate-share');
+    const toggles = /(classList\.toggle\(\s*["']active["']\s*\)|\.toggleClass\(\s*["']active["']\s*\))/;
+    if (mentionsShare && toggles.test(raw)) impl.push(f);
+  }
+  assert.deepEqual(impl, ['joe.global.js'],
+    `分享面板的 active 切换必须且只能在 joe.global.js 里实现，实际出现在：${impl.join(', ')}`);
+});
+
 await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', async () => {
   const html = await (await call('GET', '/')).text();
   const seg = html.slice(html.indexOf('<div class="joe_action">'));
