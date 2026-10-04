@@ -117,6 +117,7 @@ function scripts(ctx, extra = []) {
     a('assets/js/joe.global.min.js'),
     a('assets/js/joe.short.min.js'),
     a('assets/js/joe.search.js'),
+    a('assets/lib/tagcanvas@latest/tagcanvas.min.js'),
     ...extra,
   ];
   return list.map((s) => `<script src="${s}"></script>`).join('\n');
@@ -385,6 +386,24 @@ async function asideBlock(ctx) {
         </ul>
       </div>
     </section>`;
+        html += `<!-- 3DTAG DEBUG --><script src="https://cdn.jsdelivr.net/npm/tagcanvas@latest/tagcanvas.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    try {
+        TagCanvas.Start('tag', 'list', {
+            textColour: '#fff',
+            outlineThickness: 1,
+            outlineColour: '#f00',
+            reverse: true,
+            depth: 0.8,
+            maxSpeed: 0.05,
+            weight: true
+        });
+    } catch(e) {
+        // TagCanvas failed to load
+        document.getElementById('tag').innerHTML = 'TagCanvas requires canvas support';
+    }
+});</script>`;
   }
 
   if (options.joe.JAside_Flatterer === 'on') {
@@ -465,6 +484,25 @@ async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = ''
     ${await headerBlock(ctx)}
     ${ctx.contentBody || ''}
     ${footerBlock(ctx)}
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        if (document.getElementById('tag') && document.getElementById('list')) {
+          try {
+            TagCanvas.Start('tag', 'list', {
+              textColour: '#fff',
+              outlineThickness: 1,
+              outlineColour: '#f00',
+              reverse: true,
+              depth: 0.8,
+              maxSpeed: 0.05,
+              weight: true
+            });
+          } catch(e) {
+            document.getElementById('tag').innerHTML = 'TagCanvas requires canvas support';
+          }
+        }
+      });
+    </script>
   </div>
 </body>
 </html>`;

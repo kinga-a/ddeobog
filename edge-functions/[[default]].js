@@ -29,7 +29,7 @@ ${await pe(p)}
 <style>
   body { font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '\u5FAE\u8F6F\u96C5\u9ED1', Arial, sans-serif; }
 </style>`}function cssLinks(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/css/joe.mode.min.css"),a("assets/css/joe.normalize.min.css"),a("assets/css/joe.global.min.css"),a("assets/css/joe.responsive.min.css"),a("assets/lib/qmsg/qmsg.min.css"),a("assets/lib/fancybox@3.5.7/fancybox.min.css"),a("assets/lib/animate.css@4.1.1/animate.min.css"),a("assets/lib/font-awesome@4.7.0/font-awesome.min.css"),a("assets/lib/APlayer@1.10.1/APlayer.min.css"),a("assets/css/joe.layout.css"),...extra].map(h=>`<link href="${h}" rel="stylesheet" />`).join(`
-`)}function scripts(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/lib/jquery@3.6.1/jquery.min.js"),a("assets/lib/scroll/scroll.min.js"),a("assets/lib/lazysizes@5.3.2/lazysizes.min.js"),a("assets/lib/APlayer@1.10.1/APlayer.min.js"),a("assets/lib/sketchpad/sketchpad.min.js"),a("assets/lib/fancybox@3.5.7/fancybox.min.js"),a("assets/lib/extend/extend.min.js"),a("assets/lib/qmsg/qmsg.min.js"),a("assets/js/joe.global.min.js"),a("assets/js/joe.short.min.js"),a("assets/js/joe.search.js"),...extra].map(s=>`<script src="${s}"><\/script>`).join(`
+`)}function scripts(ctx,extra=[]){let a=__name(p=>assetsUrl(ctx.options,p),"a");return[a("assets/lib/jquery@3.6.1/jquery.min.js"),a("assets/lib/scroll/scroll.min.js"),a("assets/lib/lazysizes@5.3.2/lazysizes.min.js"),a("assets/lib/APlayer@1.10.1/APlayer.min.js"),a("assets/lib/sketchpad/sketchpad.min.js"),a("assets/lib/fancybox@3.5.7/fancybox.min.js"),a("assets/lib/extend/extend.min.js"),a("assets/lib/qmsg/qmsg.min.js"),a("assets/js/joe.global.min.js"),a("assets/js/joe.short.min.js"),a("assets/js/joe.search.js"),a("assets/lib/tagcanvas@latest/tagcanvas.min.js"),...extra].map(s=>`<script src="${s}"><\/script>`).join(`
 `)}async function slideoutBlock(ctx){let{options,pages,path,db}=ctx,isIndex=path==="/",owner=(await db.listUsers()).find(u=>u.group==="administrator")||{},nick=options.joe.JAside_Author_Nick||owner.screenName||"\u535A\u4E3B",avatarSource=options.joe.JAvatarSource||"weavatar",avatar=options.joe.JAside_Author_Avatar||avatarUrl(owner.mail,100,avatarSource),link=options.joe.JAside_Author_Link||"#",[postsIdx,commentsIdx,catIdx,tagIdx]=await Promise.all([db.listContents({type:"post",pageSize:1}),db.listAllComments({status:"approved",pageSize:1}),db.listMetas("category"),db.listMetas("tag")]),metaLinks=__name((list,prefix)=>list.map(m=>({name:m.name,permalink:`${prefix}/${encodeURIComponent(m.slug)}/`})),"metaLinks"),categories=metaLinks(catIdx,"/category"),tags=metaLinks(tagIdx,"/tag"),icon=__name((svg,size)=>`<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${svg}</svg>`,"icon"),subLink=__name(it=>`<li><a class="link${it.permalink===path?" current":""}" href="${it.permalink}" title="${escapeHtml(it.name||it.title)}">${escapeHtml(it.name||it.title)}</a></li>`,"subLink"),group=__name((label,items)=>items.length?`<li>
       <a class="link panel" href="#" rel="nofollow"><span>${label}</span>${icon(SLIDEOUT_ICONS.arrow,13)}</a>
       <ul class="slides panel-body">${items.map(subLink).join("")}</ul>
@@ -142,7 +142,24 @@ ${await pe(p)}
           ${tags.map(t=>`<li data-url="/tag/${encodeURIComponent(t.slug)}/" data-label="${escapeHtml(t.name)}"></li>`).join("")}
         </ul>
       </div>
-    </section>`),options.joe.JAside_Flatterer==="on"&&(html3+=`<section class="joe_aside__item flatterer">
+    </section>`,html3+=`<!-- 3DTAG DEBUG --><script src="https://cdn.jsdelivr.net/npm/tagcanvas@latest/tagcanvas.min.js"><\/script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    try {
+        TagCanvas.Start('tag', 'list', {
+            textColour: '#fff',
+            outlineThickness: 1,
+            outlineColour: '#f00',
+            reverse: true,
+            depth: 0.8,
+            maxSpeed: 0.05,
+            weight: true
+        });
+    } catch(e) {
+        // TagCanvas failed to load
+        document.getElementById('tag').innerHTML = 'TagCanvas requires canvas support';
+    }
+});<\/script>`),options.joe.JAside_Flatterer==="on"&&(html3+=`<section class="joe_aside__item flatterer">
       <div class="joe_aside__item-title"><span class="text">\u8214\u72D7\u65E5\u8BB0</span><span class="line"></span></div>
       <div class="joe_aside__item-contain"><div class="content"></div><div class="change">\u2764\uFE0F</div></div>
     </section>`,html3+="<style>.joe-aside__item.flatterer .change{display:flex;justify-content:center;align-items:center;font-size:20px;color:#e74c3c;cursor:pointer;transition:transform 0.2s;}.joe-aside__item.flatterer .change:hover{transform:scale(1.2);}</style>"),html3+="</aside>",html3}function commentLink(db,c){return`/archives/${c.cid}/#comment-${c.coid}`}function footerBlock(ctx){let{options}=ctx;return`<footer class="joe_footer">
@@ -198,6 +215,25 @@ ${await pe(p)}
     ${await headerBlock(ctx)}
     ${ctx.contentBody||""}
     ${footerBlock(ctx)}
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        if (document.getElementById('tag') && document.getElementById('list')) {
+          try {
+            TagCanvas.Start('tag', 'list', {
+              textColour: '#fff',
+              outlineThickness: 1,
+              outlineColour: '#f00',
+              reverse: true,
+              depth: 0.8,
+              maxSpeed: 0.05,
+              weight: true
+            });
+          } catch(e) {
+            document.getElementById('tag').innerHTML = 'TagCanvas requires canvas support';
+          }
+        }
+      });
+    <\/script>
   </div>
 </body>
 </html>`}function operateBlock(ctx,post,tags){let enc=encodeURIComponent,url=`${ctx.siteUrl}${permalink(post)}`,title=post.title||ctx.options.title,thumb=thumbnail(post,assetsUrl(ctx.options,"assets")),pic=/^https?:\/\//.test(thumb)?enc(thumb):"",tagsHtml=tags.length?tags.map(t=>`<a href="${t.permalink}" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</a>`).join(""):'<a href="javascript: void(0);">\u6682\u65E0\u6807\u7B7E</a>',item=__name((href,label,svg)=>`<a href="${href}" target="_blank" rel="noopener noreferrer" title="${label}">${svg}</a>`,"item");return`<div class="joe_detail__operate">
