@@ -290,3 +290,27 @@ test('未知动作被忽略，不破坏内容', () => {
   h.click('nosuch');
   assert.equal(h.ta.value, '保持');
 });
+
+
+/* ---------- 样式：正文框不该继承单行输入框的宽度上限 ---------- */
+
+const CSS = fs
+  .readFileSync(new URL('./usr/themes/joe/assets/css/admin.css', import.meta.url), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, ''); // 注释里出现关键字会干扰定位，先剥掉
+
+test('正文 textarea 不受单行输入框 520px 上限的影响', () => {
+  // 520px 那条规则的选择器列表里带着 textarea，全靠后面这条同级规则翻盘，
+  // 所以源码顺序本身就是正确性的一部分——调换顺序会静默失效。
+  const capAt = CSS.indexOf('max-width: 520px');
+  assert.ok(capAt > 0, '520px 上限应仍在（标题、标签这些单行框还要用）');
+  const fixAt = CSS.search(/textarea\s*\{[^}]*max-width:\s*none/);
+  assert.ok(fixAt > 0, '缺少让 textarea 解除上限的规则');
+  assert.ok(fixAt > capAt, `解锁规则必须排在 520px 之后（现在 ${fixAt} vs ${capAt}）`);
+});
+
+test('解锁 textarea 的规则不在媒体查询里，桌面端同样生效', () => {
+  const idx = CSS.search(/textarea\s*\{[^}]*max-width:\s*none/);
+  const before = CSS.slice(0, idx);
+  const depth = (before.match(/\{/g) || []).length - (before.match(/\}/g) || []).length;
+  assert.equal(depth, 0, '若嵌在 @media 内，桌面端仍会被 520px 卡住');
+});

@@ -383,7 +383,10 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-textarea { min-height: 120px; resize: vertical; }
+/* 正文编辑器用满内容区。上面那条 520px 上限是给标题/标签这类单行框的，
+   多行 textarea 套上它会白白浪费一半屏幕，表格和代码根本看不全。
+   写成 max-width 而不是固定宽度，窄屏下仍由 .main 的 padding 决定宽度。 */
+textarea { min-height: 120px; resize: vertical; max-width: none; }
 
 select {
   appearance: none;
