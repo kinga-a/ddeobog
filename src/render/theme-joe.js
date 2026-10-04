@@ -700,6 +700,7 @@ export async function renderPost(ctx) {
   <div class="joe_container joe_body">
     <div class="joe_main joe_post">
       <div class="joe_detail" data-cid="${post.cid}">
+        ${ctx.postPreview ? '<div class="joe_detail__preview-banner">管理员预览：这篇文章当前是「隐藏」状态，访客访问时会得到 404。</div>' : ''}
         ${catHtml}
         <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
         <div class="joe_detail__count">

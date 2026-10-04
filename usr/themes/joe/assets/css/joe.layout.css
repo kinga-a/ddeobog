@@ -240,3 +240,8 @@
   transition: color 0.25s;
 }
 .joe_detail__related-content .item:hover .title { color: var(--theme); }
+
+/* 管理员预览提示（隐藏文章） */
+.joe_detail__preview-banner{margin-bottom:15px;padding:10px 15px;border-radius:var(--radius-inner);border-left:4px solid #faa90e;background:rgba(250,169,14,.12);color:var(--routine);font-size:14px;line-height:1.6}
+/* 密码保护：密码错误提示 */
+.joe_detail__article-protected-error{margin-bottom:10px;color:#fe2d46;font-size:14px}

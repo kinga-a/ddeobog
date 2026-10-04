@@ -559,6 +559,26 @@ export class Database {
   async deleteSession(token) {
     await this.kv.delete(`sess:${token}`);
   }
+
+  /**
+   * 密码文章解锁凭据 —— 形如管理端会话（pacc:<token> → { cid, exp }）。
+   * 密码本身只在表单 POST 的请求体里出现一次，通过后换成 HttpOnly cookie，
+   * 不会像 ?password= 那样进 URL、历史记录和访问日志。
+   */
+  async grantPostAccess(cid, token, exp) {
+    await this.kv.putJSON(`pacc:${token}`, { cid, exp });
+  }
+
+  async getPostAccess(token) {
+    if (!token) return null;
+    const a = await this.kv.getJSON(`pacc:${token}`);
+    if (!a) return null;
+    if (a.exp < Date.now()) {
+      await this.kv.delete(`pacc:${token}`);
+      return null;
+    }
+    return a;
+  }
 }
 
 /** 工厂：从 EdgeOne 请求上下文创建 Database */

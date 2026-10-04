@@ -1178,6 +1178,150 @@ await test('登出后后台不可访问', async () => {
   assert.equal(res.status, 302);
 });
 
+// ================= 隐藏文章：管理员预览 =================
+const _kv = globalThis.BLOG_KV;
+const kvGet = (key) => _kv.get(key, { type: 'json' });
+const kvPut = (key, obj) => _kv.put(key, JSON.stringify(obj));
+
+/** 取当前最大的文章 cid（文章按 post:<cid> 存 KV） */
+async function latestPostCid() {
+  const { keys } = await _kv.list({ prefix: 'post:' });
+  let max = 0;
+  for (const { key } of keys) {
+    const cid = parseInt(key.slice('post:'.length), 10);
+    if (cid > max) max = cid;
+  }
+  return max;
+}
+
+/** 管理员登录（前面已启用 TOTP，必须走两步） */
+async function loginAdmin() {
+  cookie = '';
+  const { totpAt } = await import('./src/auth/totp.js');
+  const user = JSON.parse(_kv.map.get('user:1'));
+  const code = await totpAt(user.totpSecret, Math.floor(Date.now() / 1000 / 30));
+  const step1 = await call('POST', '/admin/login', { form: { name: 'admin', password: 'password123', step: 'password' } });
+  const m = (await step1.text()).match(/name="pending" value="([a-f0-9]+)"/);
+  assert.ok(m, '应返回 pending token');
+  const step2 = await call('POST', '/admin/login', { form: { step: 'totp', pending: m[1], totp: code } });
+  assert.equal(step2.status, 302, '登录成功');
+  assert.ok(cookie.includes('te_sess='));
+}
+
+let hiddenCid = 0;
+await test('隐藏文章：匿名访客访问是 404', async () => {
+  await loginAdmin();
+  await call('POST', '/admin/post', {
+    form: { type: 'post', title: '隐藏文章标题XYZ', text: '机密正文ABC', status: 'hidden' },
+  });
+  hiddenCid = await latestPostCid();
+  assert.ok(hiddenCid > 0, '拿到隐藏文章的 cid');
+
+  await call('GET', '/admin/logout');
+  cookie = '';
+  const page = await call('GET', `/archives/${hiddenCid}/`);
+  assert.equal(page.status, 404, '匿名访客看不到隐藏文章');
+  assert.ok(!(await page.text()).includes('机密正文ABC'));
+});
+
+await test('隐藏文章：已登录管理员可预览，且带预览提示', async () => {
+  await loginAdmin();
+  const page = await call('GET', `/archives/${hiddenCid}/`);
+  const html = await page.text();
+  assert.equal(page.status, 200, '管理员能打开隐藏文章');
+  assert.ok(html.includes('机密正文ABC'), '管理员看得到正文');
+  assert.ok(html.includes('管理员预览'), '页面提示这是隐藏状态');
+});
+
+await test('隐藏文章的预览响应不可被 CDN 缓存', async () => {
+  const page = await call('GET', `/archives/${hiddenCid}/`);
+  assert.match(page.headers.get('Cache-Control') || '', /no-store/);
+});
+
+await test('隐藏文章不在首页列表里', async () => {
+  const html = await call('GET', '/').then((r) => r.text());
+  assert.ok(!html.includes('隐藏文章标题XYZ'), '隐藏文章不进列表');
+});
+
+// ================= 密码保护：POST + cookie + 哈希 =================
+let pwdCid = 0;
+await test('密码文章：输入框是 POST 表单，URL 不再带密码', async () => {
+  await call('POST', '/admin/post', {
+    form: { type: 'post', title: '带密码的文章', text: '密码内正文XYZ', status: 'publish', password: 'hunter2' },
+  });
+  pwdCid = await latestPostCid();
+
+  const page = await call('GET', `/archives/${pwdCid}/`);
+  const html = await page.text();
+  assert.ok(
+    html.includes(`<form class="joe_detail__article-protected" method="post" action="/archives/${pwdCid}/"`),
+    '密码表单是 POST 且指向本文章',
+  );
+  assert.ok(!html.includes('密码内正文XYZ'), '未解锁不返回正文');
+  assert.ok(!html.includes('hunter2'), '页面不泄露密码');
+  assert.ok(!html.includes('password=hunter2'), '密码不出现在链接里');
+});
+
+await test('密码文章：后台存的是哈希，输入框不回显', async () => {
+  const stored = (await kvGet(`post:${pwdCid}`)).password;
+  assert.ok(stored.startsWith('pbkdf2$'), '库里存的是 PBKDF2');
+  assert.ok(!stored.includes('hunter2'), '不含明文');
+  const edit = await call('GET', `/admin/post/edit/${pwdCid}`).then((r) => r.text());
+  assert.ok(!edit.includes('hunter2'), '明文密码不回显');
+  assert.ok(!edit.includes('pbkdf2$'), '哈希也不回显到输入框');
+});
+
+await test('密码文章：错误密码返回 401 且不发放 cookie', async () => {
+  const saved = cookie;
+  const res = await call('POST', `/archives/${pwdCid}/`, { form: { password: 'wrong' } });
+  assert.equal(res.status, 401);
+  assert.ok(!(res.headers.get('Set-Cookie') || '').includes('te_pwd'), '不发凭据');
+  cookie = saved;
+});
+
+await test('密码文章：正确密码下发 HttpOnly cookie 并跳转', async () => {
+  const saved = cookie;
+  const res = await call('POST', `/archives/${pwdCid}/`, { form: { password: 'hunter2' } });
+  assert.equal(res.status, 303, 'POST 后 303 回 GET');
+  const sc = res.headers.get('Set-Cookie') || '';
+  assert.ok(sc.includes('te_pwd='), '下发 te_pwd');
+  assert.ok(sc.includes('HttpOnly'), 'HttpOnly');
+  assert.ok(sc.includes(`Path=/archives/${pwdCid}/`), '路径限定到该文章');
+  assert.equal(res.headers.get('Location'), `/archives/${pwdCid}/`);
+  cookie = sc.split(';')[0];
+});
+
+await test('密码文章：带 cookie 能读到正文，且不被缓存', async () => {
+  const page = await call('GET', `/archives/${pwdCid}/`);
+  const html = await page.text();
+  assert.equal(page.status, 200);
+  assert.ok(html.includes('密码内正文XYZ'), '解锁后能看正文');
+  assert.match(page.headers.get('Cache-Control') || '', /no-store/, '解锁内容不进 CDN 缓存');
+});
+
+await test('密码文章：凭据不能跨文章使用', async () => {
+  // 上一个用例把全局 cookie 换成了 te_pwd（那是刻意验证的点），
+  // 这里要重新登录才能用后台；te_pwd 本身留着，下面单独验它不解锁别的文章。
+  const pwdCookie = cookie;
+  await loginAdmin();
+  await call('POST', '/admin/post', { form: { type: 'post', title: '普通文章', text: '正文', status: 'publish' } });
+  const other = await latestPostCid();
+  cookie = pwdCookie;
+  const page = await call('GET', `/archives/${other}/`);
+  assert.ok(!(await page.text()).includes('密码内正文XYZ'), '别的文章不因这个 cookie 被解锁');
+});
+
+await test('密码文章：旧的明文密码仍能解开（存量兼容）', async () => {
+  await loginAdmin();
+  await call('POST', '/admin/post', { form: { type: 'post', title: '明文密码文章', text: '老正文XYZ', status: 'publish' } });
+  const cid = await latestPostCid();
+  await kvPut(`post:${cid}`, { ...(await kvGet(`post:${cid}`)), password: 'legacy-plain' });
+  const res = await call('POST', `/archives/${cid}/`, { form: { password: 'legacy-plain' } });
+  assert.equal(res.status, 303, '库里存的是明文时也能解锁');
+  const page = await call('GET', `/archives/${cid}/`);
+  assert.ok((await page.text()).includes('老正文XYZ'));
+});
+
 
 // ================= 汇总 =================
 console.log('\n========== 测试结果 ==========');

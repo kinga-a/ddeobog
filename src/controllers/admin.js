@@ -3,7 +3,7 @@
  * 包含：登录（密码 + TOTP 两步验证）、仪表盘、文章/页面管理、
  *       分类/标签、评论管理、附件上传（Blob）、站点与主题设置、安全设置（TOTP）
  */
-import { verifyPassword } from '../auth/password.js';
+import { verifyPassword, hashPassword } from '../auth/password.js';
 import { currentUser, sessionCookie, clearSessionCookie, parseCookies, sameOrigin } from '../auth/session.js';
 import { CONFIG } from '../config.js';
 import { escapeHtml as esc, renderMarkdown, plainExcerpt } from '../render/markdown.js';
@@ -417,7 +417,7 @@ async function postEditor(ctx, kind) {
           <option value="publish" ${post?.status !== 'hidden' ? 'selected' : ''}>公开</option>
           <option value="hidden" ${post?.status === 'hidden' ? 'selected' : ''}>隐藏</option>
         </select></div>
-      ${isPage ? '' : `<div class="item"><label>访问密码（可选）</label><input type="text" name="password" value="${esc(post?.password || '')}" placeholder="留空不加密"></div>`}
+      ${isPage ? '' : `<div class="item"><label>访问密码（可选）</label><input type="password" name="password" autocomplete="new-password" placeholder="${post?.password ? '已设置，留空表示不修改' : '留空表示不加密'}"></div>`}
       <div class="item"><label>允许评论</label>
         <select name="allowComment">
           <option value="1" ${post?.allowComment !== false ? 'selected' : ''}>允许</option>
@@ -470,13 +470,24 @@ async function savePost(ctx) {
     else delete fields[k];
   }
 
+  // 访问密码不落明文。留空 = 不修改（编辑时沿用旧值）；改造前写下的明文，
+  // 在这篇文章下次被保存时自动转成 PBKDF2。
+  const rawPassword = String(form.get('password') || '');
+  let password = '';
+  if (rawPassword) {
+    password = await hashPassword(rawPassword);
+  } else if (cid) {
+    const old = await db.getContent(cid);
+    password = old?.password || '';
+  }
+
   const data = {
     title,
     slug,
     text,
     type,
     status: form.get('status') === 'hidden' ? 'hidden' : 'publish',
-    password: String(form.get('password') || ''),
+    password,
     allowComment: form.get('allowComment') === '1',
     categories,
     tags,

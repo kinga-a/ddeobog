@@ -14,6 +14,8 @@
  *   /action/xxx            扩展 action（插件）
  */
 import { CONFIG } from '../config.js';
+import { currentUser, parseCookies } from '../auth/session.js';
+import { verifyPassword, randomHex } from '../auth/password.js';
 import * as theme from '../render/theme-joe.js';
 import { commentsBlock } from '../render/theme-joe.js';
 import { renderMarkdown, plainExcerpt } from '../render/markdown.js';
@@ -68,14 +70,24 @@ export async function handleFrontend(ctx) {
 }
 
 async function routeInner(ctx) {
-  const { db, path, url } = ctx;
+  const { db, path, url, request } = ctx;
 
   let match;
 
-  // /archives/[cid]/
+  // /archives/[cid]/ —— GET 看文章，POST 提交文章密码
   if ((match = path.match(/^\/archives\/(\d+)\/?$/))) {
-    const post = await db.getContent(parseInt(match[1], 10));
-    if (post && post.type === 'post' && post.status === 'publish') return renderSingle(ctx, post);
+    const cid = parseInt(match[1], 10);
+    if (request.method === 'POST') return handlePostUnlock(ctx, cid);
+
+    const post = await db.getContent(cid);
+    if (post && post.type === 'post') {
+      if (post.status === 'publish') return renderSingle(ctx, post);
+      // 非 publish（hidden）只对已登录管理员开放预览，对外仍是 404。
+      if (await currentUser(db, request)) {
+        ctx.postPreview = true;
+        return renderSingle(ctx, post);
+      }
+    }
     return notFound(ctx);
   }
 
@@ -168,12 +180,29 @@ async function routeInner(ctx) {
   return notFound(ctx);
 }
 
+/**
+ * 校验文章密码。
+ * 新写入的是 PBKDF2；库里可能还留着改造前存下的明文，两种都接受。
+ * 明文的那部分不在这里顺手迁移——那需要改写文章内容、触发钩子，代价不值当，
+ * 等作者下次在后台编辑这篇文章时，后台保存逻辑会自动转成哈希。
+ */
+async function verifyPostPassword(pass, stored) {
+  if (!stored) return false;
+  if (stored.startsWith('pbkdf2$')) return verifyPassword(pass, stored);
+  return pass === stored;
+}
+
 async function renderSingle(ctx, post) {
-  const { db } = ctx;
-  // 密码保护
+  const { db, request } = ctx;
+  // 密码保护。解锁凭据放在 HttpOnly cookie 里，密码本身只出现在 POST 的请求体中，
+  // 不再拼进 URL —— 那样会进浏览器历史、CDN/服务器访问日志和 Referer 头。
+  let unlockedByCookie = false;
   if (post.password) {
-    const pass = ctx.url.searchParams.get('password');
-    if (pass !== post.password) {
+    const token = parseCookies(request)[CONFIG.POST_PWD_COOKIE];
+    const grant = await db.getPostAccess(token);
+    if (grant && grant.cid === post.cid) {
+      unlockedByCookie = true;
+    } else {
       return renderProtected(ctx, post);
     }
   }
@@ -214,20 +243,63 @@ async function renderSingle(ctx, post) {
 
   // 插件钩子：内容渲染前
   post.text = await runHooks('renderContent', post.text, { post, ctx });
-  return html(await theme.renderPost(ctx), { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' });
+  // 公开文章可以走 CDN 缓存；管理员预览的隐藏文章、以及用 cookie 解锁的密码文章不行——
+  // 否则这份响应会被边缘节点缓存下来，原样发给所有人。
+  const cacheable = !ctx.postPreview && !unlockedByCookie;
+  return html(await theme.renderPost(ctx), {
+    'Cache-Control': cacheable ? 'public, max-age=60, stale-while-revalidate=300' : 'no-store',
+  });
 }
 
-function renderProtected(ctx, post) {
+/**
+ * POST /archives/[cid]/ —— 提交文章密码。
+ * 密码只从请求体里读，成功后换成 HttpOnly cookie 再 302 回文章页。
+ */
+async function handlePostUnlock(ctx, cid) {
+  const { db, request } = ctx;
+  const post = await db.getContent(cid);
+  if (!post || post.type !== 'post' || post.status !== 'publish' || !post.password) return notFound(ctx);
+  if (!sameOrigin(request)) return new Response('跨站请求被拒绝', { status: 403, headers: { 'Cache-Control': 'no-store' } });
+
+  let pass = '';
+  try {
+    // 无 Content-Type 时 request.formData() 会同步抛错，包一层
+    pass = String((await request.formData()).get('password') || '');
+  } catch {
+    pass = '';
+  }
+
+  if (pass && (await verifyPostPassword(pass, post.password))) {
+    const token = randomHex(24);
+    await db.grantPostAccess(post.cid, token, Date.now() + CONFIG.POST_PWD_TTL * 1000);
+    // 303 See Other：POST 之后回到 GET，刷新页面不会重复提交
+    return new Response(null, {
+      status: 303,
+      headers: {
+        Location: `/archives/${post.cid}/`,
+        'Set-Cookie': `${CONFIG.POST_PWD_COOKIE}=${encodeURIComponent(token)}; Path=/archives/${post.cid}/; HttpOnly; SameSite=Lax; Max-Age=${CONFIG.POST_PWD_TTL}`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+  return renderProtected(ctx, post, { wrong: true, status: 401 });
+}
+
+function renderProtected(ctx, post, opts = {}) {
   ctx.contentBody = `<div class="joe_container"><div class="joe_main joe_post"><div class="joe_detail">
     <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
-    <form class="joe_detail__article-protected" method="get" action="/archives/${post.cid}/">
+    ${opts.wrong ? '<p class="joe_detail__article-protected-error">密码不正确，请重新输入。</p>' : ''}
+    <form class="joe_detail__article-protected" method="post" action="/archives/${post.cid}/">
       <div class="contain">
-        <input class="password" type="password" name="password" placeholder="请输入访问密码..." />
+        <input class="password" type="password" name="password" placeholder="请输入访问密码..." required autofocus />
         <button class="submit" type="submit">确定</button>
       </div>
     </form>
   </div></div></div>`;
-  return html(theme404Layout(ctx, `密码保护 - ${ctx.options.title}`));
+  return html(theme404Layout(ctx, `密码保护 - ${ctx.options.title}`), {
+    'Cache-Control': 'no-store',
+    ...(opts.status ? { status: opts.status } : {}),
+  });
 }
 
 function theme404Layout(ctx, title) {
@@ -274,9 +346,14 @@ async function notFound(ctx) {
 }
 
 function html(body, init = {}) {
+  // 调用点的习惯是直接把头散在顶层写：html(body, { 'Cache-Control': '...' })。
+  // 但 ResponseInit 只认 status / statusText / headers，散在顶层的头会被当成
+  // 未知键**静默丢掉**——页面因此一直没真正发过 Cache-Control。这里统一收进 headers。
+  const { status, statusText, headers, ...extra } = init;
   return new Response(body, {
-    ...init,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', ...(init.headers || {}) },
+    ...(status ? { status } : {}),
+    ...(statusText ? { statusText } : {}),
+    headers: { 'Content-Type': 'text/html; charset=utf-8', ...extra, ...(headers || {}) },
   });
 }
 

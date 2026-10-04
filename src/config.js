@@ -7,6 +7,9 @@ export const CONFIG = {
   // Cookie 名
   SESSION_COOKIE: 'te_sess',
   REMEMBER_COOKIE: 'te_remember',
+  // 密码文章解锁凭据的 Cookie 名与有效期（秒）
+  POST_PWD_COOKIE: 'te_pwd',
+  POST_PWD_TTL: 60 * 60 * 24,
   // 会话有效期（秒）
   SESSION_TTL: 60 * 60 * 24 * 7,
   // 默认每页文章数
