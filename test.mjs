@@ -997,6 +997,24 @@ await test('站点设置保存（含 Joe 主题配置）', async () => {
   assert.ok(home.includes('边缘君'), 'Joe 主题侧栏昵称生效');
 });
 
+await test('站点设置：头像源排在顶置文章IDs之后，且换位置后仍能保存', async () => {
+  // 注意别在这里调 loginAdmin()：它定义在下方，用到的 _kv 是后面才初始化的 const，
+  // 现在调用会抛 TDZ；而它第一行就把 cookie 清空了，会连带弄挂后面所有用例。
+  // 前面的登录用例留下的会话在这里仍有效。
+  const html = await call('GET', '/admin/settings').then((r) => r.text());
+  const stickAt = html.indexOf('name="j_JStickPosts"');
+  const avatarAt = html.indexOf('name="j_JAvatarSource"');
+  assert.ok(stickAt > 0 && avatarAt > 0, '两个字段都应渲染出来');
+  assert.ok(avatarAt > stickAt, '头像源应排在顶置文章IDs之后');
+  assert.equal(html.split('name="j_JAvatarSource"').length - 1, 1, '头像源不应重复出现');
+
+  // 保存逻辑是 form.entries() 按名收集，与顺序无关；这里真跑一次往返确认没改坏
+  await call('POST', '/admin/settings', { form: { j_JAvatarSource: 'cravatar' } });
+  const after = await call('GET', '/admin/settings').then((r) => r.text());
+  assert.match(after, /value="cravatar" selected/, '换到 Cravatar 后应被记住');
+  await call('POST', '/admin/settings', { form: { j_JAvatarSource: 'weavatar' } }); // 还原，别影响后续用例
+});
+
 await test('友链插件：mode=links 页面渲染', async () => {
   await call('POST', '/admin/post', {
     form: { type: 'page', title: '友情链接', slug: 'links', text: '腾讯||https://qq.com||\nEdgeOne||https://edgeone.ai||', status: 'publish', allowComment: '1', field_mode: 'links' },

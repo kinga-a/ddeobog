@@ -740,11 +740,6 @@ console.log('Hello from EdgeOne Edge Functions!');
     <div class="row">
       <div class="item"><label>\u4FA7\u680F\u535A\u4E3B\u6635\u79F0</label><input type="text" name="j_JAside_Author_Nick" value="${escapeHtml(theme.JAside_Author_Nick||"")}"></div>
       <div class="item"><label>\u4FA7\u680F\u535A\u4E3B\u5934\u50CF URL</label><input type="text" name="j_JAside_Author_Avatar" value="${escapeHtml(theme.JAside_Author_Avatar||"")}"></div>
-      <div class="item"><label>\u5934\u50CF\u6E90</label><select name="j_JAvatarSource">
-        <option value="weavatar" ${theme.JAvatarSource==="weavatar"?"selected":""}>WeAvatar (weavatar.com)</option>
-        <option value="cravatar" ${theme.JAvatarSource==="cravatar"?"selected":""}>Cravatar (cravatar.cn)</option>
-        <option value="gravatar" ${theme.JAvatarSource==="gravatar"?"selected":""}>Gravatar (gravatar.com)</option>
-      </select></div>
       <div class="item"><label>\u4FA7\u680F\u535A\u4E3B\u94FE\u63A5</label><input type="text" name="j_JAside_Author_Link" value="${escapeHtml(theme.JAside_Author_Link||"")}"></div>
     </div>
     <div class="row">
@@ -760,6 +755,11 @@ console.log('Hello from EdgeOne Edge Functions!');
     <div class="row">
       <div class="item"><label>\u8214\u72D7\u65E5\u8BB0\u4FA7\u680F</label><select name="j_JAside_Flatterer"><option value="on" ${theme.JAside_Flatterer!=="off"?"selected":""}>\u5F00\u542F</option><option value="off" ${theme.JAside_Flatterer==="off"?"selected":""}>\u5173\u95ED</option></select></div>
       <div class="item"><label>\u9876\u7F6E\u6587\u7AE0IDs\uFF08\u9017\u53F7\u5206\u9694\uFF09</label><input type="text" name="j_JStickPosts" value="${escapeHtml(theme.JStickPosts||"")}" placeholder="\u4F8B\u5982\uFF1A1,2,3"></div>
+      <div class="item"><label>\u5934\u50CF\u6E90</label><select name="j_JAvatarSource">
+        <option value="weavatar" ${theme.JAvatarSource==="weavatar"?"selected":""}>WeAvatar (weavatar.com)</option>
+        <option value="cravatar" ${theme.JAvatarSource==="cravatar"?"selected":""}>Cravatar (cravatar.cn)</option>
+        <option value="gravatar" ${theme.JAvatarSource==="gravatar"?"selected":""}>Gravatar (gravatar.com)</option>
+      </select></div>
     </div>
     <div class="row">
       <div class="item"><label>\u5BFC\u822A\u6700\u591A\u663E\u793A\u9875\u9762\u6570</label><input type="number" name="j_JNavMaxNum" value="${escapeHtml(theme.JNavMaxNum||"6")}" min="1" max="20"></div>
