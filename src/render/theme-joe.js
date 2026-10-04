@@ -390,9 +390,9 @@ async function asideBlock(ctx) {
   if (options.joe.JAside_Flatterer === 'on') {
     html += `<section class="joe_aside__item flatterer">
       <div class="joe_aside__item-title"><span class="text">舔狗日记</span><span class="line"></span></div>
-      <div class="joe_aside__item-contain"><div class="content"></div><div class="change"><span>换一篇</span></div></div>
+      <div class="joe_aside__item-contain"><div class="content"></div><div class="like">❤️</div></div>
     </section>`;
-    html += `<style>.joe-aside__item.flatterer .change span{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:50%;background:#fff;color:#333;font-size:12px;border:1px solid #ddd;cursor:pointer;}</style>`;
+    html += `<style>.joe-aside__item.flatterer .like{font-size:20px;color:#e74c3c;cursor:pointer;transition:transform 0.2s;}.joe-aside__item.flatterer .like:hover{transform:scale(1.2);}</style>`;
   }
 
   html += `</aside>`;
