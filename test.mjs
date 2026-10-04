@@ -1238,9 +1238,32 @@ await test('隐藏文章的预览响应不可被 CDN 缓存', async () => {
   assert.match(page.headers.get('Cache-Control') || '', /no-store/);
 });
 
-await test('隐藏文章不在首页列表里', async () => {
-  const html = await call('GET', '/').then((r) => r.text());
-  assert.ok(!html.includes('隐藏文章标题XYZ'), '隐藏文章不进列表');
+await test('首页列表：匿名看不到隐藏文章，管理员看得到且带标记', async () => {
+  const anon = await (async () => {
+    const saved = cookie;
+    cookie = '';
+    const html = await call('GET', '/').then((r) => r.text());
+    cookie = saved;
+    return html;
+  })();
+  assert.ok(!anon.includes('隐藏文章标题XYZ'), '匿名首页不出现隐藏文章');
+
+  await loginAdmin();
+  const admin = await call('GET', '/').then((r) => r.text());
+  assert.ok(admin.includes('隐藏文章标题XYZ'), '管理员首页能看到隐藏文章');
+  assert.ok(admin.includes('>隐藏</span>'), '管理员能看出它是隐藏文章');
+});
+
+await test('隐藏文章不泄漏到 RSS 和主题公开 API', async () => {
+  const saved = cookie;
+  // 即便管理员自己请求，feed 和 /joe/api 也是公开出口，不该带上隐藏文章
+  await loginAdmin();
+  const feed = await call('GET', '/feed/').then((r) => r.text());
+  assert.ok(!feed.includes('隐藏文章标题XYZ'), 'RSS 里没有隐藏文章');
+
+  const api = await call('GET', '/joe/api?action=publish_list&pageSize=50').then((r) => r.text());
+  assert.ok(!api.includes('隐藏文章标题XYZ'), '主题 API 里没有隐藏文章');
+  cookie = saved;
 });
 
 // ================= 密码保护：POST + cookie + 哈希 =================

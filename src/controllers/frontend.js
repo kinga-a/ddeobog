@@ -56,7 +56,12 @@ export async function handleFrontend(ctx) {
     return await routeInner(ctx);
   }
 
-  const list = await db.listContentsIndex({ type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
+  // allStatus：登录管理员在列表里也能看到隐藏文章（仍按发布时间排在原位）。
+  // 匿名请求走默认的 status=publish，隐藏文章不会出现在任何列表里。
+  const list = await db.listContentsIndex({
+    type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE,
+    allStatus: !!ctx.user,
+  });
   // 批量获取统计数据
   const cids = list.items.map((e) => e.cid);
   const statsMap = await db.getStatsBatch(cids);
@@ -220,7 +225,7 @@ async function renderSingle(ctx, post) {
     db.getUser(post.authorId).then((u) => u || { screenName: '博主', mail: '' }),
     db.prevNext(post.cid, post.type),
     db.getStatsBatch([post.cid]),
-    db.listContentsIndex({ type: 'post', pageSize: 4, tagMid: post.tags?.[0] }),
+    db.listContentsIndex({ type: 'post', pageSize: 4, tagMid: post.tags?.[0], allStatus: !!ctx.user }),
     (async () => {
       const { commentsBlock } = await import('../render/theme-joe.js');
       return commentsBlock(ctx, post);
@@ -309,7 +314,7 @@ async function renderArchive(ctx, { type, slug, page, titleFor, labelFor, baseUr
     meta = await db.getMetaBySlug(slug, type === 'tag' ? 'tag' : 'category');
     if (!meta) return notFound(ctx);
   }
-  const q = { type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE };
+  const q = { type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE, allStatus: !!ctx.user };
   if (meta) q[type === 'tag' ? 'tagMid' : 'categoryMid'] = meta.mid;
   if (authorId) q.authorId = authorId;
   if (keywords) q.keywords = keywords;

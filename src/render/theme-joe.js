@@ -657,6 +657,11 @@ function indexItem(ctx, p) {
   const stickBadge = parseStickIds(ctx.options).includes(String(p.cid))
     ? '<span class="badge" style="display: inline-block">置顶</span>'
     : '';
+  // 隐藏文章角标。只有登录管理员的列表里才会出现 status=hidden 的条目
+  // （匿名请求走 allStatus=false），所以这个标记天然只对管理员可见。
+  const hiddenBadge = p.status === 'hidden'
+    ? '<span class="badge" style="display: inline-block">隐藏</span>'
+    : '';
   return `<li class="joe_list__item default">
   <div class="line"></div>
   <a href="${permalink(p)}" class="thumbnail" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">
@@ -664,7 +669,7 @@ function indexItem(ctx, p) {
     <time datetime="${formatDate(p.created, 'Y-m-d')}">${formatDate(p.created, 'Y-m-d')}</time>
   </a>
   <div class="information">
-    <a href="${permalink(p)}" class="title" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">${stickBadge}${escapeHtml(p.title)}</a>
+    <a href="${permalink(p)}" class="title" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">${stickBadge}${hiddenBadge}${escapeHtml(p.title)}</a>
     <a class="abstract" href="${permalink(p)}" title="文章摘要" target="_blank" rel="noopener noreferrer">${escapeHtml(excerpt)}</a>
     <div class="meta">
       <ul class="items">
