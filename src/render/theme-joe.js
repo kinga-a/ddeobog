@@ -442,7 +442,7 @@ async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = ''
   <meta name="renderer" content="webkit" />
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, shrink-to-fit=no, viewport-fit=cover">
   <link rel="shortcut icon" href="${escapeHtml(options.joe.JFavicon)}" />
-  ${title}
+  <title>${title}</title>
   ${meta}
   ${cssLinks(ctx, css)}
   ${headBlock(ctx)}
@@ -567,8 +567,17 @@ export async function renderIndex(ctx) {
       }
     }
     
-    // 按照JStickPosts中指定的顺序排序顶置文章
-    stickPosts.sort((a, b) => stickPostIds.indexOf(String(a.cid)) - stickPostIds.indexOf(String(b.cid)));
+    // 按照JStickPosts中指定的顺序排序顶置文章，未在列表中的文章保持原有顺序并在后面
+    stickPosts.sort((a, b) => {
+      const aIndex = stickPostIds.indexOf(String(a.cid));
+      const bIndex = stickPostIds.indexOf(String(b.cid));
+      
+      // 将未找到的索引视为无穷大，使其排序到末尾
+      const aSort = aIndex === -1 ? Infinity : aIndex;
+      const bSort = bIndex === -1 ? Infinity : bIndex;
+      
+      return aSort - bSort;
+    });
     
     // 重新组合文章列表：顶置文章在前
     items = [...stickPosts, ...regularPosts];
