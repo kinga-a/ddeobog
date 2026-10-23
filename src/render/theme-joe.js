@@ -193,7 +193,7 @@ async function slideoutBlock(ctx) {
   return `<div class="joe_header__slideout">
     <img width="100%" height="150" class="joe_header__slideout-image" src="${escapeHtml(options.joe.JHeader_Slideout_Image || options.joe.JAside_Author_Image)}" alt="侧边栏壁纸" />
     <div class="joe_header__slideout-author">
-      <img width="50" height="50" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(avatar)}" alt="博主头像" />
+      <img width="50" height="50" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(avatar)}" alt="博主头像"  decoding="async" / decoding="async">
       <div class="info">
         <a class="link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(nick)}</a>
         <p class="motto joe_motto"></p>
@@ -252,7 +252,7 @@ async function headerBlock(ctx) {
     <div class="joe_container">
       <svg class="joe_header__above-slideicon" viewBox="0 0 1152 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M76.032 872a59.968 59.968 0 1 0 0 120h999.936a59.968 59.968 0 1 0 0-120H76.032zm16-420.032a59.968 59.968 0 1 0 0 120h599.936a59.968 59.968 0 0 0 0-119.936H92.032zM76.032 32a59.968 59.968 0 1 0 0 120h999.936a60.032 60.032 0 0 0 0-120H76.032z"/></svg>
       <a title="${escapeHtml(options.title)}" class="joe_header__above-logo" href="/">
-        <img class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JLogo)}" alt="${escapeHtml(options.title)}" />
+        <img class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JLogo)}" alt="${escapeHtml(options.title)}"  decoding="async" / decoding="async">
       </a>
       <nav class="joe_header__above-nav">
         <a class="item${isIndex ? ' active' : ''}" href="/" title="首页">首页</a>
@@ -326,9 +326,9 @@ async function asideBlock(ctx) {
 
   let html = `<aside class="joe_aside">
   <section class="joe_aside__item author">
-    <img width="100%" height="120" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Image)}" alt="博主栏壁纸" />
+    <img width="100%" height="120" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Image)}" alt="博主栏壁纸"  decoding="async" / decoding="async">
     <div class="user">
-      <img width="75" height="75" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, 75, avatarSource))}" alt="博主头像" />
+      <img width="75" height="75" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, 75, avatarSource))}" alt="博主头像"  decoding="async" / decoding="async">
       <a class="link" href="${escapeHtml(options.joe.JAside_Author_Link)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(options.joe.JAside_Author_Nick || owner.screenName || '博主')}</a>
       <p class="motto joe_motto"></p>
     </div>
@@ -352,7 +352,7 @@ async function asideBlock(ctx) {
         ${hotViews.map((p, i) => `<li class="item">
           <a class="link" href="${permalink(p)}" title="${escapeHtml(p.title)}">
             <i class="sort">${i + 1}</i>
-            <img width="100%" height="130" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}" />
+            <img width="100%" height="130" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}"  decoding="async" / decoding="async">
             <div class="describe"><h6>${escapeHtml(p.title)}</h6><span>${p.views} 阅读 - ${formatDate(p.created, 'm/d')}</span></div>
           </a>
         </li>`).join('')}
@@ -366,7 +366,7 @@ async function asideBlock(ctx) {
       <ul class="joe_aside__item-contain">
         ${recentComments.map((c) => `<li class="item">
           <div class="user">
-            <img width="40" height="40" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 40, avatarSource)}" alt="${escapeHtml(c.author)}" />
+            <img width="40" height="40" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 40, avatarSource)}" alt="${escapeHtml(c.author)}"  decoding="async" / decoding="async">
             <div class="info"><div class="author">${escapeHtml(c.author)}</div><span class="date">${formatDate(c.created, 'Y-m-d')}</span></div>
           </div>
           <div class="reply"><a class="link" href="${commentLink(db, c)}">${escapeHtml(plainExcerpt(c.text, 40))}</a></div>
@@ -683,7 +683,7 @@ function indexItem(ctx, p) {
   return `<li class="joe_list__item default">
   <div class="line"></div>
   <a href="${permalink(p)}" class="thumbnail" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">
-    <img width="100%" height="100%" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}" />
+    <img width="100%" height="100%" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}"  decoding="async" / decoding="async">
     <time datetime="${formatDate(p.created, 'Y-m-d')}">${formatDate(p.created, 'Y-m-d')}</time>
   </a>
   <div class="information">
@@ -728,7 +728,7 @@ export async function renderPost(ctx) {
         <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
         <div class="joe_detail__count">
           <div class="joe_detail__count-information">
-            <img width="35" height="35" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(author.mail, 35, avatarSource)}" alt="${escapeHtml(author.screenName)}" />
+            <img width="35" height="35" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(author.mail, 35, avatarSource)}" alt="${escapeHtml(author.screenName)}"  decoding="async" / decoding="async">
             <div class="meta">
               <div class="author"><a class="link" href="/author/${post.authorId}/" title="${escapeHtml(author.screenName)}">${escapeHtml(author.screenName)}</a></div>
               <div class="item">
@@ -759,7 +759,7 @@ export async function renderPost(ctx) {
           <div class="joe_detail__related-title">相关推荐</div>
           <div class="joe_detail__related-content">
             ${related.map((r) => `<a class="item" href="${permalink(r)}" title="${escapeHtml(r.title)}">
-              <img width="100%" height="120" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, r))}" alt="${escapeHtml(r.title)}" />
+              <img width="100%" height="120" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, r))}" alt="${escapeHtml(r.title)}"  decoding="async" / decoding="async">
               <div class="title">${escapeHtml(r.title)}</div>
             </a>`).join('')}
           </div>
@@ -801,7 +801,7 @@ export async function commentsBlock(ctx, post) {
     return `<li class="comment-list__item">
       <div class="comment-list__item-contain" id="comment-${c.coid}">
         <div class="term">
-          <img width="48" height="48" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 48, avatarSource)}" alt="头像" />
+          <img width="48" height="48" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 48, avatarSource)}" alt="头像"  decoding="async" / decoding="async">
           <div class="content">
             <div class="user">
               <span class="author">${escapeHtml(c.author)}</span>

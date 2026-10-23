@@ -163,7 +163,7 @@ export function renderMarkdown(src) {
     if (imgOnly) {
       const src = imgOnly[2].split(/\s+/)[0];
       out.push(
-        `<img src="${escapeHtml(src)}" alt="${escapeHtml(imgOnly[1])}" class="joe_detail__article-image" loading="lazy" />`
+        `<img src="${escapeHtml(src)}" alt="${escapeHtml(imgOnly[1])}" class="joe_detail__article-image" loading="lazy" decoding="async" />`
       );
       i++;
       continue;
@@ -242,7 +242,7 @@ function renderGallery(line) {
     // 第二个分组可能带 "title"，与单图分支一致取空白前的地址
     return (
       `<img src="${escapeHtml(p[2].split(/\s+/)[0])}" alt="${escapeHtml(p[1])}" ` +
-      `class="joe_detail__article-gallery__item" loading="lazy" />`
+      `class="joe_detail__article-gallery__item" loading="lazy" decoding="async" />`
     );
   });
   return `<div class="joe_detail__article-gallery">${imgs.join('')}</div>`;
@@ -291,7 +291,7 @@ export function inline(s) {
   let t = escapeHtml(pre);
   // 图片
   t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (_, alt, src) =>
-    `<img src="${src}" alt="${alt}" loading="lazy" />`
+    `<img src="${src}" alt="${alt}" loading="lazy" decoding="async" />`
   );
   // 链接
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (_, txt, href) =>
