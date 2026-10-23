@@ -235,3 +235,141 @@ window.addEventListener('load', function () {
 		}
 	}
 });
+
+/* ==================== 文章目录（悬浮按钮 + 展开面板） ==================== */
+/*
+ * 依据正文 .joe_detail__article 内的 h1~h6 生成目录：
+ * Typecho 的 HyperDown/Markdown 解析器不会给标题生成 id，
+ * 所以这里自行补 id（跳过已存在或重复的 id），并做层级缩进。
+ * 少于 2 个标题时不显示按钮，避免出现无意义控件。
+ */
+function joeTocInit() {
+  'use strict';
+
+  var btn = document.getElementById('JoeTocBtn');
+  var panel = document.getElementById('JoeTocPanel');
+  var body = panel ? panel.querySelector('.joe_toc__body') : null;
+  var counter = panel ? panel.querySelector('.joe_toc__count') : null;
+  var article = document.querySelector('.joe_detail__article');
+
+  if (!btn || !panel || !body || !article) return;
+
+  var heads = [].slice.call(article.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+    .filter(function (el) { return (el.textContent || '').trim() !== ''; });
+
+  if (heads.length < 2) return;
+
+  var used = {};
+  var items = [];
+
+  heads.forEach(function (el, i) {
+    if (!el.id) {
+      var id = 'joe-h' + (i + 1);
+      var n = 0;
+      while (used[id] || document.getElementById(id)) id = 'joe-h' + (i + 1) + '-' + (++n);
+      el.id = id;
+    }
+    used[el.id] = 1;
+
+    var level = parseInt(el.tagName.slice(1), 10) || 1;
+    var text = (el.textContent || '').trim().replace(/\s+/g, ' ');
+
+    var a = document.createElement('a');
+    a.className = 'item lv-' + level;
+    a.href = '#' + el.id;
+    a.textContent = text;
+    a.title = text;
+    a.setAttribute('data-target', el.id);
+    body.appendChild(a);
+    items.push({ link: a, el: el });
+  });
+
+  if (counter) counter.textContent = items.length + ' 项';
+
+  /* ---- 展开 / 收起 ---- */
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function setOpen(open) {
+    panel.hidden = !open;
+    btn.classList.toggle('active', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  btn.hidden = false;
+  setOpen(false);
+
+  btn.addEventListener('click', function () { setOpen(panel.hidden); });
+  btn.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(panel.hidden); }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !panel.hidden) setOpen(false);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (panel.hidden) return;
+    if (panel.contains(e.target) || btn.contains(e.target)) return;
+    setOpen(false);
+  }, true);
+
+  /* ---- 点击条目：滚动到标题，移动端自动收起 ---- */
+  body.addEventListener('click', function (e) {
+    var link = e.target.closest ? e.target.closest('a.item') : null;
+    if (!link) return;
+    e.preventDefault();
+    var target = document.getElementById(link.getAttribute('data-target'));
+    if (!target) return;
+    target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    history.replaceState && history.length && history.replaceState(null, '', '#' + target.id);
+    if (window.Joe && window.Joe.IS_MOBILE) setOpen(false);
+    mark(link.getAttribute('data-target'));
+  });
+
+  /* ---- 滚动高亮 ---- */
+  var active = null;
+
+  function mark(id) {
+    if (active && active.link.id === id) return;
+    items.forEach(function (it) {
+      var on = it.el.id === id;
+      it.link.classList.toggle('active', on);
+      if (on) {
+        active = it;
+        // 让高亮项在面板里始终可见（面板自身可滚动）
+        var lr = it.link.getBoundingClientRect(), br = body.getBoundingClientRect();
+        if (lr.top < br.top || lr.bottom > br.bottom) {
+          it.link.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+        }
+      }
+    });
+  }
+
+  function sync() {
+    if (panel.hidden) return;
+    var top = 90, best = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].el.getBoundingClientRect().top - top <= 1) best = items[i];
+      else break;
+    }
+    if (!best) best = items[0];
+    mark(best.el.id);
+  }
+
+  var ticking = false;
+  window.addEventListener('scroll', function () {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () { ticking = false; sync(); });
+  }, { passive: true });
+
+  mark(items[0].el.id);
+}
+
+/* joe.post_page.min.js 是在 <head> 里同步加载的（无 defer），
+   此刻正文和 footer 都还没解析，必须等 DOM 构建完成再初始化。 */
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', joeTocInit);
+} else {
+  joeTocInit();
+}

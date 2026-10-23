@@ -1,1 +1,22 @@
 .joe_bread{padding-top:15px}.joe_bread__bread{display:flex;align-items:center}.joe_bread__bread .line{color:var(--seat);padding:0 8px}.joe_bread__bread .item{color:var(--minor);white-space:nowrap}.joe_bread__bread .item .link{color:var(--routine);transition:color 0.35s}.joe_bread__bread .item .link:hover{color:var(--theme)}.joe_bread__bread .item .icon{width:15px;height:15px;min-width:15px;min-height:15px;fill:var(--routine);margin-right:2px}.joe_bread__bread .item:first-child{display:flex;align-items:center}.joe_post__pagination{display:flex;justify-content:space-between}.joe_post__pagination-item{margin-bottom:15px}.joe_post__pagination-item a{display:block;height:32px;line-height:32px;padding:0 15px;color:#fff;border-radius:3px;background:var(--theme);font-size:12px;box-shadow:var(--box-shadow)}.joe_post__pagination-item a:hover{-webkit-animation:pulse 1s;animation:pulse 1s;box-shadow:0 0 0 20px rgba(255,255,255,0)}.joe_post__pagination-item.next{margin-left:auto}@-webkit-keyframes pulse{0%{box-shadow:0 0 0 0 var(--theme)}}@keyframes pulse{0%{box-shadow:0 0 0 0 var(--theme)}}
+
+/* 文章目录 TOC */
+.joe_action_item.toc .icon-2{display:none}.joe_action_item.toc.active .icon-1{display:none}.joe_action_item.toc.active .icon-2{display:block}.joe_action_item.toc[hidden],.joe_toc[hidden]{display:none!important}
+.joe_toc{position:fixed;right:86px;bottom:96px;z-index:334;width:260px;max-width:calc(100vw - 40px);background:var(--background);border-radius:var(--radius-inner);box-shadow:0 0 10px rgba(0,0,0,0.1),0 5px 20px rgba(0,0,0,0.2);overflow:hidden;transform-origin:right bottom;animation:joeTocIn 0.22s ease-out}
+.joe_toc__head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--seat);font-size:13px;font-weight:600;color:var(--main)}
+.joe_toc__count{font-weight:400;font-size:12px;color:var(--minor)}
+.joe_toc__body{max-height:55vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:6px 0 12px}
+.joe_toc__body .item{position:relative;display:block;padding:6px 14px 6px 26px;font-size:12.5px;line-height:1.55;color:var(--routine);text-decoration:none;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;word-break:break-word;border-left:2px solid transparent;transition:color 0.2s,border-color 0.2s,background 0.2s}
+.joe_toc__body .item.lv-1{padding-left:14px;font-weight:500;color:var(--main)}
+.joe_toc__body .item.lv-2{padding-left:28px}
+.joe_toc__body .item.lv-3{padding-left:42px}
+.joe_toc__body .item.lv-4{padding-left:56px}
+.joe_toc__body .item.lv-5{padding-left:70px}
+.joe_toc__body .item.lv-6{padding-left:84px;opacity:0.85}
+.joe_toc__body .item:hover{color:var(--theme);background:rgba(144,147,153,0.10)}
+.joe_toc__body .item.active{color:var(--theme);border-left-color:var(--theme);background:rgba(64,158,255,0.14);font-weight:600}
+.joe_toc__empty{padding:12px 14px;font-size:12px;color:var(--minor)}
+.joe_detail__article h1,.joe_detail__article h2,.joe_detail__article h3,.joe_detail__article h4,.joe_detail__article h5,.joe_detail__article h6{scroll-margin-top:80px}
+@keyframes joeTocIn{from{opacity:0;transform:scale(0.92) translateY(8px)}to{opacity:1;transform:none}}
+@media (max-width:768px){.joe_toc{left:15px;right:15px;width:auto;max-width:none;bottom:150px;transform-origin:center bottom}.joe_toc__body{max-height:42vh}}
+@media (prefers-reduced-motion:reduce){.joe_toc{animation:none}.joe_toc__body .item{transition:none}}
