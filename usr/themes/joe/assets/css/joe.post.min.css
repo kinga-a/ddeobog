@@ -2,7 +2,7 @@
 
 /* 文章目录 TOC */
 .joe_action_item.toc .icon-2{display:none}.joe_action_item.toc.active .icon-1{display:none}.joe_action_item.toc.active .icon-2{display:block}.joe_action_item.toc[hidden],.joe_toc[hidden]{display:none!important}
-.joe_toc{position:fixed;right:86px;bottom:96px;z-index:334;width:260px;max-width:calc(100vw - 40px);background:var(--background);border-radius:var(--radius-inner);box-shadow:0 0 10px rgba(0,0,0,0.1),0 5px 20px rgba(0,0,0,0.2);overflow:hidden;transform-origin:right bottom;animation:joeTocIn 0.22s ease-out}
+.joe_toc{position:fixed;right:73px;bottom:96px;z-index:334;width:260px;max-width:calc(100vw - 40px);background:var(--background);border-radius:var(--radius-inner);box-shadow:0 0 10px rgba(0,0,0,0.1),0 5px 20px rgba(0,0,0,0.2);overflow:hidden;transform-origin:right bottom;animation:joeTocIn 0.22s ease-out}
 .joe_toc__head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--seat);font-size:13px;font-weight:600;color:var(--main)}
 .joe_toc__count{font-weight:400;font-size:12px;color:var(--minor)}
 .joe_toc__body{max-height:55vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:6px 0 12px}
@@ -18,5 +18,5 @@
 .joe_toc__empty{padding:12px 14px;font-size:12px;color:var(--minor)}
 .joe_detail__article h1,.joe_detail__article h2,.joe_detail__article h3,.joe_detail__article h4,.joe_detail__article h5,.joe_detail__article h6{scroll-margin-top:80px}
 @keyframes joeTocIn{from{opacity:0;transform:scale(0.92) translateY(8px)}to{opacity:1;transform:none}}
-@media (max-width:768px){.joe_toc{left:15px;right:15px;width:auto;max-width:none;bottom:150px;transform-origin:center bottom}.joe_toc__body{max-height:42vh}}
+@media (max-width:768px){.joe_toc{right:73px;max-width:50vw;bottom:150px;transform-origin:center bottom}.joe_toc__body{max-height:42vh}}
 @media (prefers-reduced-motion:reduce){.joe_toc{animation:none}.joe_toc__body .item{transition:none}}
