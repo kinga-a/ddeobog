@@ -184,7 +184,7 @@ ${imagePreconnect}
     IS_MOBILE: /windows phone|iphone|android/gi.test(window.navigator.userAgent),
     BAIDU_PUSH: false,
     DOCUMENT_TITLE: \`${escapeHtml(options.joe.JDocumentTitle || '')}\`,
-    LAZY_LOAD: \`${a('assets/img/lazyload.jpg')}\`,
+    LAZY_LOAD: \`${LAZYLOAD}\`,
     BIRTHDAY: \`${escapeHtml(normalizeBirthday(options.joe.JBirthDay))}\`,
     MOTTO: \`${escapeHtml(options.joe.JAside_Author_Motto || '')}\`,
     PAGE_SIZE: ${ctx.pageSize || 10}

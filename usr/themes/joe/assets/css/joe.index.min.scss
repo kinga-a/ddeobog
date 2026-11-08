@@ -318,3 +318,17 @@
 		}
 	}
 }
+
+/* 懒加载：缩略图占位与淡入 */
+.thumbnail img {
+	background: rgba(0, 0, 0, .06);
+	&.lazyload {
+		opacity: 0;
+		transition: opacity .35s ease;
+	}
+	&.lazyloaded,
+	&.ls-is-cached {
+		opacity: 1;
+	}
+	&.lazyerror { opacity: 1; }
+}

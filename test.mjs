@@ -940,6 +940,30 @@ await test('封面图：thumb > 正文第一图（Markdown 与 HTML 都认） > 
   console.log(`    → 首页 ${covers.length} 张封面，其中内置默认图 ${defaults.length} 张，绝对地址 ${covers.length}/${covers.length}`);
 });
 
+await test('图片懒加载：缩略图走 lazysizes（lazyload + data-src）', async () => {
+  const html = await (await call('GET', '/')).text();
+  const cards = [...html.matchAll(/<a[^>]*class="thumbnail"[^>]*>([\s\S]*?)<\/a>/g)];
+  assert.ok(cards.length >= 1, '首页应有缩略图卡片');
+
+  // 首屏第一张用 fetchpriority=high 直接加载，其余走 lazysizes
+  const eager = cards.filter((c) => /fetchpriority="high"/.test(c[1]));
+  for (const card of eager) {
+    assert.ok(/src="https?:\/\//.test(card[1]), '首屏图应直接给出 src');
+    assert.ok(!/data-src=/.test(card[1]), '首屏图不应再走懒加载');
+  }
+  const lazy = cards.filter((c) => /data-src=/.test(c[1]));
+  assert.ok(lazy.length >= 1, '除首屏外应有懒加载缩略图');
+  for (const card of lazy) {
+    assert.ok(/class="[^"]*lazyload/.test(card[1]), '懒加载缩略图应带 lazyload 类');
+    assert.ok(/src="data:image\/gif/.test(card[1]), '懒加载缩略图应有轻量占位');
+  }
+
+  const css = await readFile('usr/themes/joe/assets/css/joe.index.min.css', 'utf8');
+  assert.ok(css.includes('.thumbnail img.lazyload'), '应定义懒加载初始态');
+  assert.ok(css.includes('.thumbnail img.lazyloaded'), '应定义懒加载完成态');
+  assert.ok(/\.thumbnail img\.lazyload\s*\{[^}]*opacity: 0/.test(css), '加载完成前应隐藏占位');
+});
+
 await test('评论管理页', async () => {
   const res = await call('GET', '/admin/comments');
   assert.equal(res.status, 200);
