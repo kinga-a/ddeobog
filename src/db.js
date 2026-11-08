@@ -19,6 +19,20 @@
 import { KV } from './storage/kv.js';
 import { BlobStorage } from './storage/blob.js';
 
+/** 索引里存一份纯文本摘要，列表页不必再读正文；旧索引缺失时由列表查询回填 */
+function plainAbstract(text, len = 90) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#>*_`~]/g, '')
+    .replace(/^\s*[-+]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, len);
+}
+
 export class Database {
   constructor(kv, blob) {
     this.kv = kv;
@@ -181,6 +195,7 @@ export class Database {
       cid: row.cid,
       title: row.title,
       slug: row.slug,
+      abstract: plainAbstract(row.text, 90),
       created: row.created,
       modified: row.modified,
       type: row.type,
@@ -501,6 +516,14 @@ export class Database {
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);
+    // 兼容历史索引：旧条目没有 abstract 时按需读取正文补齐（只补当前页）
+    const missing = items.filter((e) => !e.abstract);
+    if (missing.length) {
+      const rows = await Promise.all(missing.map((e) => this.getContent(e.cid)));
+      rows.forEach((row, i) => {
+        missing[i].abstract = plainAbstract(row && row.text, 90);
+      });
+    }
     return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
   }
 

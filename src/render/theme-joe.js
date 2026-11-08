@@ -214,6 +214,8 @@ function cssLinks(ctx, extra = []) {
     // 仅内容详情页需要图片灯箱样式；音乐播放器样式按正文短代码加载
     ...(ctx.post ? [a('assets/lib/fancybox@3.5.7/fancybox.min.css')] : []),
     ...(hasMusic ? [a('assets/lib/APlayer@1.10.1/APlayer.min.css')] : []),
+    // 视觉精修层：必须最后加载，才能覆盖各页面自带的样式
+    a('assets/css/joe.refine.css'),
   ];
   // 非首屏关键的样式异步加载，避免阻塞首屏渲染
   const deferredCss = ['qmsg', 'fancybox', 'animate.css', 'APlayer'];
@@ -1143,8 +1145,8 @@ export async function renderIndex(ctx) {
 
 function indexItem(ctx, p, eager = false) {
   const a = (path) => assetsUrl(ctx.options, path);
-  // p.text 可能不存在（使用 listContentsIndex 时），此时摘要回退到空或 fields.abstract
-  const excerpt = p.text ? plainExcerpt(p.text, 90) : (p.fields?.abstract || '');
+  // 优先用索引里的 abstract（v1.4.1 起）；旧索引回退正文摘要，再回退后台填写的摘要
+  const excerpt = p.abstract || (p.text ? plainExcerpt(p.text, 90) : (p.fields?.abstract || ''));
   // 顶置角标：与 joe.index.js 前端渲染保持同构（同一段 class 与 display）。
   // .badge 的 CSS 里没有 display，而 span 默认 inline 会吃掉 height/line-height，
   // 所以 inline-block 是必须的，不能省。

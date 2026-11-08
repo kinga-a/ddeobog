@@ -1,0 +1,555 @@
+/*!
+ * Joe 视觉精修层
+ *
+ * 目标：在不改动主题结构的前提下，统一排版节奏、留白、层级与微交互。
+ * 加载顺序：位于所有页面级样式之后（cssLinks 末尾），可用同/低特异性覆盖。
+ * 约定：
+ *   1. 颜色一律走主题变量（--theme / --background / --routine ...），自动适配夜间模式；
+ *   2. 只做「视觉层」调整，不改动 JS 依赖的尺寸与定位（如缩略图宽高比、列表容器）；
+ *   3. 动效全部可被 prefers-reduced-motion 关闭。
+ */
+
+:root {
+  --rf-max: 1180px;
+  --rf-radius: 14px;
+  --rf-radius-sm: 10px;
+  --rf-ease: cubic-bezier(.22, .61, .36, 1);
+  --rf-ease-out: cubic-bezier(.16, 1, .3, 1);
+  --rf-line: rgba(18, 22, 40, .08);
+  --rf-line-soft: rgba(18, 22, 40, .05);
+  --rf-shadow: 0 26px 56px -30px rgba(18, 22, 40, .42);
+  --rf-shadow-sm: 0 10px 24px -18px rgba(18, 22, 40, .4);
+}
+
+html[data-night='night'] body {
+  --rf-line: rgba(255, 255, 255, .1);
+  --rf-line-soft: rgba(255, 255, 255, .06);
+  --rf-shadow: 0 26px 56px -30px rgba(0, 0, 0, .85);
+  --rf-shadow-sm: 0 10px 24px -18px rgba(0, 0, 0, .8);
+}
+
+/* ---------- 1. 基础排版 ---------- */
+
+html body {
+  font-family: "PingFang SC", "HarmonyOS Sans SC", "Noto Sans SC", "Hiragino Sans GB",
+    "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html body .joe_container {
+  max-width: var(--rf-max);
+}
+
+/* 中文标题收紧字距，正文略微放大行高 */
+html body .joe_index__title-title,
+html body .joe_detail__title,
+html body .joe_aside__item-title {
+  letter-spacing: -.01em;
+}
+
+/* ---------- 2. 顶部导航 ---------- */
+
+html body .joe_header {
+  background: transparent;
+  box-shadow: 0 1px 0 var(--rf-line-soft);
+}
+
+html body .joe_header__above {
+  /* 不支持 color-mix 的浏览器回退到不透明底色，避免内容透出 */
+  background: var(--background);
+  background: color-mix(in srgb, var(--background) 86%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+}
+
+html body .joe_header__above-nav .item::after {
+  height: 2px;
+  border-radius: 2px;
+  transition: opacity .4s var(--rf-ease), transform .4s var(--rf-ease);
+}
+
+html body .joe_header__above-search .input {
+  transition: background .35s var(--rf-ease), border-color .35s var(--rf-ease),
+    box-shadow .35s var(--rf-ease);
+}
+
+html body .joe_header__above-search .input:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme) 16%, transparent);
+}
+
+/* ---------- 3. 首页标题栏 ---------- */
+
+html body .joe_index__title {
+  height: 56px;
+  border-bottom: 1px solid var(--rf-line);
+}
+
+html body .joe_index__title-title {
+  height: 56px;
+  line-height: 56px;
+  font-weight: 600;
+}
+
+html body .joe_index__title-title .item {
+  margin-right: 26px;
+  font-size: 15px;
+}
+
+html body .joe_index__title-notice {
+  height: 56px;
+}
+
+/* ---------- 4. 文章列表卡片 ---------- */
+
+html body .joe_list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+html body .joe_list__item {
+  border-bottom: 0;
+  padding: 0;
+  animation: rf-fade-up .62s var(--rf-ease-out) both;
+}
+
+html body .joe_list__item.default {
+  padding: 14px;
+  border: 1px solid var(--rf-line);
+  border-radius: var(--rf-radius);
+  background: var(--background);
+  transition: transform .5s var(--rf-ease-out), box-shadow .5s var(--rf-ease-out),
+    border-color .4s var(--rf-ease);
+}
+
+html body .joe_list__item.default:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--theme) 36%, var(--rf-line));
+  box-shadow: var(--rf-shadow);
+}
+
+/* 逐条入场：只做首屏 6 条，避免长列表延迟 */
+html body .joe_list__item:nth-child(2) { animation-delay: .05s; }
+html body .joe_list__item:nth-child(3) { animation-delay: .1s; }
+html body .joe_list__item:nth-child(4) { animation-delay: .15s; }
+html body .joe_list__item:nth-child(5) { animation-delay: .2s; }
+html body .joe_list__item:nth-child(6) { animation-delay: .25s; }
+
+html body .joe_list__item.default .thumbnail {
+  border-radius: var(--rf-radius-sm);
+  background: var(--rf-line-soft);
+}
+
+html body .joe_list__item.default .thumbnail img {
+  transition: transform .8s var(--rf-ease-out), filter .5s var(--rf-ease);
+  will-change: transform;
+}
+
+html body .joe_list__item.default:hover .thumbnail img {
+  transform: scale(1.04);
+}
+
+/* 日期沿用主题原样式（右上角主题色胶囊，hover 滑入），此处不再覆盖 */
+
+html body .joe_list__item.default .information {
+  padding-right: 4px;
+}
+
+html body .joe_list__item .information .title {
+  font-size: 18px;
+  line-height: 1.46;
+  font-weight: 600;
+  transition: color .3s var(--rf-ease);
+}
+
+html body .joe_list__item .information .title:hover {
+  color: var(--theme);
+}
+
+html body .joe_list__item .information .abstract {
+  margin-top: 8px;
+  color: var(--minor);
+  font-size: 14px;
+  line-height: 1.72;
+  opacity: .92;
+}
+
+html body .joe_list__item .meta {
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 12.5px;
+  color: var(--seat);
+}
+
+html body .joe_list__item .meta .items {
+  gap: 13px;
+}
+
+html body .joe_list__item .meta .items li {
+  display: inline-flex;
+  align-items: center;
+}
+
+html body .joe_list__item .meta .items li + li::before {
+  content: "";
+  width: 3px;
+  height: 3px;
+  margin-right: 13px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .45;
+}
+
+/* ---------- 5. 侧栏 ---------- */
+
+html body .joe_aside__item {
+  border: 1px solid var(--rf-line);
+  border-radius: var(--rf-radius);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+html body .joe_aside__item-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+
+html body .joe_aside__item-contain {
+  padding-top: 4px;
+}
+
+/* ---------- 6. 文章详情 ---------- */
+
+html body .joe_detail__title {
+  font-size: clamp(26px, 3.6vw, 34px);
+  line-height: 1.35;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+html body .joe_detail__article {
+  font-size: 16.5px;
+  line-height: 1.9;
+  color: var(--routine);
+}
+
+html body .joe_detail__article > p {
+  margin: 0 0 1.35em;
+}
+
+html body .joe_detail__article > p:first-of-type {
+  color: var(--main);
+  font-size: 17.5px;
+  line-height: 1.85;
+}
+
+html body .joe_detail__article h2 {
+  font-size: clamp(22px, 2.6vw, 26px);
+  line-height: 1.45;
+  margin: 2.1em 0 .8em;
+  letter-spacing: -.015em;
+}
+
+html body .joe_detail__article h3 {
+  font-size: 20px;
+  line-height: 1.5;
+  margin: 1.8em 0 .7em;
+}
+
+html body .joe_detail__article h4 {
+  font-size: 17px;
+  margin: 1.6em 0 .6em;
+}
+
+html body .joe_detail__article blockquote {
+  margin: 1.6em 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--theme);
+  border-radius: 0 var(--rf-radius-sm) var(--rf-radius-sm) 0;
+  background: color-mix(in srgb, var(--theme) 7%, transparent);
+  color: var(--routine);
+}
+
+html body .joe_detail__article blockquote > p:last-child {
+  margin-bottom: 0;
+}
+
+html body .joe_detail__article img {
+  border-radius: var(--rf-radius-sm);
+}
+
+html body .joe_detail__article pre {
+  border-radius: var(--rf-radius-sm);
+  border: 1px solid var(--rf-line-soft);
+}
+
+html body .joe_detail__article :not(pre) > code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--classD);
+  font-size: .92em;
+}
+
+html body .joe_detail__article a {
+  color: var(--theme);
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  background-position: 0 100%;
+  transition: opacity .3s var(--rf-ease);
+}
+
+html body .joe_detail__article a:hover {
+  opacity: .75;
+}
+
+html body .joe_detail__related-content {
+  gap: 14px;
+}
+
+html body .joe_detail__related-content .item img {
+  border-radius: var(--rf-radius-sm);
+  transition: transform .6s var(--rf-ease-out);
+}
+
+html body .joe_detail__related-content .item:hover img {
+  transform: scale(1.03);
+}
+
+/* 阅读进度条：支持 scroll-driven animation 的浏览器才显示 */
+@supports (animation-timeline: scroll()) {
+  html body:has(.joe_detail)::after {
+    content: "";
+    position: fixed;
+    z-index: 1200;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--theme);
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    animation: rf-progress linear both;
+    animation-timeline: scroll(root block);
+    pointer-events: none;
+  }
+}
+
+/* ---------- 7. 页脚 ---------- */
+
+html body .joe_footer__above {
+  border-top: 1px solid var(--rf-line-soft);
+}
+
+/* ---------- 8. 响应式 ---------- */
+
+@media (max-width: 992px) {
+  html body .joe_container {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  html body .joe_index__title {
+    height: 48px;
+  }
+
+  html body .joe_index__title-title {
+    height: 48px;
+    line-height: 48px;
+  }
+
+  html body .joe_index__title-title .item {
+    margin-right: 18px;
+    font-size: 14.5px;
+  }
+
+  html body .joe_list {
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  html body .joe_list__item.default {
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  html body .joe_list__item.default .thumbnail {
+    width: 100%;
+    height: 190px;
+    margin-right: 0;
+    border-radius: 0;
+    background: var(--rf-line-soft);
+  }
+
+  html body .joe_list__item.default .information {
+    padding: 14px 16px 16px;
+  }
+
+  html body .joe_list__item .information .title {
+    font-size: 17px;
+    line-height: 1.5;
+  }
+
+  html body .joe_list__item .information .abstract {
+    font-size: 13.5px;
+    line-height: 1.68;
+  }
+
+  html body .joe_detail__title {
+    font-size: 25px;
+  }
+
+  html body .joe_detail__article,
+  html body .joe_detail__article > p:first-of-type {
+    font-size: 16px;
+    line-height: 1.85;
+  }
+
+  /* 触控目标不小于 44px（只作用于导航与操作入口，不改标题行高） */
+  html body .joe_header__above-nav .item,
+  html body .joe_aside__item-title {
+    min-height: 44px;
+  }
+}
+
+/* ---------- 9. 动效与无障碍 ---------- */
+
+@keyframes rf-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rf-progress {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html body .joe_list__item {
+    animation: none;
+  }
+
+  html body .joe_list__item.default,
+  html body .joe_list__item.default .thumbnail img,
+  html body .joe_list__item .information .title {
+    transition: none;
+  }
+
+  html body .joe_list__item.default:hover {
+    transform: none;
+  }
+
+  html body .joe_list__item.default:hover .thumbnail img {
+    transform: none;
+  }
+
+  html body .joe_detail__related-content .item:hover img {
+    transform: none;
+  }
+}
+
+/* ---------- 10. 第二轮打磨 ---------- */
+
+/* 首页标题栏：主题色竖条，建立页面级视觉锚点 */
+html body .joe_index__title::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  height: 16px;
+  margin-right: 12px;
+  border-radius: 2px;
+  background: var(--theme);
+}
+
+/* 日期、统计等数字使用等宽数字，避免跳动 */
+html body .joe_list__item .meta,
+html body .joe_detail__count,
+html body .joe_run {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 标题换行更均衡，正文避免孤行 */
+html body .joe_detail__title,
+html body .joe_list__item .information .title {
+  text-wrap: balance;
+}
+
+html body .joe_detail__article > p {
+  text-wrap: pretty;
+}
+
+/* 键盘焦点可见 */
+html body a:focus-visible,
+html body button:focus-visible,
+html body input:focus-visible,
+html body select:focus-visible,
+html body textarea:focus-visible {
+  outline: 2px solid var(--theme);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* 「查看更多」：描边 → 实心，给出明确的继续阅读暗示 */
+html body .joe_load {
+  margin: 18px auto 4px;
+  padding: 0 26px;
+  height: 40px;
+  line-height: 38px;
+  border: 1px solid var(--rf-line);
+  border-radius: 999px;
+  color: var(--routine);
+  font-size: 13.5px;
+  letter-spacing: .02em;
+  transition: color .35s var(--rf-ease), border-color .35s var(--rf-ease),
+    background .35s var(--rf-ease);
+}
+
+html body .joe_load:hover {
+  color: var(--theme);
+  border-color: color-mix(in srgb, var(--theme) 55%, transparent);
+  background: color-mix(in srgb, var(--theme) 6%, transparent);
+}
+
+/* 页脚：更克制的分隔与字距 */
+html body .joe_footer__below {
+  padding: 18px 0;
+  letter-spacing: .02em;
+}
+
+/* 夜间模式：卡片比页面底色略亮，靠明度建立层级 */
+html[data-night='night'] body .joe_list__item.default {
+  background: color-mix(in srgb, var(--background) 94%, #fff);
+}
+
+html[data-night='night'] body .joe_list__item.default:hover {
+  border-color: color-mix(in srgb, var(--theme) 45%, var(--rf-line));
+}
+
+/* 侧栏标签/分类胶囊：统一触感 */
+html body .joe_aside__item-contain a {
+  transition: color .3s var(--rf-ease), background .3s var(--rf-ease);
+}
+
+/* 窄屏：标题栏竖条略矮，避免挤压 */
+@media (max-width: 768px) {
+  html body .joe_index__title::before {
+    height: 14px;
+    margin-right: 10px;
+  }
+}
