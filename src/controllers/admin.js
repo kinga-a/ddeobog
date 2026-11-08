@@ -304,9 +304,6 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
           <i class="fa fa-angle-right" aria-hidden="true"></i>
           <span aria-current="page">${esc(title)}</span>
         </nav>
-        <div class="topbar__actions">
-          <a class="btn sm" href="/" target="_blank" rel="noopener">查看站点</a>
-        </div>
       </div>
       ${body}
     </main>
@@ -331,9 +328,6 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
     var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var main=document.querySelector('.main');
     var layoutEl=document.querySelector('.layout');
-    var progress=document.createElement('div');
-    progress.className='nav-progress';
-    document.body.appendChild(progress);
 
     function enhance(){
       if(reduce||!main) return;
@@ -397,7 +391,6 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       main.appendChild(skeleton);
       var skTimer=setTimeout(function(){skeleton.classList.add('is-visible');},120);
       layoutEl.classList.add('is-loading');
-      progress.classList.add('is-active');
       fetch(href,{headers:{'X-Requested-With':'admin-nav'},credentials:'same-origin'})
         .then(function(res){
           if(res.redirected&&res.url.indexOf('/admin/login')>=0){location.href=res.url;throw new Error('login');}
@@ -421,7 +414,6 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
         .finally(function(){
           clearTimeout(skTimer);
           layoutEl.classList.remove('is-loading');
-          progress.classList.remove('is-active');
         });
     }
 
