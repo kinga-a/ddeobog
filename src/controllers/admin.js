@@ -386,6 +386,59 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
         });
     }
 
+    // MCP 令牌：显示/隐藏 与 复制（事件委托，兼容 SPA 局部刷新）
+    document.addEventListener('click',function(e){
+      var el=e.target;
+      if(!el||!el.closest) return;
+
+      var reveal=el.closest('[data-mcp-reveal]');
+      if(reveal){
+        var box=reveal.closest('.mcp-token');
+        var code=box&&box.querySelector('code');
+        if(!code) return;
+        var shown=code.getAttribute('data-shown')==='1';
+        code.textContent=shown?code.getAttribute('data-mask'):code.getAttribute('data-token');
+        code.setAttribute('data-shown',shown?'0':'1');
+        reveal.textContent=shown?'显示':'隐藏';
+        return;
+      }
+
+      var addBtn=el.closest('[data-mcp-add]');
+      if(addBtn){
+        var panel=document.getElementById('mcp-add-form');
+        if(!panel) return;
+        var willOpen=panel.hasAttribute('hidden');
+        if(willOpen){panel.removeAttribute('hidden');}else{panel.setAttribute('hidden','');}
+        addBtn.textContent=willOpen?'取消':'新增令牌';
+        if(willOpen){
+          var first=panel.querySelector('input[name="name"]');
+          if(first) first.focus();
+        }
+        return;
+      }
+
+      var copy=el.closest('[data-copy]');
+      if(!copy) return;
+      var text=copy.getAttribute('data-copy')||'';
+      function done(){
+        var old=copy.textContent;
+        copy.textContent='已复制';
+        setTimeout(function(){copy.textContent=old;},1200);
+      }
+      function fallback(){
+        var ta=document.createElement('textarea');
+        ta.value=text;ta.style.position='fixed';ta.style.top='-1000px';ta.style.opacity='0';
+        document.body.appendChild(ta);ta.select();
+        try{document.execCommand('copy');done();}catch(err){copy.textContent='复制失败';}
+        document.body.removeChild(ta);
+      }
+      if(navigator.clipboard&&window.isSecureContext){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{
+        fallback();
+      }
+    });
+
     document.addEventListener('click',function(e){
       if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;
       var a=e.target.closest('a');
@@ -1244,50 +1297,96 @@ async function securityPage(ctx) {
 
   const mcpServers = await loadMcpServers(db);
   const mcpEndpoint = `${url.protocol}//${url.host}`;
-  const serverCard = (server) => `<div class="mcp-item">
-    <div class="mcp-item__head">
-      <strong>${esc(server.name || 'MCP 服务')}</strong>
-      ${server.enabled === false ? '<span class="badge yellow">已停用</span>' : '<span class="badge green">已启用</span>'}
-      ${server.id === 'legacy' ? '<span class="badge">旧版迁移</span>' : ''}
+  const mcpEnabledCount = mcpServers.filter((server) => server.enabled !== false).length;
+
+  /** 令牌掩码：前 8 位 + 圆点 + 后 4 位 */
+  const maskToken = (token) => {
+    if (!token) return '未设置令牌';
+    if (token.length <= 16) return token.slice(0, 6) + '••••••••';
+    return `${token.slice(0, 8)}${'•'.repeat(12)}${token.slice(-4)}`;
+  };
+
+  const serverCard = (server) => {
+    const enabled = server.enabled !== false;
+    const token = server.token || '';
+    const masked = maskToken(token);
+    return `<div class="mcp-card${enabled ? '' : ' is-off'}">
+    <div class="mcp-card__top">
+      <div class="mcp-card__name">
+        <span class="mcp-dot${enabled ? '' : ' is-off'}" aria-hidden="true"></span>
+        <span class="mcp-card__title" title="${esc(server.name || '')}">${esc(server.name || 'MCP 服务')}</span>
+        ${server.id === 'legacy' ? '<span class="mcp-tag">旧版迁移</span>' : ''}
+      </div>
+      <span class="badge ${enabled ? 'green' : 'yellow'}">${enabled ? '启用中' : '已停用'}</span>
     </div>
-    <p class="mcp-item__remark">${esc(server.remark || '未填写备注')}</p>
-    <form method="post" action="/admin/security">
-      <input type="hidden" name="op" value="mcp-update">
-      <input type="hidden" name="id" value="${esc(server.id)}">
-      <div class="row">
+    <p class="mcp-card__remark">${esc(server.remark || '未填写备注')}</p>
+    <div class="mcp-token">
+      <code data-token="${esc(token)}" data-mask="${esc(masked)}">${esc(masked)}</code>
+      <button type="button" class="btn sm" data-mcp-reveal${token ? '' : ' disabled'}>显示</button>
+      <button type="button" class="btn sm" data-copy="${esc(token)}"${token ? '' : ' disabled'}>复制</button>
+    </div>
+    <div class="mcp-card__foot">
+      <span>${server.createdAt ? new Date(server.createdAt * 1000).toLocaleString('zh-CN') : '旧版令牌'}</span>
+      <span>${token ? `${token.length} 位` : '无令牌'}</span>
+    </div>
+    <details class="mcp-edit">
+      <summary>编辑配置</summary>
+      <form method="post" action="/admin/security">
+        <input type="hidden" name="op" value="mcp-update">
+        <input type="hidden" name="id" value="${esc(server.id)}">
         <div class="item"><label>名称</label><input type="text" name="name" value="${esc(server.name || '')}" maxlength="40"></div>
         <div class="item"><label>备注</label><input type="text" name="remark" value="${esc(server.remark || '')}" maxlength="80" placeholder="例如：给 Cursor 用"></div>
         <div class="item"><label>状态</label>${onOffSelect('enabled', server.enabled === false ? 'off' : 'on')}</div>
+        <div class="item"><label>访问令牌</label><input type="text" name="token" value="${esc(token)}" autocomplete="off"></div>
+        <div class="form-actions form-actions--start"><button class="btn primary" type="submit">保存修改</button></div>
+      </form>
+      <div class="mcp-card__ops">
+        <form method="post" action="/admin/security" onsubmit="return confirm('重新生成后旧令牌立即失效，确定继续？')"><input type="hidden" name="op" value="mcp-generate"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn sm" type="submit">重新生成</button></form>
+        <form method="post" action="/admin/security" onsubmit="return confirm('确定删除这个 MCP 令牌？')"><input type="hidden" name="op" value="mcp-delete"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn sm danger" type="submit">删除</button></form>
       </div>
-      <div class="item"><label>访问令牌</label><input type="text" name="token" value="${esc(server.token || '')}" autocomplete="off"></div>
-      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">保存</button></div>
-    </form>
-    <div class="form-actions form-actions--start" style="margin-top:10px">
-      <form method="post" action="/admin/security"><input type="hidden" name="op" value="mcp-generate"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn" type="submit">重新生成令牌</button></form>
-      <form method="post" action="/admin/security" onsubmit="return confirm('确定删除这个 MCP 令牌？')"><input type="hidden" name="op" value="mcp-delete"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn danger" type="submit">删除</button></form>
-    </div>
-    <p class="hint">${server.createdAt ? `创建于 ${new Date(server.createdAt * 1000).toLocaleString('zh-CN')}` : '旧版令牌'}</p>
+    </details>
   </div>`;
-  const addCard = `<div class="mcp-item mcp-item--new">
-    <div class="mcp-item__head"><strong>新增 MCP</strong></div>
+  };
+
+  const addPanel = `<div class="mcp-add" id="mcp-add-form"${mcpServers.length ? ' hidden' : ''}>
     <form method="post" action="/admin/security">
       <input type="hidden" name="op" value="mcp-add">
-      <div class="row">
+      <div class="mcp-add__grid">
         <div class="item"><label>名称</label><input type="text" name="name" maxlength="40" placeholder="例如：Claude Desktop"></div>
-        <div class="item"><label>备注</label><input type="text" name="remark" maxlength="80" placeholder="用途说明"></div>
+        <div class="item"><label>备注</label><input type="text" name="remark" maxlength="80" placeholder="用途说明，可留空"></div>
         <div class="item"><label>状态</label>${onOffSelect('enabled', 'on')}</div>
       </div>
-      <div class="item"><label>令牌（留空自动生成）</label><input type="text" name="token" autocomplete="off" placeholder="留空生成 mcp_..."></div>
-      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">创建 MCP</button></div>
+      <div class="item"><label>令牌</label><input type="text" name="token" autocomplete="off" placeholder="留空自动生成 mcp_..."></div>
+      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">创建令牌</button></div>
     </form>
   </div>`;
-  const mcpSection = `<div class="card">
-    <h2 class="card__title">MCP 服务</h2>
-    <p class="card__intro">可创建多个 MCP 令牌，并分别填写名称/备注区分用途。任一启用令牌都可调用同一 <code>/mcp</code> 端点。</p>
-    <div class="mcp-list">${mcpServers.map(serverCard).join('') || '<p class="hint">还没有 MCP 令牌，先创建一个。</p>'}</div>
-    ${addCard}
-    <p class="hint" style="margin-top:14px">MCP 端点：<code>${esc(mcpEndpoint)}/mcp</code></p>
-    <pre style="margin:10px 0 0;padding:12px;background:#f6f8fa;border-radius:6px;font-size:12px;line-height:1.6;overflow:auto;white-space:pre-wrap;word-break:break-all">${esc(mcpClientExample(mcpEndpoint))}</pre>
+
+  const mcpSection = `<div class="card mcp-panel">
+    <div class="mcp-head">
+      <div>
+        <h2 class="card__title">MCP 服务</h2>
+        <p class="card__intro">为不同客户端创建独立令牌，任一启用令牌都可访问同一端点。</p>
+      </div>
+      <span class="mcp-count">${mcpServers.length} 个令牌 · ${mcpEnabledCount} 个启用</span>
+    </div>
+    <div class="mcp-endpoint">
+      <div class="mcp-endpoint__main">
+        <span class="mcp-endpoint__label">端点</span>
+        <code>${esc(mcpEndpoint)}/mcp</code>
+      </div>
+      <div class="mcp-endpoint__ops">
+        <button type="button" class="btn sm" data-copy="${esc(mcpEndpoint)}/mcp">复制</button>
+        <button type="button" class="btn sm primary" data-mcp-add>新增令牌</button>
+      </div>
+    </div>
+    ${addPanel}
+    <div class="mcp-grid">
+      ${mcpServers.map(serverCard).join('')}
+    </div>
+    <details class="mcp-example">
+      <summary>客户端接入配置</summary>
+      <pre>${esc(mcpClientExample(mcpEndpoint))}</pre>
+    </details>
   </div>`;
 
   const body = `${MSG(ctx)}

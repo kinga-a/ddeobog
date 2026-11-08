@@ -151,19 +151,27 @@ const MIME = {
   '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.map': 'application/json',
 };
 
-/** 从仓库根提供静态资源，模拟线上 /usr/ 等目录。 */
-async function serveStatic(pathname, res) {
+/**
+ * 从仓库的 usr/ 目录提供静态资源，模拟线上静态层。
+ *
+ * 只放行 /usr/ 前缀：预览服务经 frp 暴露在公网，若按仓库根目录回退，
+ * /src/main.js、/package.json 等源码会被直接下载。
+ */
+async function serveStatic(pathname, res, search = '') {
   const rel = decodeURIComponent(pathname).replace(/^\/+/, '');
+  if (!rel.startsWith('usr/')) return false;
   const abs = ROOT + rel;
-  if (!abs.startsWith(ROOT)) return false;              // 防目录穿越
+  if (!abs.startsWith(ROOT + 'usr/')) return false;     // 防目录穿越
   try {
     const st = await stat(abs);
     if (!st.isFile()) return false;
     const ext = abs.slice(abs.lastIndexOf('.')).toLowerCase();
+    // 与线上一致：带 ?v= 的资源长缓存，其余不复用缓存
+    const immutable = /[?&]v=[^&]+/.test(search);
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Content-Length': st.size,
-      'Cache-Control': 'no-store',
+      'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-store',
     });
     res.end(await readFile(abs));
     return true;
@@ -174,8 +182,9 @@ async function serveStatic(pathname, res) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    const pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
-    if (await serveStatic(pathname, res)) return;
+    const parsed = new URL(req.url, `http://${req.headers.host}`);
+    const pathname = parsed.pathname;
+    if (await serveStatic(pathname, res, parsed.search)) return;
 
     const chunks = [];
     for await (const c of req) chunks.push(c);

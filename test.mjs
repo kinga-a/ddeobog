@@ -946,6 +946,26 @@ await test('评论管理页', async () => {
   assert.ok((await res.text()).includes('张三'));
 });
 
+await test('后台 MCP 卡片：端点、掩码令牌、复制与显示控件', async () => {
+  const created = await call('POST', '/admin/security', {
+    form: { op: 'mcp-add', name: 'Cursor', remark: '编辑器', enabled: 'on', token: '' },
+  });
+  assert.equal(created.status, 302, '创建令牌后应重定向');
+
+  const res = await call('GET', '/admin/security');
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  for (const needle of ['mcp-grid', 'mcp-card', 'mcp-endpoint', 'mcp-token', 'data-copy=', 'data-mcp-reveal', 'data-mcp-add', 'id="mcp-add-form"']) {
+    assert.ok(html.includes(needle), `MCP 区块缺少 ${needle}`);
+  }
+  assert.ok(html.includes('新增令牌'), '端点条应提供新增令牌按钮');
+  assert.ok(!html.includes('mcp-card--new'), '新增令牌不应再占用令牌卡片位');
+  assert.ok(html.includes('Cursor'), '应显示令牌名称');
+  assert.ok(html.includes('••'), '令牌默认应掩码显示');
+  assert.ok(/data-copy="mcp_[0-9a-f]{48}"/.test(html), '应提供完整令牌供复制按钮使用');
+  assert.ok(html.includes('/mcp<'), '应展示 MCP 端点');
+});
+
 // ---- TOTP ----
 
 await test('TOTP：获取绑定二维码页面', async () => {

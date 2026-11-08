@@ -1,4 +1,4 @@
-var __create=Object.create;var __defProp=Object.defineProperty;var __getOwnPropDesc=Object.getOwnPropertyDescriptor;var __getOwnPropNames=Object.getOwnPropertyNames;var __getProtoOf=Object.getPrototypeOf,__hasOwnProp=Object.prototype.hasOwnProperty;var __name=(target,value)=>__defProp(target,"name",{value,configurable:!0});var __esm=(fn,res,err)=>function(){if(err)throw err[0];try{return fn&&(res=(0,fn[__getOwnPropNames(fn)[0]])(fn=0)),res}catch(e){throw err=[e],e}};var __commonJS=(cb,mod)=>function(){try{return mod||(0,cb[__getOwnPropNames(cb)[0]])((mod={exports:{}}).exports,mod),mod.exports}catch(e){throw mod=0,e}};var __export=(target,all)=>{for(var name in all)__defProp(target,name,{get:all[name],enumerable:!0})},__copyProps=(to,from,except,desc)=>{if(from&&typeof from=="object"||typeof from=="function")for(let key of __getOwnPropNames(from))!__hasOwnProp.call(to,key)&&key!==except&&__defProp(to,key,{get:()=>from[key],enumerable:!(desc=__getOwnPropDesc(from,key))||desc.enumerable});return to};var __toESM=(mod,isNodeMode,target)=>(target=mod!=null?__create(__getProtoOf(mod)):{},__copyProps(isNodeMode||!mod||!mod.__esModule?__defProp(target,"default",{value:mod,enumerable:!0}):target,mod));var CONFIG,init_config=__esm({"src/config.js"(){CONFIG={KV_BINDING:"BLOG_KV",BLOB_STORE:"typecho-uploads",SESSION_COOKIE:"te_sess",REMEMBER_COOKIE:"te_remember",POST_PWD_COOKIE:"te_pwd",POST_PWD_TTL:86400,SESSION_TTL:604800,PAGE_SIZE:10,COMMENT_PAGE_SIZE:10,DEFAULT_THEME:"joe",VERSION:"1.2.1"}}});var kv_exports={};__export(kv_exports,{KV:()=>KV,getKV:()=>getKV});function getKV(env){let name=CONFIG.KV_BINDING,binding=null;if(env&&(binding=env[name]||env[name.toLowerCase()]||null),!binding&&typeof globalThis<"u"&&(binding=globalThis[name]||null),!binding)throw new Error(`[TypechoEdge] \u672A\u627E\u5230 KV \u7ED1\u5B9A "${name}"\u3002\u8BF7\u5728 EdgeOne \u63A7\u5236\u53F0\u521B\u5EFA KV \u547D\u540D\u7A7A\u95F4\u5E76\u4EE5\u53D8\u91CF\u540D "${name}" \u7ED1\u5B9A\u5230\u672C\u9879\u76EE\u3002`);return new KV(binding)}var KV,init_kv=__esm({"src/storage/kv.js"(){init_config();KV=class{static{__name(this,"KV")}constructor(binding){this.binding=binding}async get(key,type="text"){return await this.binding.get(key,{type})}async getJSON(key){return await this.binding.get(key,{type:"json"})}async put(key,value){await this.binding.put(key,value)}async putJSON(key,obj){await this.binding.put(key,JSON.stringify(obj))}async delete(key){await this.binding.delete(key)}async getBatch(keys){if(!keys.length)return new Map;let results=await Promise.all(keys.map(k=>this.getJSON(k))),map=new Map;return keys.forEach((k,i)=>map.set(k,results[i])),map}async putBatch(entries){entries.length&&await Promise.all(entries.map(([k,v])=>this.putJSON(k,v)))}async deleteBatch(keys){keys.length&&await Promise.all(keys.map(k=>this.delete(k)))}async listKeys(prefix="",limit=1e4){let out=[],cursor,complete=!1;for(;!complete&&out.length<limit;){let pageLimit=Math.min(256,limit-out.length),opts={prefix,limit:pageLimit};cursor&&(opts.cursor=cursor);let res=await this.binding.list(opts);if(!res)break;for(let k of res.keys||[])out.push(k.key);if(complete=res.complete!==!1,cursor=res.cursor,complete||!cursor)break}return out}};__name(getKV,"getKV")}});var require_dist=__commonJS({"node_modules/@edgeone/pages-blob/dist/index.js"(exports,module){"use strict";var U=Object.defineProperty,le=Object.getOwnPropertyDescriptor,ue=Object.getOwnPropertyNames,ge=Object.prototype.hasOwnProperty,fe=__name((t,e)=>{for(var r in e)U(t,r,{get:e[r],enumerable:!0})},"fe"),he=__name((t,e,r,n)=>{if(e&&typeof e=="object"||typeof e=="function")for(let s of ue(e))!ge.call(t,s)&&s!==r&&U(t,s,{get:__name(()=>e[s],"get"),enumerable:!(n=le(e,s))||n.enumerable});return t},"he"),me=__name(t=>he(U({},"__esModule",{value:!0}),t),"me"),Oe={};fe(Oe,{InvalidKeyError:__name(()=>w,"InvalidKeyError"),InvalidStoreNameError:__name(()=>y,"InvalidStoreNameError"),MissingProjectIdError:__name(()=>T,"MissingProjectIdError"),PagesBlobError:__name(()=>h,"PagesBlobError"),PreconditionFailedError:__name(()=>x,"PreconditionFailedError"),QuotaExceededError:__name(()=>O,"QuotaExceededError"),RateLimitedError:__name(()=>j,"RateLimitedError"),Store:__name(()=>E,"Store"),getStore:__name(()=>Me,"getStore"),listStores:__name(()=>De,"listStores")});module.exports=me(Oe);var h=class extends Error{static{__name(this,"h")}code;constructor(e,r){super(`PagesBlob: ${r}`),this.name="PagesBlobError",this.code=e}},w=class extends h{static{__name(this,"w")}constructor(e){super("INVALID_KEY",e)}},y=class extends h{static{__name(this,"y")}constructor(e){super("INVALID_STORE_NAME",e)}},b=class extends h{static{__name(this,"b")}constructor(e){super("MISSING_ENVIRONMENT",`Environment not configured for Pages Blob. Missing: ${e.join(", ")}. Supply these properties when creating a store, or ensure the function is running in a Pages environment.`)}},O=class extends h{static{__name(this,"O")}constructor(){super("QUOTA_EXCEEDED","storage quota exceeded")}},j=class extends h{static{__name(this,"j")}constructor(){super("RATE_LIMITED","request rate limited, please retry later")}},T=class extends h{static{__name(this,"T")}constructor(){super("MISSING_PROJECT_ID","projectId is required when using API token mode. Please supply { name, projectId, token } to getStore() / listStores().")}},m=class extends h{static{__name(this,"m")}constructor(e){super("CREDENTIAL_ERROR",e)}},f=class extends h{static{__name(this,"f")}constructor(e,r){super("COS_ERROR",`COS returned ${e}: ${r}`)}},x=class extends h{static{__name(this,"x")}constructor(){super("PRECONDITION_FAILED","conditional write failed (key already exists)")}};function C(t){if(t==="")throw new w("Blob key must not be empty.");if(t.startsWith("/")||t.startsWith("%2F"))throw new w("Blob key must not start with forward slash (/).");if(new TextEncoder().encode(t).length>600)throw new w("Blob key must be a sequence of Unicode characters whose UTF-8 encoding is at most 600 bytes long.")}__name(C,"C");function z(t){if(t==="")throw new y("Store name must not be empty.");if(t.includes("/")||t.includes(":"))throw new y("Store name must not contain forward slashes (/) or colons (:).");if(!/^[a-zA-Z0-9_-]+$/.test(t))throw new y("Store name must only contain letters, digits, underscores, and hyphens.");if(new TextEncoder().encode(t).length>64)throw new y("Store name must be a sequence of Unicode characters whose UTF-8 encoding is at most 64 bytes long.")}__name(z,"z");var E=class{static{__name(this,"E")}cosClient;storeName;defaultConsistency;constructor(e,r,n="eventual"){this.cosClient=e,this.storeName=r,this.defaultConsistency=n}resolveConsistency(e){return e??this.defaultConsistency}async set(e,r,n){C(e);let s=await this.cosClient.putObject(this.storeName,e,r,{onlyIfNew:n?.onlyIfNew,cacheControl:n?.cacheControl});if(n?.onlyIfNew&&s.statusCode===412)throw new x}async setJSON(e,r,n){C(e);let s=JSON.stringify(r),i=await this.cosClient.putObject(this.storeName,e,s,{onlyIfNew:n?.onlyIfNew,contentType:"application/json",cacheControl:n?.cacheControl});if(n?.onlyIfNew&&i.statusCode===412)throw new x}async createUploadUrl(e,r){C(e);let{url:n,expiresAt:s}=await this.cosClient.createPresignedPutUrl(this.storeName,e,{expireSeconds:r?.expireSeconds,contentType:r?.contentType});return{url:n,key:e,expiresAt:s}}async get(e,r){C(e);let n=this.resolveConsistency(r?.consistency),s=await this.cosClient.getObject(this.storeName,e,n);if(s===null)return null;let{body:i}=s,a=r?.type??"text",o=new TextDecoder("utf-8");switch(a){case"text":return o.decode(i);case"json":return JSON.parse(o.decode(i));case"arrayBuffer":return i.buffer.slice(i.byteOffset,i.byteOffset+i.byteLength);case"blob":return new Blob([i]);case"stream":return new ReadableStream({start(c){c.enqueue(i),c.close()}});default:return o.decode(i)}}async getMetadata(e,r){C(e);let n=this.resolveConsistency(r?.consistency);return this.cosClient.headObject(this.storeName,e,n)}async getWithHeaders(e,r){C(e);let n=this.resolveConsistency(r?.consistency),s=await this.cosClient.getObject(this.storeName,e,n);return s?{body:new TextDecoder("utf-8").decode(s.body),headers:s.headers||{}}:null}async delete(e){C(e),await this.cosClient.deleteObject(this.storeName,e)}async list(e){let r=e?.paginate!==!1,n=e?.limit,s=[],i=[],a=this.resolveConsistency(e?.consistency),o=e?.cursor||"",c=!0,d;for(;c;){let u=n!==void 0?n-s.length:1e3,l=Math.min(u,1e3);if(l<=0)break;let g=await this.cosClient.listObjects(this.storeName,{prefix:e?.prefix,delimiter:e?.directories?"/":void 0,marker:o||void 0,maxKeys:l,consistency:a});for(let p of g.contents)s.push({key:p.key,etag:p.etag});i.push(...g.commonPrefixes),n!==void 0&&s.length>=n?(s.length=n,(g.isTruncated||g.contents.length===l)&&(d=g.nextMarker),c=!1):g.isTruncated?!r&&n===void 0?(d=g.nextMarker,c=!1):o=g.nextMarker:c=!1}return{blobs:s,directories:i,...d?{cursor:d}:{}}}},ye=new TextEncoder;function _(t){let e=ye.encode(t),r=new ArrayBuffer(e.byteLength),n=new Uint8Array(r);return n.set(e),n}__name(_,"_");function G(t){let e=t instanceof Uint8Array?t:new Uint8Array(t),r="";for(let n=0;n<e.length;n++)r+=e[n].toString(16).padStart(2,"0");return r}__name(G,"G");async function H(t,e){let r=await crypto.subtle.importKey("raw",_(t),{name:"HMAC",hash:"SHA-1"},!1,["sign"]),n=await crypto.subtle.sign("HMAC",r,_(e));return G(n)}__name(H,"H");async function pe(t){let e=await crypto.subtle.digest("SHA-1",_(t));return G(e)}__name(pe,"pe");function $(t){return encodeURIComponent(t).replace(/[!'()*]/g,e=>"%"+e.charCodeAt(0).toString(16).toUpperCase())}__name($,"$");function P(t){try{return decodeURIComponent(t)}catch{return t}}__name(P,"P");function we(t){return t.split("/").map(e=>P(e)).join("/")}__name(we,"we");function I(t){return we(P(t))}__name(I,"I");function W(t){return t.split("/").map(e=>$(P(e))).join("/")}__name(W,"W");var Ce=new Set(["cache-control","content-disposition","content-encoding","content-length","content-md5","content-type","expect","expires","if-match","if-modified-since","if-none-match","if-unmodified-since","origin","range","transfer-encoding"]);function xe(t){return t==="host"||t==="x-cos-security-token"?!1:!!(Ce.has(t)||t.startsWith("x-cos-"))}__name(xe,"xe");function X(t){if(!t)return[];let e=[];for(let[r,n]of Object.entries(t))n!=null&&e.push([r.toLowerCase(),String(n)]);return e.sort(([r],[n])=>r<n?-1:r>n?1:0),e}__name(X,"X");function Y(t){return t.map(([e,r])=>`${$(e)}=${$(r)}`).join("&")}__name(Y,"Y");function F(t){return t.map(([e])=>$(e)).join(";")}__name(F,"F");async function V(t){let e=t.method.toLowerCase(),r=t.pathname.startsWith("/")?t.pathname:`/${t.pathname}`,n=Math.floor(Date.now()/1e3),s=n+(t.expireSeconds??3600),i=`${n};${s}`,o=X(t.headers).filter(([N])=>xe(N)),c=F(o),d=Y(o),u=X(t.query),l=F(u),g=Y(u),p=`${e}
+var __create=Object.create;var __defProp=Object.defineProperty;var __getOwnPropDesc=Object.getOwnPropertyDescriptor;var __getOwnPropNames=Object.getOwnPropertyNames;var __getProtoOf=Object.getPrototypeOf,__hasOwnProp=Object.prototype.hasOwnProperty;var __name=(target,value)=>__defProp(target,"name",{value,configurable:!0});var __esm=(fn,res,err)=>function(){if(err)throw err[0];try{return fn&&(res=(0,fn[__getOwnPropNames(fn)[0]])(fn=0)),res}catch(e){throw err=[e],e}};var __commonJS=(cb,mod)=>function(){try{return mod||(0,cb[__getOwnPropNames(cb)[0]])((mod={exports:{}}).exports,mod),mod.exports}catch(e){throw mod=0,e}};var __export=(target,all)=>{for(var name in all)__defProp(target,name,{get:all[name],enumerable:!0})},__copyProps=(to,from,except,desc)=>{if(from&&typeof from=="object"||typeof from=="function")for(let key of __getOwnPropNames(from))!__hasOwnProp.call(to,key)&&key!==except&&__defProp(to,key,{get:()=>from[key],enumerable:!(desc=__getOwnPropDesc(from,key))||desc.enumerable});return to};var __toESM=(mod,isNodeMode,target)=>(target=mod!=null?__create(__getProtoOf(mod)):{},__copyProps(isNodeMode||!mod||!mod.__esModule?__defProp(target,"default",{value:mod,enumerable:!0}):target,mod));var CONFIG,init_config=__esm({"src/config.js"(){CONFIG={KV_BINDING:"BLOG_KV",BLOB_STORE:"typecho-uploads",SESSION_COOKIE:"te_sess",REMEMBER_COOKIE:"te_remember",POST_PWD_COOKIE:"te_pwd",POST_PWD_TTL:86400,SESSION_TTL:604800,PAGE_SIZE:10,COMMENT_PAGE_SIZE:10,DEFAULT_THEME:"joe",VERSION:"1.2.3"}}});var kv_exports={};__export(kv_exports,{KV:()=>KV,getKV:()=>getKV});function getKV(env){let name=CONFIG.KV_BINDING,binding=null;if(env&&(binding=env[name]||env[name.toLowerCase()]||null),!binding&&typeof globalThis<"u"&&(binding=globalThis[name]||null),!binding)throw new Error(`[TypechoEdge] \u672A\u627E\u5230 KV \u7ED1\u5B9A "${name}"\u3002\u8BF7\u5728 EdgeOne \u63A7\u5236\u53F0\u521B\u5EFA KV \u547D\u540D\u7A7A\u95F4\u5E76\u4EE5\u53D8\u91CF\u540D "${name}" \u7ED1\u5B9A\u5230\u672C\u9879\u76EE\u3002`);return new KV(binding)}var KV,init_kv=__esm({"src/storage/kv.js"(){init_config();KV=class{static{__name(this,"KV")}constructor(binding){this.binding=binding}async get(key,type="text"){return await this.binding.get(key,{type})}async getJSON(key){return await this.binding.get(key,{type:"json"})}async put(key,value){await this.binding.put(key,value)}async putJSON(key,obj){await this.binding.put(key,JSON.stringify(obj))}async delete(key){await this.binding.delete(key)}async getBatch(keys){if(!keys.length)return new Map;let results=await Promise.all(keys.map(k=>this.getJSON(k))),map=new Map;return keys.forEach((k,i)=>map.set(k,results[i])),map}async putBatch(entries){entries.length&&await Promise.all(entries.map(([k,v])=>this.putJSON(k,v)))}async deleteBatch(keys){keys.length&&await Promise.all(keys.map(k=>this.delete(k)))}async listKeys(prefix="",limit=1e4){let out=[],cursor,complete=!1;for(;!complete&&out.length<limit;){let pageLimit=Math.min(256,limit-out.length),opts={prefix,limit:pageLimit};cursor&&(opts.cursor=cursor);let res=await this.binding.list(opts);if(!res)break;for(let k of res.keys||[])out.push(k.key);if(complete=res.complete!==!1,cursor=res.cursor,complete||!cursor)break}return out}};__name(getKV,"getKV")}});var require_dist=__commonJS({"node_modules/@edgeone/pages-blob/dist/index.js"(exports,module){"use strict";var U=Object.defineProperty,le=Object.getOwnPropertyDescriptor,ue=Object.getOwnPropertyNames,ge=Object.prototype.hasOwnProperty,fe=__name((t,e)=>{for(var r in e)U(t,r,{get:e[r],enumerable:!0})},"fe"),he=__name((t,e,r,n)=>{if(e&&typeof e=="object"||typeof e=="function")for(let s of ue(e))!ge.call(t,s)&&s!==r&&U(t,s,{get:__name(()=>e[s],"get"),enumerable:!(n=le(e,s))||n.enumerable});return t},"he"),me=__name(t=>he(U({},"__esModule",{value:!0}),t),"me"),Oe={};fe(Oe,{InvalidKeyError:__name(()=>w,"InvalidKeyError"),InvalidStoreNameError:__name(()=>y,"InvalidStoreNameError"),MissingProjectIdError:__name(()=>T,"MissingProjectIdError"),PagesBlobError:__name(()=>h,"PagesBlobError"),PreconditionFailedError:__name(()=>x,"PreconditionFailedError"),QuotaExceededError:__name(()=>O,"QuotaExceededError"),RateLimitedError:__name(()=>j,"RateLimitedError"),Store:__name(()=>E,"Store"),getStore:__name(()=>Me,"getStore"),listStores:__name(()=>De,"listStores")});module.exports=me(Oe);var h=class extends Error{static{__name(this,"h")}code;constructor(e,r){super(`PagesBlob: ${r}`),this.name="PagesBlobError",this.code=e}},w=class extends h{static{__name(this,"w")}constructor(e){super("INVALID_KEY",e)}},y=class extends h{static{__name(this,"y")}constructor(e){super("INVALID_STORE_NAME",e)}},b=class extends h{static{__name(this,"b")}constructor(e){super("MISSING_ENVIRONMENT",`Environment not configured for Pages Blob. Missing: ${e.join(", ")}. Supply these properties when creating a store, or ensure the function is running in a Pages environment.`)}},O=class extends h{static{__name(this,"O")}constructor(){super("QUOTA_EXCEEDED","storage quota exceeded")}},j=class extends h{static{__name(this,"j")}constructor(){super("RATE_LIMITED","request rate limited, please retry later")}},T=class extends h{static{__name(this,"T")}constructor(){super("MISSING_PROJECT_ID","projectId is required when using API token mode. Please supply { name, projectId, token } to getStore() / listStores().")}},m=class extends h{static{__name(this,"m")}constructor(e){super("CREDENTIAL_ERROR",e)}},f=class extends h{static{__name(this,"f")}constructor(e,r){super("COS_ERROR",`COS returned ${e}: ${r}`)}},x=class extends h{static{__name(this,"x")}constructor(){super("PRECONDITION_FAILED","conditional write failed (key already exists)")}};function C(t){if(t==="")throw new w("Blob key must not be empty.");if(t.startsWith("/")||t.startsWith("%2F"))throw new w("Blob key must not start with forward slash (/).");if(new TextEncoder().encode(t).length>600)throw new w("Blob key must be a sequence of Unicode characters whose UTF-8 encoding is at most 600 bytes long.")}__name(C,"C");function z(t){if(t==="")throw new y("Store name must not be empty.");if(t.includes("/")||t.includes(":"))throw new y("Store name must not contain forward slashes (/) or colons (:).");if(!/^[a-zA-Z0-9_-]+$/.test(t))throw new y("Store name must only contain letters, digits, underscores, and hyphens.");if(new TextEncoder().encode(t).length>64)throw new y("Store name must be a sequence of Unicode characters whose UTF-8 encoding is at most 64 bytes long.")}__name(z,"z");var E=class{static{__name(this,"E")}cosClient;storeName;defaultConsistency;constructor(e,r,n="eventual"){this.cosClient=e,this.storeName=r,this.defaultConsistency=n}resolveConsistency(e){return e??this.defaultConsistency}async set(e,r,n){C(e);let s=await this.cosClient.putObject(this.storeName,e,r,{onlyIfNew:n?.onlyIfNew,cacheControl:n?.cacheControl});if(n?.onlyIfNew&&s.statusCode===412)throw new x}async setJSON(e,r,n){C(e);let s=JSON.stringify(r),i=await this.cosClient.putObject(this.storeName,e,s,{onlyIfNew:n?.onlyIfNew,contentType:"application/json",cacheControl:n?.cacheControl});if(n?.onlyIfNew&&i.statusCode===412)throw new x}async createUploadUrl(e,r){C(e);let{url:n,expiresAt:s}=await this.cosClient.createPresignedPutUrl(this.storeName,e,{expireSeconds:r?.expireSeconds,contentType:r?.contentType});return{url:n,key:e,expiresAt:s}}async get(e,r){C(e);let n=this.resolveConsistency(r?.consistency),s=await this.cosClient.getObject(this.storeName,e,n);if(s===null)return null;let{body:i}=s,a=r?.type??"text",o=new TextDecoder("utf-8");switch(a){case"text":return o.decode(i);case"json":return JSON.parse(o.decode(i));case"arrayBuffer":return i.buffer.slice(i.byteOffset,i.byteOffset+i.byteLength);case"blob":return new Blob([i]);case"stream":return new ReadableStream({start(c){c.enqueue(i),c.close()}});default:return o.decode(i)}}async getMetadata(e,r){C(e);let n=this.resolveConsistency(r?.consistency);return this.cosClient.headObject(this.storeName,e,n)}async getWithHeaders(e,r){C(e);let n=this.resolveConsistency(r?.consistency),s=await this.cosClient.getObject(this.storeName,e,n);return s?{body:new TextDecoder("utf-8").decode(s.body),headers:s.headers||{}}:null}async delete(e){C(e),await this.cosClient.deleteObject(this.storeName,e)}async list(e){let r=e?.paginate!==!1,n=e?.limit,s=[],i=[],a=this.resolveConsistency(e?.consistency),o=e?.cursor||"",c=!0,d;for(;c;){let u=n!==void 0?n-s.length:1e3,l=Math.min(u,1e3);if(l<=0)break;let g=await this.cosClient.listObjects(this.storeName,{prefix:e?.prefix,delimiter:e?.directories?"/":void 0,marker:o||void 0,maxKeys:l,consistency:a});for(let p of g.contents)s.push({key:p.key,etag:p.etag});i.push(...g.commonPrefixes),n!==void 0&&s.length>=n?(s.length=n,(g.isTruncated||g.contents.length===l)&&(d=g.nextMarker),c=!1):g.isTruncated?!r&&n===void 0?(d=g.nextMarker,c=!1):o=g.nextMarker:c=!1}return{blobs:s,directories:i,...d?{cursor:d}:{}}}},ye=new TextEncoder;function _(t){let e=ye.encode(t),r=new ArrayBuffer(e.byteLength),n=new Uint8Array(r);return n.set(e),n}__name(_,"_");function G(t){let e=t instanceof Uint8Array?t:new Uint8Array(t),r="";for(let n=0;n<e.length;n++)r+=e[n].toString(16).padStart(2,"0");return r}__name(G,"G");async function H(t,e){let r=await crypto.subtle.importKey("raw",_(t),{name:"HMAC",hash:"SHA-1"},!1,["sign"]),n=await crypto.subtle.sign("HMAC",r,_(e));return G(n)}__name(H,"H");async function pe(t){let e=await crypto.subtle.digest("SHA-1",_(t));return G(e)}__name(pe,"pe");function $(t){return encodeURIComponent(t).replace(/[!'()*]/g,e=>"%"+e.charCodeAt(0).toString(16).toUpperCase())}__name($,"$");function P(t){try{return decodeURIComponent(t)}catch{return t}}__name(P,"P");function we(t){return t.split("/").map(e=>P(e)).join("/")}__name(we,"we");function I(t){return we(P(t))}__name(I,"I");function W(t){return t.split("/").map(e=>$(P(e))).join("/")}__name(W,"W");var Ce=new Set(["cache-control","content-disposition","content-encoding","content-length","content-md5","content-type","expect","expires","if-match","if-modified-since","if-none-match","if-unmodified-since","origin","range","transfer-encoding"]);function xe(t){return t==="host"||t==="x-cos-security-token"?!1:!!(Ce.has(t)||t.startsWith("x-cos-"))}__name(xe,"xe");function X(t){if(!t)return[];let e=[];for(let[r,n]of Object.entries(t))n!=null&&e.push([r.toLowerCase(),String(n)]);return e.sort(([r],[n])=>r<n?-1:r>n?1:0),e}__name(X,"X");function Y(t){return t.map(([e,r])=>`${$(e)}=${$(r)}`).join("&")}__name(Y,"Y");function F(t){return t.map(([e])=>$(e)).join(";")}__name(F,"F");async function V(t){let e=t.method.toLowerCase(),r=t.pathname.startsWith("/")?t.pathname:`/${t.pathname}`,n=Math.floor(Date.now()/1e3),s=n+(t.expireSeconds??3600),i=`${n};${s}`,o=X(t.headers).filter(([N])=>xe(N)),c=F(o),d=Y(o),u=X(t.query),l=F(u),g=Y(u),p=`${e}
 ${r}
 ${g}
 ${d}
@@ -792,6 +792,59 @@ console.log('Hello from EdgeOne Edge Functions!');
         });
     }
 
+    // MCP \u4EE4\u724C\uFF1A\u663E\u793A/\u9690\u85CF \u4E0E \u590D\u5236\uFF08\u4E8B\u4EF6\u59D4\u6258\uFF0C\u517C\u5BB9 SPA \u5C40\u90E8\u5237\u65B0\uFF09
+    document.addEventListener('click',function(e){
+      var el=e.target;
+      if(!el||!el.closest) return;
+
+      var reveal=el.closest('[data-mcp-reveal]');
+      if(reveal){
+        var box=reveal.closest('.mcp-token');
+        var code=box&&box.querySelector('code');
+        if(!code) return;
+        var shown=code.getAttribute('data-shown')==='1';
+        code.textContent=shown?code.getAttribute('data-mask'):code.getAttribute('data-token');
+        code.setAttribute('data-shown',shown?'0':'1');
+        reveal.textContent=shown?'\u663E\u793A':'\u9690\u85CF';
+        return;
+      }
+
+      var addBtn=el.closest('[data-mcp-add]');
+      if(addBtn){
+        var panel=document.getElementById('mcp-add-form');
+        if(!panel) return;
+        var willOpen=panel.hasAttribute('hidden');
+        if(willOpen){panel.removeAttribute('hidden');}else{panel.setAttribute('hidden','');}
+        addBtn.textContent=willOpen?'\u53D6\u6D88':'\u65B0\u589E\u4EE4\u724C';
+        if(willOpen){
+          var first=panel.querySelector('input[name="name"]');
+          if(first) first.focus();
+        }
+        return;
+      }
+
+      var copy=el.closest('[data-copy]');
+      if(!copy) return;
+      var text=copy.getAttribute('data-copy')||'';
+      function done(){
+        var old=copy.textContent;
+        copy.textContent='\u5DF2\u590D\u5236';
+        setTimeout(function(){copy.textContent=old;},1200);
+      }
+      function fallback(){
+        var ta=document.createElement('textarea');
+        ta.value=text;ta.style.position='fixed';ta.style.top='-1000px';ta.style.opacity='0';
+        document.body.appendChild(ta);ta.select();
+        try{document.execCommand('copy');done();}catch(err){copy.textContent='\u590D\u5236\u5931\u8D25';}
+        document.body.removeChild(ta);
+      }
+      if(navigator.clipboard&&window.isSecureContext){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{
+        fallback();
+      }
+    });
+
     document.addEventListener('click',function(e){
       if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;
       var a=e.target.closest('a');
@@ -1175,48 +1228,78 @@ console.log('Hello from EdgeOne Edge Functions!');
       \u5F00\u542F\u540E\uFF0C\u767B\u5F55\u65F6\u9664\u5BC6\u7801\u5916\u8FD8\u9700\u8F93\u5165\u52A8\u6001\u9A8C\u8BC1\u7801\uFF08TOTP\uFF0CRFC 6238\uFF09\uFF0C<br>\u5373\u4F7F\u5BC6\u7801\u6CC4\u9732\u4E5F\u65E0\u6CD5\u767B\u5F55\u540E\u53F0\u3002</p>
     <div class="form-actions form-actions--start">
       <a class="btn primary" href="/admin/security?step=bind">\u5F00\u542F\u4E24\u6B65\u9A8C\u8BC1</a>
-    </div>`;let mcpServers=await loadMcpServers(db),mcpEndpoint=`${url.protocol}//${url.host}`,serverCard=__name(server=>`<div class="mcp-item">
-    <div class="mcp-item__head">
-      <strong>${escapeHtml(server.name||"MCP \u670D\u52A1")}</strong>
-      ${server.enabled===!1?'<span class="badge yellow">\u5DF2\u505C\u7528</span>':'<span class="badge green">\u5DF2\u542F\u7528</span>'}
-      ${server.id==="legacy"?'<span class="badge">\u65E7\u7248\u8FC1\u79FB</span>':""}
+    </div>`;let mcpServers=await loadMcpServers(db),mcpEndpoint=`${url.protocol}//${url.host}`,mcpEnabledCount=mcpServers.filter(server=>server.enabled!==!1).length,maskToken=__name(token=>token?token.length<=16?token.slice(0,6)+"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022":`${token.slice(0,8)}${"\u2022".repeat(12)}${token.slice(-4)}`:"\u672A\u8BBE\u7F6E\u4EE4\u724C","maskToken"),serverCard=__name(server=>{let enabled=server.enabled!==!1,token=server.token||"",masked=maskToken(token);return`<div class="mcp-card${enabled?"":" is-off"}">
+    <div class="mcp-card__top">
+      <div class="mcp-card__name">
+        <span class="mcp-dot${enabled?"":" is-off"}" aria-hidden="true"></span>
+        <span class="mcp-card__title" title="${escapeHtml(server.name||"")}">${escapeHtml(server.name||"MCP \u670D\u52A1")}</span>
+        ${server.id==="legacy"?'<span class="mcp-tag">\u65E7\u7248\u8FC1\u79FB</span>':""}
+      </div>
+      <span class="badge ${enabled?"green":"yellow"}">${enabled?"\u542F\u7528\u4E2D":"\u5DF2\u505C\u7528"}</span>
     </div>
-    <p class="mcp-item__remark">${escapeHtml(server.remark||"\u672A\u586B\u5199\u5907\u6CE8")}</p>
-    <form method="post" action="/admin/security">
-      <input type="hidden" name="op" value="mcp-update">
-      <input type="hidden" name="id" value="${escapeHtml(server.id)}">
-      <div class="row">
+    <p class="mcp-card__remark">${escapeHtml(server.remark||"\u672A\u586B\u5199\u5907\u6CE8")}</p>
+    <div class="mcp-token">
+      <code data-token="${escapeHtml(token)}" data-mask="${escapeHtml(masked)}">${escapeHtml(masked)}</code>
+      <button type="button" class="btn sm" data-mcp-reveal${token?"":" disabled"}>\u663E\u793A</button>
+      <button type="button" class="btn sm" data-copy="${escapeHtml(token)}"${token?"":" disabled"}>\u590D\u5236</button>
+    </div>
+    <div class="mcp-card__foot">
+      <span>${server.createdAt?new Date(server.createdAt*1e3).toLocaleString("zh-CN"):"\u65E7\u7248\u4EE4\u724C"}</span>
+      <span>${token?`${token.length} \u4F4D`:"\u65E0\u4EE4\u724C"}</span>
+    </div>
+    <details class="mcp-edit">
+      <summary>\u7F16\u8F91\u914D\u7F6E</summary>
+      <form method="post" action="/admin/security">
+        <input type="hidden" name="op" value="mcp-update">
+        <input type="hidden" name="id" value="${escapeHtml(server.id)}">
         <div class="item"><label>\u540D\u79F0</label><input type="text" name="name" value="${escapeHtml(server.name||"")}" maxlength="40"></div>
         <div class="item"><label>\u5907\u6CE8</label><input type="text" name="remark" value="${escapeHtml(server.remark||"")}" maxlength="80" placeholder="\u4F8B\u5982\uFF1A\u7ED9 Cursor \u7528"></div>
         <div class="item"><label>\u72B6\u6001</label>${onOffSelect("enabled",server.enabled===!1?"off":"on")}</div>
+        <div class="item"><label>\u8BBF\u95EE\u4EE4\u724C</label><input type="text" name="token" value="${escapeHtml(token)}" autocomplete="off"></div>
+        <div class="form-actions form-actions--start"><button class="btn primary" type="submit">\u4FDD\u5B58\u4FEE\u6539</button></div>
+      </form>
+      <div class="mcp-card__ops">
+        <form method="post" action="/admin/security" onsubmit="return confirm('\u91CD\u65B0\u751F\u6210\u540E\u65E7\u4EE4\u724C\u7ACB\u5373\u5931\u6548\uFF0C\u786E\u5B9A\u7EE7\u7EED\uFF1F')"><input type="hidden" name="op" value="mcp-generate"><input type="hidden" name="id" value="${escapeHtml(server.id)}"><button class="btn sm" type="submit">\u91CD\u65B0\u751F\u6210</button></form>
+        <form method="post" action="/admin/security" onsubmit="return confirm('\u786E\u5B9A\u5220\u9664\u8FD9\u4E2A MCP \u4EE4\u724C\uFF1F')"><input type="hidden" name="op" value="mcp-delete"><input type="hidden" name="id" value="${escapeHtml(server.id)}"><button class="btn sm danger" type="submit">\u5220\u9664</button></form>
       </div>
-      <div class="item"><label>\u8BBF\u95EE\u4EE4\u724C</label><input type="text" name="token" value="${escapeHtml(server.token||"")}" autocomplete="off"></div>
-      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">\u4FDD\u5B58</button></div>
-    </form>
-    <div class="form-actions form-actions--start" style="margin-top:10px">
-      <form method="post" action="/admin/security"><input type="hidden" name="op" value="mcp-generate"><input type="hidden" name="id" value="${escapeHtml(server.id)}"><button class="btn" type="submit">\u91CD\u65B0\u751F\u6210\u4EE4\u724C</button></form>
-      <form method="post" action="/admin/security" onsubmit="return confirm('\u786E\u5B9A\u5220\u9664\u8FD9\u4E2A MCP \u4EE4\u724C\uFF1F')"><input type="hidden" name="op" value="mcp-delete"><input type="hidden" name="id" value="${escapeHtml(server.id)}"><button class="btn danger" type="submit">\u5220\u9664</button></form>
-    </div>
-    <p class="hint">${server.createdAt?`\u521B\u5EFA\u4E8E ${new Date(server.createdAt*1e3).toLocaleString("zh-CN")}`:"\u65E7\u7248\u4EE4\u724C"}</p>
-  </div>`,"serverCard"),addCard=`<div class="mcp-item mcp-item--new">
-    <div class="mcp-item__head"><strong>\u65B0\u589E MCP</strong></div>
+    </details>
+  </div>`},"serverCard"),addPanel=`<div class="mcp-add" id="mcp-add-form"${mcpServers.length?" hidden":""}>
     <form method="post" action="/admin/security">
       <input type="hidden" name="op" value="mcp-add">
-      <div class="row">
+      <div class="mcp-add__grid">
         <div class="item"><label>\u540D\u79F0</label><input type="text" name="name" maxlength="40" placeholder="\u4F8B\u5982\uFF1AClaude Desktop"></div>
-        <div class="item"><label>\u5907\u6CE8</label><input type="text" name="remark" maxlength="80" placeholder="\u7528\u9014\u8BF4\u660E"></div>
+        <div class="item"><label>\u5907\u6CE8</label><input type="text" name="remark" maxlength="80" placeholder="\u7528\u9014\u8BF4\u660E\uFF0C\u53EF\u7559\u7A7A"></div>
         <div class="item"><label>\u72B6\u6001</label>${onOffSelect("enabled","on")}</div>
       </div>
-      <div class="item"><label>\u4EE4\u724C\uFF08\u7559\u7A7A\u81EA\u52A8\u751F\u6210\uFF09</label><input type="text" name="token" autocomplete="off" placeholder="\u7559\u7A7A\u751F\u6210 mcp_..."></div>
-      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">\u521B\u5EFA MCP</button></div>
+      <div class="item"><label>\u4EE4\u724C</label><input type="text" name="token" autocomplete="off" placeholder="\u7559\u7A7A\u81EA\u52A8\u751F\u6210 mcp_..."></div>
+      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">\u521B\u5EFA\u4EE4\u724C</button></div>
     </form>
-  </div>`,mcpSection=`<div class="card">
-    <h2 class="card__title">MCP \u670D\u52A1</h2>
-    <p class="card__intro">\u53EF\u521B\u5EFA\u591A\u4E2A MCP \u4EE4\u724C\uFF0C\u5E76\u5206\u522B\u586B\u5199\u540D\u79F0/\u5907\u6CE8\u533A\u5206\u7528\u9014\u3002\u4EFB\u4E00\u542F\u7528\u4EE4\u724C\u90FD\u53EF\u8C03\u7528\u540C\u4E00 <code>/mcp</code> \u7AEF\u70B9\u3002</p>
-    <div class="mcp-list">${mcpServers.map(serverCard).join("")||'<p class="hint">\u8FD8\u6CA1\u6709 MCP \u4EE4\u724C\uFF0C\u5148\u521B\u5EFA\u4E00\u4E2A\u3002</p>'}</div>
-    ${addCard}
-    <p class="hint" style="margin-top:14px">MCP \u7AEF\u70B9\uFF1A<code>${escapeHtml(mcpEndpoint)}/mcp</code></p>
-    <pre style="margin:10px 0 0;padding:12px;background:#f6f8fa;border-radius:6px;font-size:12px;line-height:1.6;overflow:auto;white-space:pre-wrap;word-break:break-all">${escapeHtml(mcpClientExample(mcpEndpoint))}</pre>
+  </div>`,mcpSection=`<div class="card mcp-panel">
+    <div class="mcp-head">
+      <div>
+        <h2 class="card__title">MCP \u670D\u52A1</h2>
+        <p class="card__intro">\u4E3A\u4E0D\u540C\u5BA2\u6237\u7AEF\u521B\u5EFA\u72EC\u7ACB\u4EE4\u724C\uFF0C\u4EFB\u4E00\u542F\u7528\u4EE4\u724C\u90FD\u53EF\u8BBF\u95EE\u540C\u4E00\u7AEF\u70B9\u3002</p>
+      </div>
+      <span class="mcp-count">${mcpServers.length} \u4E2A\u4EE4\u724C \xB7 ${mcpEnabledCount} \u4E2A\u542F\u7528</span>
+    </div>
+    <div class="mcp-endpoint">
+      <div class="mcp-endpoint__main">
+        <span class="mcp-endpoint__label">\u7AEF\u70B9</span>
+        <code>${escapeHtml(mcpEndpoint)}/mcp</code>
+      </div>
+      <div class="mcp-endpoint__ops">
+        <button type="button" class="btn sm" data-copy="${escapeHtml(mcpEndpoint)}/mcp">\u590D\u5236</button>
+        <button type="button" class="btn sm primary" data-mcp-add>\u65B0\u589E\u4EE4\u724C</button>
+      </div>
+    </div>
+    ${addPanel}
+    <div class="mcp-grid">
+      ${mcpServers.map(serverCard).join("")}
+    </div>
+    <details class="mcp-example">
+      <summary>\u5BA2\u6237\u7AEF\u63A5\u5165\u914D\u7F6E</summary>
+      <pre>${escapeHtml(mcpClientExample(mcpEndpoint))}</pre>
+    </details>
   </div>`,body=`${MSG(ctx)}
   <h2>\u5B89\u5168\u8BBE\u7F6E</h2>
   <div class="card">
