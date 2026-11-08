@@ -18,19 +18,13 @@ export function plainExcerpt(text, len = 100) {
   let t = idx >= 0 ? text.slice(0, idx) : text;
   t = t
     .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\{!\{[\s\S]*?\}!\}/g, ' [图片] ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[#>*_~`\-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return t.length > len ? t.slice(0, len) + '...' : t;
-}
-
-/** 按 <!--more--> 分割正文 */
-export function splitMore(text) {
-  const idx = text.indexOf('<!--more-->');
-  if (idx >= 0) return { excerptText: text.slice(0, idx), full: text };
-  return { excerptText: null, full: text };
 }
 
 export function renderMarkdown(src) {
@@ -47,43 +41,33 @@ export function renderMarkdown(src) {
   while (i < lines.length) {
     const line = lines[i];
 
-    // 代码块
-    const fence = line.match(/^```(\w*)\s*$/);
+    const fence = parseFence(lines, i);
     if (fence) {
       flushQuote();
-      const lang = fence[1];
-      const buf = [];
-      i++;
-      while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
-      i++; // skip closing ```
-      out.push(
-        `<pre><code class="language-${escapeHtml(lang)}">${escapeHtml(buf.join('\n'))}</code></pre>`
-      );
+      out.push(fence.html);
+      i = fence.next;
       continue;
     }
 
     // 空行
     if (!line.trim()) { flushQuote(); i++; continue; }
 
-    // 标题
-    const h = line.match(/^(#{1,6})\s+(.*)$/);
-    if (h) {
+    const heading = parseHeading(line);
+    if (heading) {
       flushQuote();
-      const level = h[1].length;
-      out.push(`<h${level} id="${slugId(h[2])}">${inline(h[2])}</h${level}>`);
+      out.push(heading);
       i++;
       continue;
     }
 
-    // 分隔线
-    if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line)) {
+    if (isHr(line)) {
       flushQuote();
       out.push('<hr>');
       i++;
       continue;
     }
 
-    // 引用
+    // 引用需要跨行状态，只有这一种块保留在主循环里
     if (/^>\s?/.test(line)) {
       if (!inQuote) { out.push('<blockquote>'); inQuote = true; }
       out.push(`<p>${inline(line.replace(/^>\s?/, ''))}</p>`);
@@ -92,98 +76,142 @@ export function renderMarkdown(src) {
     }
     flushQuote();
 
-    // 无序列表
-    if (/^[-*+]\s+/.test(line)) {
-      const items = [];
-      while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
-        items.push(`<li>${inline(lines[i].replace(/^[-*+]\s+/, ''))}</li>`);
-        i++;
-      }
-      out.push(`<ul>${items.join('')}</ul>`);
+    const list = parseList(lines, i);
+    if (list) {
+      out.push(list.html);
+      i = list.next;
       continue;
     }
 
-    // 有序列表
-    if (/^\d+[.)]\s+/.test(line)) {
-      const items = [];
-      while (i < lines.length && /^\d+[.)]\s+/.test(lines[i])) {
-        items.push(`<li>${inline(lines[i].replace(/^\d+[.)]\s+/, ''))}</li>`);
-        i++;
-      }
-      out.push(`<ol>${items.join('')}</ol>`);
+    const table = parseTable(lines, i);
+    if (table) {
+      out.push(table.html);
+      i = table.next;
       continue;
     }
 
-    // 表格
-    if (line.includes('|') && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
-      flushQuote();
-      const header = splitRow(line);
-      i += 2;
-      const rows = [];
-      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
-        rows.push(splitRow(lines[i]));
-        i++;
-      }
-      let html = '<table><thead><tr>';
-      for (const c of header) html += `<th>${inline(c)}</th>`;
-      html += '</tr></thead><tbody>';
-      for (const r of rows) {
-        html += '<tr>';
-        for (const c of r) html += `<td>${inline(c)}</td>`;
-        html += '</tr>';
-      }
-      html += '</tbody></table>';
-      out.push(html);
-      continue;
-    }
-
-    // 视频独占一行：![]() 形式（可带 title）或裸 URL（后面不允许再有别的字）。
-    // 两种形式分开匹配：合成一条正则会让「https://x/a.mp4 是我上次录的」这种
-    // 行也被当成视频，段落里的普通链接反而消失。放在图片分支之前，图片分支原样不动。
-    const trimmed = line.trim();
-    const vidAlt = trimmed.match(/^!\[([^\]]*)\]\(\s*<?(https?:\/\/[^\s)>]+)>?(?:\s[^)]*)?\)$/);
-    const vidBare = trimmed.match(/^<?(https?:\/\/[^\s)>]+)>?$/);
-    const vid = vidAlt ? { url: vidAlt[2], alt: vidAlt[1] } : vidBare ? { url: vidBare[1], alt: '' } : null;
-    if (vid && isVideoUrl(vid.url)) {
-      out.push(renderVideo(vid.url, vid.alt));
+    const media = parseMediaBlock(line);
+    if (media) {
+      out.push(media);
       i++;
       continue;
     }
 
-    // 同一排多张图（一行里只有图片、至少两张）。必须排在单图分支之前。
-    const gallery = renderGallery(trimmed);
-    if (gallery) {
-      out.push(gallery);
-      i++;
-      continue;
-    }
-
-    // 图片独占一行（Joe 风格大图）
-    const imgOnly = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-    if (imgOnly) {
-      const src = imgOnly[2].split(/\s+/)[0];
-      out.push(
-        `<img src="${escapeHtml(src)}" alt="${escapeHtml(imgOnly[1])}" class="joe_detail__article-image" loading="lazy" decoding="async" />`
-      );
-      i++;
-      continue;
-    }
-
-    // 普通段落（合并连续行）
-    const para = [line];
-    i++;
-    while (
-      i < lines.length && lines[i].trim() &&
-      !/^(#{1,6}\s|>|```|[-*+]\s|\d+[.)]\s)/.test(lines[i]) &&
-      !/^(\*{3,}|-{3,}|_{3,})\s*$/.test(lines[i])
-    ) {
-      para.push(lines[i]);
-      i++;
-    }
-    out.push(`<p>${inline(para.join('\n')).replace(/\n/g, '<br>')}</p>`);
+    const para = parseParagraph(lines, i);
+    out.push(para.html);
+    i = para.next;
   }
   flushQuote();
   return out.join('\n');
+}
+
+/** 围栏代码块：```lang ... ``` */
+function parseFence(lines, i) {
+  const m = lines[i].match(/^```(\w*)\s*$/);
+  if (!m) return null;
+  const buf = [];
+  let j = i + 1;
+  while (j < lines.length && !/^```\s*$/.test(lines[j])) { buf.push(lines[j]); j++; }
+  j++; // 跳过结束围栏（EOF 时指向末尾之后，循环自然结束）
+  return {
+    html: `<pre><code class="language-${escapeHtml(m[1])}">${escapeHtml(buf.join('\n'))}</code></pre>`,
+    next: j,
+  };
+}
+
+/** ATX 标题 */
+function parseHeading(line) {
+  const h = line.match(/^(#{1,6})\s+(.*)$/);
+  if (!h) return null;
+  const level = h[1].length;
+  return `<h${level} id="${slugId(h[2])}">${inline(h[2])}</h${level}>`;
+}
+
+/** 分隔线 */
+function isHr(line) {
+  return /^(\*{3,}|-{3,}|_{3,})\s*$/.test(line);
+}
+
+/** 无序 / 有序列表（合并连续项） */
+function parseList(lines, i) {
+  const unordered = /^[-*+]\s+/;
+  const ordered = /^\d+[.)]\s+/;
+  const re = unordered.test(lines[i]) ? unordered : ordered.test(lines[i]) ? ordered : null;
+  if (!re) return null;
+  const tag = re === unordered ? 'ul' : 'ol';
+  const items = [];
+  let j = i;
+  while (j < lines.length && re.test(lines[j])) {
+    items.push(`<li>${inline(lines[j].replace(re, ''))}</li>`);
+    j++;
+  }
+  return { html: `<${tag}>${items.join('')}</${tag}>`, next: j };
+}
+
+/** 表格（表头下一行必须是分隔行） */
+function parseTable(lines, i) {
+  const line = lines[i];
+  if (!(line.includes('|') && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1]))) {
+    return null;
+  }
+  const header = splitRow(line);
+  let j = i + 2;
+  const rows = [];
+  while (j < lines.length && lines[j].includes('|') && lines[j].trim()) {
+    rows.push(splitRow(lines[j]));
+    j++;
+  }
+  let html = '<table><thead><tr>';
+  for (const c of header) html += `<th>${inline(c)}</th>`;
+  html += '</tr></thead><tbody>';
+  for (const r of rows) {
+    html += '<tr>';
+    for (const c of r) html += `<td>${inline(c)}</td>`;
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  return { html, next: j };
+}
+
+/**
+ * 独占一行的媒体块：视频 → 图集 → 单图。
+ * 顺序不能调换：图集必须排在单图前，视频必须排在图片前（见各函数注释）。
+ */
+function parseMediaBlock(line) {
+  const trimmed = line.trim();
+
+  // 视频独占一行：![]() 形式（可带 title）或裸 URL（后面不允许再有别的字）。
+  // 两种形式分开匹配：合成一条正则会让「https://x/a.mp4 是我上次录的」这种
+  // 行也被当成视频，段落里的普通链接反而消失。
+  const vidAlt = trimmed.match(/^!\[([^\]]*)\]\(\s*<?(https?:\/\/[^\s)>]+)>?(?:\s[^)]*)?\)$/);
+  const vidBare = trimmed.match(/^<?(https?:\/\/[^\s)>]+)>?$/);
+  const vid = vidAlt ? { url: vidAlt[2], alt: vidAlt[1] } : vidBare ? { url: vidBare[1], alt: '' } : null;
+  if (vid && isVideoUrl(vid.url)) return renderVideo(vid.url, vid.alt);
+
+  const gallery = renderGallery(trimmed);
+  if (gallery) return gallery;
+
+  const imgOnly = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+  if (imgOnly) {
+    const src = imgOnly[2].split(/\s+/)[0];
+    return `<img src="${escapeHtml(src)}" alt="${escapeHtml(imgOnly[1])}" class="joe_detail__article-image" loading="lazy" decoding="async" />`;
+  }
+  return null;
+}
+
+/** 普通段落：合并连续的非块级行 */
+function parseParagraph(lines, i) {
+  const para = [lines[i]];
+  let j = i + 1;
+  while (
+    j < lines.length && lines[j].trim() &&
+    !/^(#{1,6}\s|>|```|[-*+]\s|\d+[.)]\s)/.test(lines[j]) &&
+    !isHr(lines[j])
+  ) {
+    para.push(lines[j]);
+    j++;
+  }
+  return { html: `<p>${inline(para.join('\n')).replace(/\n/g, '<br>')}</p>`, next: j };
 }
 
 function splitRow(line) {

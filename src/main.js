@@ -4,12 +4,14 @@
  */
 import { CONFIG } from './config.js';
 import { createDatabase } from './db.js';
-import { currentUser, parseCookies } from './auth/session.js';
+import { currentUser } from './auth/session.js';
 import { handleInstall } from './controllers/install.js';
 import { handleAdmin } from './controllers/admin.js';
 import { handleFrontend } from './controllers/frontend.js';
+import { handleMcp } from './mcp.js';
+import { escapeHtml } from './render/markdown.js';
 import { runHooks, runAction, hasAction, loadBuiltinPlugins } from './plugins.js';
-import { setOwoMap, setThemeContext, JOE_DEFAULTS } from './render/theme-joe.js';
+import { setOwoMap, JOE_DEFAULTS } from './render/theme-joe.js';
 import owoJson from './owo.js';
 
 let pluginsLoaded = false;
@@ -61,7 +63,8 @@ export default async function onRequest(context) {
     const user = auth?.user || null;
 
     // 独立页面列表（导航）
-    const pagesList = await db.listContents({ type: 'page', pageSize: 50 });
+    // 导航只需要标题/slug，使用索引避免把所有页面正文读进内存
+    const pagesList = await db.listContentsIndex({ type: 'page', pageSize: 50 });
     const pages = pagesList.items.map((p) => ({
       cid: p.cid,
       title: p.title,
@@ -85,7 +88,9 @@ export default async function onRequest(context) {
 
     // Owo 表情映射（评论渲染用）
     setOwoMap(owoJson);
-    setThemeContext(ctx);
+
+    // ---- MCP（Model Context Protocol）----
+    if (path === '/mcp' || path === '/mcp/') return await handleMcp(ctx);
 
     // ---- 插件：自定义路由 ----
     const custom = await runHooks('route', null, ctx);
@@ -113,14 +118,19 @@ export default async function onRequest(context) {
     return finalRes instanceof Response ? finalRes : res;
   } catch (e) {
     console.error('[TypechoEdge]', e);
-    return new Response(
-      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>服务异常</title></head>
+    return errorPage(e);
+  }
+}
+
+/** 统一的 500 错误页（含 KV 绑定提示） */
+function errorPage(error) {
+  return new Response(
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>服务异常</title></head>
        <body style="font-family:sans-serif;padding:40px;color:#333">
        <h2>500 服务异常</h2>
-       <pre style="background:#f6f8fa;padding:16px;border-radius:8px;white-space:pre-wrap">${String(e?.message || e)}</pre>
+       <pre style="background:#f6f8fa;padding:16px;border-radius:8px;white-space:pre-wrap">${escapeHtml(String(error?.message || error))}</pre>
        <p>如果提示未找到 KV 绑定，请在 EdgeOne 控制台将 KV 命名空间以变量名 <code>BLOG_KV</code> 绑定到本项目后重试。</p>
        </body></html>`,
-      { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    );
-  }
+    { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
 }

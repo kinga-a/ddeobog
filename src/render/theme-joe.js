@@ -2,11 +2,46 @@
  * Joe 主题渲染器 —— 复用 Joe 主题原版 CSS/JS/静态资源
  * 服务端输出与 Joe DOM 结构一致的 HTML
  */
-import { renderMarkdown, escapeHtml, plainExcerpt, splitMore } from './markdown.js';
+import { renderMarkdown, escapeHtml, plainExcerpt } from './markdown.js';
 import { pageNav, avatarUrl, formatDate, thumbnail, parseStickIds } from './html.js';
+import { CONFIG } from '../config.js';
 
-export const THEME_NAME = 'joe';
 const LAZYLOAD = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+/** 侧栏/搜索联想默认热门文章数 */
+const DEFAULT_HOT_COUNT = 5;
+/** 侧栏、滑出层头像尺寸 */
+const SIDEBAR_AVATAR_SIZE = 75;
+const SLIDEOUT_AVATAR_SIZE = 100;
+const DEFAULT_ASSETS_BASE = '/usr/themes/joe';
+/** 首页归档时间线最多展示的文章数 */
+const TIMELINE_LIMIT = 120;
+
+/** 建站日期输入容错：支持 2024/1/1、2024-01-01、2024/01/01 08:30 等写法 */
+export function normalizeBirthday(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (!m) return '';
+  const [, y, mo, d, h = '0', mi = '0', sec = '0'] = m;
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${y}/${p2(mo)}/${p2(d)} ${p2(h)}:${p2(mi)}:${p2(sec)}`;
+}
+
+/** 服务端预计算已运行时长，保证禁用 JS 时页脚也不是 0 */
+function runtimeParts(value) {
+  const normalized = normalizeBirthday(value);
+  if (!normalized) return null;
+  const start = new Date(normalized).getTime();
+  if (!Number.isFinite(start)) return null;
+  const diff = Math.max(0, Date.now() - start);
+  const p2 = (n) => String(n).padStart(2, '0');
+  return {
+    day: p2(Math.floor(diff / 86400000)),
+    hour: p2(Math.floor(diff / 3600000) % 24),
+    minute: p2(Math.floor(diff / 60000) % 60),
+    second: p2(Math.floor(diff / 1000) % 60),
+  };
+}
 
 /** Joe 主题配置默认值（后台可改，存于 option theme:joe） */
 export const JOE_DEFAULTS = {
@@ -25,9 +60,12 @@ export const JOE_DEFAULTS = {
   JAside_Timelife_Status: 'on',
   JAside_Flatterer: 'on',
   JCommentStatus: 'on',
+  JGuestbook_Wall: 'off',
   JIndex_Hot: 'off',
+  JIndex_Carousel_Status: 'off',
   JIndex_Carousel: '',
   JIndex_Recommend: '',
+  JIndex_Ad_Status: 'off',
   JIndex_Ad: '',
   JIndex_Notice: '',
   JList_Animate: 'off',
@@ -41,7 +79,7 @@ export const JOE_DEFAULTS = {
   JStickPosts: '',
 };
 
-export function assetsUrl(opts, path) {
+function assetsUrl(opts, path) {
   const base = opts.themeAssetsBase || '/usr/themes/joe';
   return `${base}/${path}`;
 }
@@ -59,12 +97,85 @@ function coverUrl(ctx, content) {
   return url.startsWith('/') ? `${ctx.siteUrl}${url}` : url;
 }
 
+/** 博主（管理员）信息；未安装多用户时回落到空对象 */
+async function findOwner(db) {
+  const users = await db.listUsers();
+  return users.find((u) => u.group === 'administrator') || {};
+}
+
+/**
+ * 热门文章 + 阅读数。
+ * 搜索联想（headerBlock）和侧栏热门文章（asideBlock）都需要这份数据，
+ * 此前两处各自重复「查索引 → 批量取统计 → 合并」三步。
+ */
+async function hotContentsWithViews(ctx, limit) {
+  const size = Math.max(limit, 5);
+  if (!ctx._hotPostsPromise || (ctx._hotPostsSize || 0) < size) {
+    ctx._hotPostsSize = size;
+    ctx._hotPostsPromise = (async () => {
+      const list = await ctx.db.listContentsIndex({ type: 'post', pageSize: size, order: 'views' });
+      return (await ctx.db.enrichWithStats(list)).items;
+    })();
+  }
+  return (await ctx._hotPostsPromise).slice(0, limit);
+}
+
+/**
+ * 站点统计（文章数 / 评论数）。
+ * 同一请求内 header 滑出层、侧栏、关于板块都会用到，缓存到 ctx 避免重复读 KV。
+ */
+async function siteCounts(ctx) {
+  if (!ctx._siteCounts) {
+    ctx._siteCounts = Promise.all([
+      ctx.db.listContentsIndex({ type: 'post', pageSize: 1 }),
+      ctx.db.listAllComments({ status: 'approved', pageSize: 1 }),
+    ]).then(([posts, comments]) => ({ posts: posts.total, comments: comments.total }));
+  }
+  return ctx._siteCounts;
+}
+
 /** window.Joe 全局配置 + 通用 head */
-function headBlock(ctx, extra = {}) {
+function headBlock(ctx) {
   const { options } = ctx;
   const a = (p) => assetsUrl(options, p);
-  return `<script>
+  const avatarHost =
+    options.joe.JAvatarSource === 'cravatar' ? 'https://cravatar.cn'
+      : options.joe.JAvatarSource === 'gravatar' ? 'https://gravatar.com'
+        : 'https://weavatar.com';
+  // 首页轮播/广告首图常为外链，提前建立连接可加快 LCP
+  const imageHosts = [...new Set(
+    [
+      parseBannerRows(options.joe.JIndex_Carousel, true, 1)[0]?.image,
+      parseBannerRows(options.joe.JIndex_Ad, false, 1)[0]?.image,
+    ]
+      .filter(Boolean)
+      .map((url) => {
+        try {
+          return new URL(url, ctx.siteUrl).origin;
+        } catch {
+          return '';
+        }
+      })
+      .filter((origin) => origin && origin !== ctx.siteUrl)
+  )].slice(0, 2);
+  const imagePreconnect = imageHosts.map((h) => `<link rel="preconnect" href="${h}" crossorigin>`).join('\n');
+  return `<meta name="theme-color" content="#ffffff">
+${imagePreconnect}
+<link rel="preconnect" href="${avatarHost}" crossorigin>
+<script>
   localStorage.getItem("data-night") && document.querySelector("html").setAttribute("data-night", "night");
+  // iOS Safari：让底部工具栏与安全区跟随夜间模式
+  (function(){
+    var meta = document.querySelector('meta[name="theme-color"]');
+    function sync(){
+      var night = document.documentElement.getAttribute("data-night") === "night";
+      if (meta) meta.setAttribute("content", night ? "#121212" : "#ffffff");
+    }
+    sync();
+    if (window.MutationObserver) {
+      new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-night"] });
+    }
+  })();
   window.Joe = {
     THEME_URL: \`${a('')}\`,
     BASE_API: \`/joe/api\`,
@@ -74,7 +185,7 @@ function headBlock(ctx, extra = {}) {
     BAIDU_PUSH: false,
     DOCUMENT_TITLE: \`${escapeHtml(options.joe.JDocumentTitle || '')}\`,
     LAZY_LOAD: \`${a('assets/img/lazyload.jpg')}\`,
-    BIRTHDAY: \`${escapeHtml(options.joe.JBirthDay || '')}\`,
+    BIRTHDAY: \`${escapeHtml(normalizeBirthday(options.joe.JBirthDay))}\`,
     MOTTO: \`${escapeHtml(options.joe.JAside_Author_Motto || '')}\`,
     PAGE_SIZE: ${ctx.pageSize || 10}
   }
@@ -86,40 +197,59 @@ function headBlock(ctx, extra = {}) {
 
 function cssLinks(ctx, extra = []) {
   const a = (p) => assetsUrl(ctx.options, p);
+  const withVersion = (h) => `${h}${h.includes('?') ? '&' : '?'}v=${encodeURIComponent(CONFIG.VERSION)}`;
+  const bodyText = ctx.post?.text || '';
+  const hasMusic = /<joe-(mp3|music|mlist)\b/i.test(bodyText);
   const links = [
     a('assets/css/joe.mode.min.css'),
     a('assets/css/joe.normalize.min.css'),
     a('assets/css/joe.global.min.css'),
     a('assets/css/joe.responsive.min.css'),
     a('assets/lib/qmsg/qmsg.min.css'),
-    a('assets/lib/fancybox@3.5.7/fancybox.min.css'),
     a('assets/lib/animate.css@4.1.1/animate.min.css'),
     a('assets/lib/font-awesome@4.7.0/font-awesome.min.css'),
-    a('assets/lib/APlayer@1.10.1/APlayer.min.css'),
     // 本移植版补的主题缺失样式（侧栏两栏布局、搜索高亮），放在最后以覆盖主题自带规则
     a('assets/css/joe.layout.css'),
     ...extra,
+    // 仅内容详情页需要图片灯箱样式；音乐播放器样式按正文短代码加载
+    ...(ctx.post ? [a('assets/lib/fancybox@3.5.7/fancybox.min.css')] : []),
+    ...(hasMusic ? [a('assets/lib/APlayer@1.10.1/APlayer.min.css')] : []),
   ];
-  return links.map((h) => `<link href="${h}" rel="stylesheet" />`).join('\n');
+  // 非首屏关键的样式异步加载，避免阻塞首屏渲染
+  const deferredCss = ['qmsg', 'fancybox', 'animate.css', 'APlayer'];
+  return links
+    .map((h) => {
+      const href = withVersion(h);
+      if (deferredCss.some((key) => h.includes(key))) {
+        return `<link rel="stylesheet" href="${href}" media="print" onload="this.media='all'" />\n<noscript><link rel="stylesheet" href="${href}" /></noscript>`;
+      }
+      return `<link href="${href}" rel="stylesheet" />`;
+    })
+    .join('\n');
 }
 
 function scripts(ctx, extra = []) {
   const a = (p) => assetsUrl(ctx.options, p);
+  const withVersion = (h) => `${h}${h.includes('?') ? '&' : '?'}v=${encodeURIComponent(CONFIG.VERSION)}`;
+  const bodyText = ctx.post?.text || '';
+  const hasMusic = /<joe-(mp3|music|mlist)\b/i.test(bodyText);
   const list = [
     a('assets/lib/jquery@3.6.1/jquery.min.js'),
     a('assets/lib/scroll/scroll.min.js'),
     a('assets/lib/lazysizes@5.3.2/lazysizes.min.js'),
-    a('assets/lib/APlayer@1.10.1/APlayer.min.js'),
-    a('assets/lib/sketchpad/sketchpad.min.js'),
-    a('assets/lib/fancybox@3.5.7/fancybox.min.js'),
     a('assets/lib/extend/extend.min.js'),
     a('assets/lib/qmsg/qmsg.min.js'),
     a('assets/js/joe.global.min.js'),
     a('assets/js/joe.short.min.js'),
     a('assets/js/joe.search.js'),
+    // 仅内容详情页需要：图片灯箱与评论画图
+    ...(ctx.post ? [a('assets/lib/fancybox@3.5.7/fancybox.min.js'), a('assets/lib/sketchpad/sketchpad.min.js')] : []),
+    // 仅正文出现音乐短代码时才加载播放器
+    ...(hasMusic ? [a('assets/lib/APlayer@1.10.1/APlayer.min.js')] : []),
     ...extra,
   ];
-  return list.map((s) => `<script src="${s}"></script>`).join('\n');
+  // defer：保持原有执行顺序，同时不阻塞 HTML 解析
+  return list.map((s) => `<script src="${s ? withVersion(s) : s}" defer></script>`).join('\n');
 }
 
 /** 页头：导航 + 搜索 + 移动端抽屉 */
@@ -153,19 +283,16 @@ async function slideoutBlock(ctx) {
   const isIndex = path === '/';
 
   // 与侧栏 author 区同源：昵称/头像取管理员，缺省回落到站点配置
-  const owner = (await db.listUsers()).find((u) => u.group === 'administrator') || {};
+  const owner = await findOwner(db);
   const nick = options.joe.JAside_Author_Nick || owner.screenName || '博主';
   const avatarSource = options.joe.JAvatarSource || 'weavatar';
-  const avatar = options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, 100, avatarSource);
+  const avatar = options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, SLIDEOUT_AVATAR_SIZE, avatarSource);
   const link = options.joe.JAside_Author_Link || '#';
 
-  // 并行查询：文章总数、评论总数、分类、标签
-  const [postsIdx, commentsIdx, catIdx, tagIdx] = await Promise.all([
-    db.listContents({ type: 'post', pageSize: 1 }),
-    db.listAllComments({ status: 'approved', pageSize: 1 }),
-    db.listMetas('category'),
-    db.listMetas('tag'),
-  ]);
+  // 并行查询：站点统计（请求内复用）、分类、标签
+  const [stat, nav] = await Promise.all([siteCounts(ctx), navMetas(ctx)]);
+  const catIdx = nav.cats;
+  const tagIdx = nav.tags;
 
   const metaLinks = (list, prefix) => list.map((m) => ({
     name: m.name,
@@ -202,11 +329,11 @@ async function slideoutBlock(ctx) {
     <ul class="joe_header__slideout-count">
       <li class="item">
         ${icon(SLIDEOUT_ICONS.post, 15)}
-        <span>累计撰写 <strong>${postsIdx.total}</strong> 篇文章</span>
+        <span>累计撰写 <strong>${stat.posts}</strong> 篇文章</span>
       </li>
       <li class="item">
         ${icon(SLIDEOUT_ICONS.comment, 15)}
-        <span>累计收到 <strong>${commentsIdx.total}</strong> 条评论</span>
+        <span>累计收到 <strong>${stat.comments}</strong> 条评论</span>
       </li>
     </ul>
     <ul class="joe_header__slideout-menu panel-box">
@@ -218,25 +345,34 @@ async function slideoutBlock(ctx) {
   </div>`;
 }
 
+/** 分类/标签导航数据（同一请求内 header、侧栏、归档筛选复用） */
+async function navMetas(ctx) {
+  if (!ctx._navMetas) {
+    ctx._navMetas = Promise.all([ctx.db.listMetas('category'), ctx.db.listMetas('tag')]).then(
+      ([cats, tags]) => ({ cats, tags })
+    );
+  }
+  return ctx._navMetas;
+}
+
 async function headerBlock(ctx) {
   const { options, pages, path, db } = ctx;
   const navMax = parseInt(options.joe.JNavMaxNum || '6', 10);
-  const navPages = pages.slice(0, navMax);
-  const morePages = pages.slice(navMax);
+  // 「关于本站」固定为一级导航，独立页面列表里不再重复
+  const navSource = pages.filter((p) => p.slug !== 'about' && p.slug !== 'guestbook');
+  const navPages = navSource.slice(0, navMax);
+  const morePages = navSource.slice(navMax);
   const isIndex = path === '/';
+  const isArchive = path === '/archive' || path === '/archive/';
+  const isAbout = path === '/about' || path === '/about/';
+  const isGuestbook = path === '/guestbook' || path === '/guestbook/';
+  const hasGuestbook = pages.some((p) => p.slug === 'guestbook');
 
   // 搜索下拉的初始内容。与 5i.ink 一致：面板里的条目是服务端渲染的热门文章，
   // 主题 CSS 期望 .result .item > .sort(排名徽标) + .text(标题) + .views(阅读量)，
   // 前三条徽标自带红/橙/黄配色，hover 底色也由主题给。
-  const suggestNum = parseInt(options.joe.JSearch_Hot_Num || '5', 10) || 5;
-  // 使用 listContentsIndex 避免加载正文，批量获取统计
-  const hotIndex = await db.listContentsIndex({ type: 'post', pageSize: suggestNum, order: 'views' });
-  const hotCids = hotIndex.items.map((e) => e.cid);
-  const statsMap = await db.getStatsBatch(hotCids);
-  const hotViews = hotIndex.items.map((e) => ({
-    ...e,
-    views: statsMap.get(e.cid)?.views || 0,
-  }));
+  const suggestNum = parseInt(options.joe.JSearch_Hot_Num || String(DEFAULT_HOT_COUNT), 10) || DEFAULT_HOT_COUNT;
+  const hotViews = await hotContentsWithViews(ctx, suggestNum);
   const suggestHtml = hotViews
     .map(
       (p, i) =>
@@ -256,6 +392,9 @@ async function headerBlock(ctx) {
       </a>
       <nav class="joe_header__above-nav">
         <a class="item${isIndex ? ' active' : ''}" href="/" title="首页">首页</a>
+        <a class="item${isArchive ? ' active' : ''}" href="/archive/" title="归档">归档</a>
+        ${hasGuestbook ? `<a class="item${isGuestbook ? ' active' : ''}" href="/guestbook/" title="留言板">留言板</a>` : ''}
+        <a class="item${isAbout ? ' active' : ''}" href="/about/" title="关于本站">关于本站</a>
         ${navPages.map((p) => `<a class="item${path === p.permalink ? ' active' : ''}" href="${p.permalink}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a>`).join('')}
         ${morePages.length ? `<div class="joe_dropdown" trigger="hover" placement="60px" style="margin-right: 15px;">
           <div class="joe_dropdown__link"><a href="#" rel="nofollow">更多</a></div>
@@ -290,45 +429,23 @@ async function headerBlock(ctx) {
 
 /** 侧栏 */
 async function asideBlock(ctx) {
-  const { options, db, user } = ctx;
-  const a = (p) => assetsUrl(options, p);
+  const { options, db } = ctx;
   const avatarSource = options.joe.JAvatarSource || 'weavatar';
+  const hotNum = parseInt(options.joe.JAside_Hot_Num || String(DEFAULT_HOT_COUNT), 10) || DEFAULT_HOT_COUNT;
 
-  // 并行查询所有独立数据
-  const [
-    owner,
-    postsIdx,
-    commentsIdx,
-    hotIndex,
-    recentComments,
-    tags,
-  ] = await Promise.all([
-    db.listUsers().then((users) => users.find((u) => u.group === 'administrator') || {}),
-    db.listContents({ type: 'post', pageSize: 1 }),
-    db.listAllComments({ status: 'approved', pageSize: 1 }),
-    db.listContentsIndex({ type: 'post', pageSize: parseInt(options.joe.JAside_Hot_Num || '5', 10) || 5, order: 'views' }),
-    db.recentComments(5),
-    db.listMetas('tag'),
+  // 并行查询所有独立数据（站点统计在同一请求内复用）
+  const [owner, stat, hotViews, recentComments] = await Promise.all([
+    findOwner(db),
+    siteCounts(ctx),
+    hotContentsWithViews(ctx, hotNum),
+    db.recentComments(DEFAULT_HOT_COUNT),
   ]);
-
-  // 批量获取热门文章统计
-  const hotCids = hotIndex.items.map((e) => e.cid);
-  const statsMap = await db.getStatsBatch(hotCids);
-  const hotViews = hotIndex.items.map((e) => ({
-    ...e,
-    views: statsMap.get(e.cid)?.views || 0,
-  }));
-
-  const stat = {
-    posts: postsIdx.total,
-    comments: commentsIdx.total,
-  };
 
   let html = `<aside class="joe_aside">
   <section class="joe_aside__item author">
     <img width="100%" height="120" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Image)}" alt="博主栏壁纸"  decoding="async" / decoding="async">
     <div class="user">
-      <img width="75" height="75" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, 75, avatarSource))}" alt="博主头像"  decoding="async" / decoding="async">
+      <img width="75" height="75" class="avatar lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(options.joe.JAside_Author_Avatar || avatarUrl(owner.mail, SIDEBAR_AVATAR_SIZE, avatarSource))}" alt="博主头像"  decoding="async" / decoding="async">
       <a class="link" href="${escapeHtml(options.joe.JAside_Author_Link)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(options.joe.JAside_Author_Nick || owner.screenName || '博主')}</a>
       <p class="motto joe_motto"></p>
     </div>
@@ -369,7 +486,7 @@ async function asideBlock(ctx) {
             <img width="40" height="40" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 40, avatarSource)}" alt="${escapeHtml(c.author)}"  decoding="async" / decoding="async">
             <div class="info"><div class="author">${escapeHtml(c.author)}</div><span class="date">${formatDate(c.created, 'Y-m-d')}</span></div>
           </div>
-          <div class="reply"><a class="link" href="${commentLink(db, c)}">${escapeHtml(plainExcerpt(c.text, 40))}</a></div>
+          <div class="reply"><a class="link" href="${commentAnchor(c)}">${escapeHtml(plainExcerpt(c.text, 40))}</a></div>
         </li>`).join('')}
       </ul>
     </section>`;
@@ -387,13 +504,15 @@ async function asideBlock(ctx) {
   return html;
 }
 
-function commentLink(db, c) {
+/** 评论定位锚点（文章页的 #comment-coid） */
+function commentAnchor(c) {
   return `/archives/${c.cid}/#comment-${c.coid}`;
 }
 
 /** 页脚 + 侧边操作按钮 */
 function footerBlock(ctx) {
   const { options } = ctx;
+  const run = runtimeParts(options.joe.JBirthDay) || { day: '0', hour: '0', minute: '0', second: '0' };
   // 只有文章页才输出目录按钮和面板，独立页面/首页/归档页都不显示
   const tocHtml = (ctx.post && ctx.post.type === 'post') ? `
   <div class="joe_action_item toc" id="JoeTocBtn" role="button" tabindex="0"
@@ -428,10 +547,10 @@ function footerBlock(ctx) {
     <div class="joe_footer__below">
       <div class="joe_footer__below-item run">
         <span class="text">已运行</span>
-        <span class="joe_run__day">0</span><span class="text">天</span>
-        <span class="joe_run__hour">0</span><span class="text">小时</span>
-        <span class="joe_run__minute">0</span><span class="text">分</span>
-        <span class="joe_run__second">0</span><span class="text">秒</span>
+        <span class="joe_run__day">${run.day}</span><span class="text">天</span>
+        <span class="joe_run__hour">${run.hour}</span><span class="text">小时</span>
+        <span class="joe_run__minute">${run.minute}</span><span class="text">分</span>
+        <span class="joe_run__second">${run.second}</span><span class="text">秒</span>
       </div>
       <div class="joe_footer__below-item">
         <span>© ${new Date().getFullYear()} ${escapeHtml(options.title)} · ${escapeHtml(options.description || '')}</span>
@@ -560,84 +679,433 @@ export async function contentMetas(db, content) {
 
 /* ==================== 页面渲染 ==================== */
 
-/** 首页 */
-// cache-bust comment for deployment
-export async function renderIndex(ctx) {
-  const a = (p) => assetsUrl(ctx.options, p);
-  const { list, page } = ctx;
-  
-  // 处理顶置文章
-  let items = list.items;
-  const stickPostIds = parseStickIds(ctx.options);
-  
-  if (stickPostIds.length > 0) {
-    // 分离顶置文章和普通文章
-    const stickPosts = [];
-    const regularPosts = [];
-    
-    for (const post of items) {
-      if (stickPostIds.includes(String(post.cid))) {
-        stickPosts.push(post);
-      } else {
-        regularPosts.push(post);
-      }
-    }
-    
-    // 按照JStickPosts中指定的顺序排序顶置文章，未在列表中的文章保持原有顺序并在后面
-    stickPosts.sort((a, b) => {
-      const aIndex = stickPostIds.indexOf(String(a.cid));
-      const bIndex = stickPostIds.indexOf(String(b.cid));
-      
-      // 将未找到的索引视为无穷大，使其排序到末尾
-      const aSort = aIndex === -1 ? Infinity : aIndex;
-      const bSort = bIndex === -1 ? Infinity : bIndex;
-      
-      return aSort - bSort;
-    });
-    
-    // 重新组合文章列表：顶置文章在前
-    items = [...stickPosts, ...regularPosts];
-  }
-  
-  const itemsHtml = items.map((p) => indexItem(ctx, p)).join('');
-  // 标题栏右侧的「分类 / 标签」展开按钮：默认收起，点开显示全部，点别处收起
-  // 批量加载分类和标签
-  const [catIdx, tagIdx] = await Promise.all([
-    ctx.db.listMetas('category'),
-    ctx.db.listMetas('tag'),
-  ]);
+/** 按「顶置文章IDs」把命中项前置并按其顺序排列，其余保持原顺序 */
+function applyStickOrder(items, stickIds) {
+  if (!stickIds.length) return items;
+  const stickSet = new Set(stickIds);
+  const stickPosts = items.filter((p) => stickSet.has(String(p.cid)));
+  const regularPosts = items.filter((p) => !stickSet.has(String(p.cid)));
+  stickPosts.sort((a, b) => stickIds.indexOf(String(a.cid)) - stickIds.indexOf(String(b.cid)));
+  return [...stickPosts, ...regularPosts];
+}
+
+// 首页标题栏筛选用图标（跟随文字颜色 currentColor）
+const FILTER_ICONS = {
+  category: 'M896 288H512l-96-96H128c-35.3 0-64 28.7-64 64v512c0 35.3 28.7 64 64 64h768c35.3 0 64-28.7 64-64V352c0-35.3-28.7-64-64-64z',
+  tag: 'M128 96h288l448 448-288 288L128 384V96zm96 128v256l320 320 192-192-320-320H224zm0 32a48 48 0 1 0 0 96 48 48 0 0 0 0-96z',
+};
+
+const filterIcon = (d) =>
+  `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="${d}" /></svg>`;
+
+/**
+ * 首页标题栏右侧的「分类 / 标签」展开面板。
+ * 默认收起，点开显示全部，点别处收起（交互由 joe.index.js 驱动）。
+ */
+async function buildIndexFilter(ctx) {
+  const { cats: catIdx, tags: tagIdx } = await navMetas(ctx);
   const catMeta = catIdx.map((m) => ({ name: m.name, href: `/category/${encodeURIComponent(m.slug)}/` }));
   const tagMeta = tagIdx.map((m) => ({ name: m.name, href: `/tag/${encodeURIComponent(m.slug)}/` }));
-  // 胶囊按钮里的线性图标，跟随文字颜色（currentColor）
-  const filterIcon = (d) =>
-    `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="${d}" /></svg>`;
-  const FILTER_ICONS = {
-    category: 'M896 288H512l-96-96H128c-35.3 0-64 28.7-64 64v512c0 35.3 28.7 64 64 64h768c35.3 0 64-28.7 64-64V352c0-35.3-28.7-64-64-64z',
-    tag: 'M128 96h288l448 448-288 288L128 384V96zm96 128v256l320 320 192-192-320-320H224zm0 32a48 48 0 1 0 0 96 48 48 0 0 0 0-96z',
-  };
+  if (!catMeta.length && !tagMeta.length) return '';
+
   const filterBtn = (label, kind, count) =>
     count
       ? `<button type="button" class="joe_index__title-filter-btn" data-panel="${kind}" aria-expanded="false">${filterIcon(FILTER_ICONS[kind])}${label}</button>`
       : '';
-  const filterPanel = (kind, items) =>
-    items.length
+  const filterPanel = (kind, metas) =>
+    metas.length
       ? `<div class="joe_index__title-filter-panel joe_index__title-filter-panel--${kind}" hidden>
-          <ul class="slides">${items
+          <ul class="slides">${metas
             .map((m) => `<li><a class="link" href="${m.href}" title="${escapeHtml(m.name)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.name)}</a></li>`)
             .join('')}</ul>
         </div>`
       : '';
-  const filterHtml = catMeta.length || tagMeta.length
-    ? `<div class="joe_index__title-filter">
+  return `<div class="joe_index__title-filter">
         ${filterBtn('分类', 'category', catMeta.length)}
         ${filterBtn('标签', 'tag', tagMeta.length)}
         ${filterPanel('category', catMeta)}
         ${filterPanel('tag', tagMeta)}
-      </div>`
+      </div>`;
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** 按年 → 月分组（列表本身已按时间倒序） */
+function groupByYearMonth(items) {
+  const years = new Map();
+  for (const p of items) {
+    const d = new Date(p.created * 1000);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    if (!years.has(y)) years.set(y, new Map());
+    const months = years.get(y);
+    if (!months.has(m)) months.set(m, []);
+    months.get(m).push(p);
+  }
+  return years;
+}
+
+const CENSUS_COLORS = ['#1cc88a', '#36b9cc', '#2196f3', '#9c27b0', '#f6a821', '#fe2d46'];
+
+const CENSUS_ICONS = {
+  post: `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="30" height="30"><path d="M947.2 298.667c0-34.134-12.8-68.267-38.4-89.6L814.933 115.2c-51.2-51.2-132.266-51.2-179.2 0l-512 516.267c-25.6 21.333-38.4 55.466-38.4 89.6v132.266c0 46.934 38.4 85.334 81.067 85.334h682.667c25.6 0 42.666-17.067 42.666-42.667s-17.066-42.667-42.666-42.667h-409.6L908.8 388.267c25.6-25.6 38.4-55.467 38.4-89.6zM170.667 853.333V721.067c0-12.8 4.266-21.334 12.8-29.867l413.866-418.133 153.6 153.6-413.866 413.866c-8.534 8.534-21.334 12.8-34.134 12.8H170.667zm678.4-524.8l-38.4 38.4-153.6-153.6 38.4-38.4c8.533-8.533 21.333-12.8 29.866-12.8 12.8 0 21.334 4.267 29.867 12.8l93.867 93.867c8.533 8.533 12.8 17.067 12.8 29.867s-4.267 21.333-12.8 29.866z" /></svg>`,
+  comment: `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M511.914 928.016c-8.257 0-16.341-3.096-22.706-9.46l-95.984-95.985c-12.557-12.557-12.557-32.682 0-45.24s32.683-12.556 45.24 0l73.45 73.45 73.45-73.45c6.02-6.02 14.105-9.46 22.706-9.46h223.962c17.718 0 31.995-14.277 31.995-31.995V223.962c0-17.545-14.277-31.994-31.995-31.994H192.14c-17.546 0-31.995 14.449-31.995 31.994v511.914c0 17.718 14.45 31.995 31.995 31.995h95.984c17.717 0 31.994 14.277 31.994 31.995s-14.277 31.994-31.994 31.994H192.14c-52.98 0-95.984-43.003-95.984-95.984V223.962c0-52.98 43.003-95.984 95.984-95.984h639.892c52.98 0 95.984 43.004 95.984 95.984v511.914c0 52.98-43.003 95.984-95.984 95.984H621.143l-86.523 86.695c-6.193 6.193-14.45 9.461-22.706 9.461z" /><path d="M335.944 511.914c-26.49 0-47.992-21.502-47.992-47.992s21.501-47.992 47.992-47.992 47.991 21.502 47.991 47.992-21.501 47.992-47.991 47.992zm191.967 0c-26.49 0-47.992-21.502-47.992-47.992s21.502-47.992 47.992-47.992 47.992 21.502 47.992 47.992-21.502 47.992-47.992 47.992zm192.14 0c-26.49 0-47.992-21.502-47.992-47.992s21.502-47.992 47.992-47.992 47.992 21.502 47.992 47.992-21.674 47.992-47.992 47.992z" /></svg>`,
+  category: `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="M166.79 123.639v778.578l311.724-133.273a86.303 86.303 0 0 1 64.857-1.208L857.21 888.279v-764.64H166.79zM145.215 58.91h733.57a43.151 43.151 0 0 1 43.152 43.152v817.608a43.151 43.151 0 0 1-58.62 40.282l-343.14-131.806a21.576 21.576 0 0 0-16.225.303L162.194 974.582a43.151 43.151 0 0 1-60.132-39.678V102.062a43.151 43.151 0 0 1 43.153-43.15z" /><path d="M329.816 411.307a32.363 32.363 0 1 1 0-64.727h364.368a32.363 32.363 0 1 1 0 64.727H329.816zm0 170.814a32.363 32.363 0 1 1 0-64.728h364.368a32.363 32.363 0 1 1 0 64.728H329.816z" /></svg>`,
+  tag: `<svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path d="M128 128h320l448 448-320 448-448-448V128zm160 96a64 64 0 1 0 0 128 64 64 0 0 0 0-128z" /></svg>`,
+};
+
+const CENSUS_ARROW = `<svg class="icon joe_filing-arrow" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M624.865 512.247L332.71 220.088c-12.28-12.27-12.28-32.186 0-44.457 12.27-12.28 32.186-12.28 44.457 0l314.388 314.388c12.28 12.27 12.28 32.186 0 44.457L377.167 848.863c-6.136 6.14-14.183 9.211-22.228 9.211s-16.092-3.071-22.228-9.211c-12.28-12.27-12.28-32.186 0-44.457l292.155-292.16z" /></svg>`;
+
+/** 归档页筛选条：全部 / 分类 / 标签 */
+function archiveFilters(filters) {
+  const { cats, tags, activeMeta, allCount } = filters;
+  const chip = (label, href, count, active) =>
+    `<a class="joe_archive-filters__item${active ? ' active' : ''}" href="${href}">${escapeHtml(label)}<span>${count}</span></a>`;
+  const tagGroup = tags.length
+    ? `<span class="joe_archive-filters__label">标签</span>
+      ${tags.map((m) => chip(m.name, `/archive/?tag=${encodeURIComponent(m.slug)}`, m.count || 0, activeMeta?.mid === m.mid)).join('')}`
     : '';
+  return `<nav class="joe_archive-filters" aria-label="按分类或标签筛选">
+      <span class="joe_archive-filters__label">分类</span>
+      ${chip('全部', '/archive/', allCount, !activeMeta)}
+      ${cats.map((m) => chip(m.name, `/archive/?cat=${encodeURIComponent(m.slug)}`, m.count || 0, activeMeta?.mid === m.mid)).join('')}
+      ${tagGroup}
+    </nav>`;
+}
+
+function censusCard(label, value, icon) {
+  return `<div class="list">
+      <div class="count"><h6>${label}</h6><p>${value}</p></div>
+      ${icon}
+    </div>`;
+}
+
+/** 分类分布环图（纯 CSS，不依赖 ECharts） */
+function categoryPie(cats) {
+  const total = cats.reduce((sum, m) => sum + (m.count || 0), 0);
+  if (!total) return '<p class="joe_archive-pie__empty">暂无分类数据</p>';
+  let acc = 0;
+  const stops = [];
+  const legend = [];
+  cats.forEach((m, i) => {
+    const count = m.count || 0;
+    if (!count) return;
+    const color = CENSUS_COLORS[i % CENSUS_COLORS.length];
+    const start = (acc / total) * 100;
+    acc += count;
+    const end = (acc / total) * 100;
+    stops.push(`${color} ${start.toFixed(2)}% ${end.toFixed(2)}%`);
+    legend.push(`<li><i style="background:${color}"></i><span>${escapeHtml(m.name)}</span><em>${count}</em></li>`);
+  });
+  return `<div class="joe_archive-pie">
+      <div class="joe_archive-pie__chart" style="background:conic-gradient(${stops.join(', ')})">
+        <div class="joe_archive-pie__center"><strong>${total}</strong><span>篇文章</span></div>
+      </div>
+      <ul class="joe_archive-pie__legend">${legend.join('')}</ul>
+    </div>`;
+}
+
+/** 归档页主体：统计卡片 + 筛选 + 可折叠时间线 */
+function archivePageBody(list, metaByMid, filters) {
+  const { cats, tags, activeMeta, allCount, commentCount } = filters;
+  const statHtml = `<div class="joe_census__basic">
+      <div class="joe_census__basic-item list">
+        ${censusCard('文章数', allCount, CENSUS_ICONS.post)}
+        ${censusCard('评论数', commentCount, CENSUS_ICONS.comment)}
+        ${censusCard('分类数', cats.length, CENSUS_ICONS.category)}
+        ${censusCard('标签数', tags.length, CENSUS_ICONS.tag)}
+      </div>
+      <div class="joe_census__basic-item category">${categoryPie(cats)}</div>
+    </div>`;
+
+  if (!list.items.length) {
+    const emptyTitle = activeMeta ? `「${escapeHtml(activeMeta.name)}」下还没有文章` : '还没有文章';
+    return `<div class="joe_archive-hero">
+        <div class="joe_archive-hero__text">
+          <h1 class="joe_archive-hero__title">归档</h1>
+          <p class="joe_archive-hero__sub">共 0 篇文章</p>
+        </div>
+      </div>
+      ${statHtml}
+      ${archiveFilters(filters)}
+      <div class="joe_panel joe_archive-empty">
+        <p class="joe_archive-empty__title">${emptyTitle}</p>
+        <p class="joe_archive-empty__hint">在后台发布文章后，这里会自动生成归档。</p>
+      </div>`;
+  }
+
+  const years = groupByYearMonth(list.items);
+  const yearKeys = [...years.keys()].sort((a, b) => b - a);
+  const countOf = (y) => [...years.get(y).values()].reduce((sum, arr) => sum + arr.length, 0);
+  const latest = list.items[0];
+  const range = yearKeys.length > 1 ? `${yearKeys[yearKeys.length - 1]}–${yearKeys[0]}` : `${yearKeys[0]}`;
+  const truncated = list.total > list.items.length ? ` · 仅显示最近 ${list.items.length} 篇` : '';
+  const scope = activeMeta ? `${activeMeta.type === 'category' ? '分类' : '标签'}「${activeMeta.name}」` : '全部文章';
+  const sub = `${scope} · 共 ${list.total} 篇 · ${range} 年 · 最近更新 ${formatDate(latest.created, 'Y-m-d')}${truncated}`;
+
+  const filing = yearKeys
+    .map((y, index) => {
+      const months = [...years.get(y).entries()].sort((a, b) => b[0] - a[0]);
+      const body = months
+        .map(
+          ([m, items]) => `<div class="joe_filing-month">${m} 月</div>
+          <ul class="joe_filing-list">
+            ${items
+              .map((p) => {
+                const d = new Date(p.created * 1000);
+                const catNames = (p.categories || []).map((mid) => metaByMid.get(mid)?.name).filter(Boolean);
+                const catHtml = catNames.length
+                  ? `<span class="joe_filing-cat">${escapeHtml(catNames[0])}${catNames.length > 1 ? ` +${catNames.length - 1}` : ''}</span>`
+                  : '';
+                return `<li class="joe_filing-article">
+                <time class="joe_filing-date" datetime="${formatDate(p.created, 'Y-m-d')}">${pad2(d.getDate())}</time>
+                <a class="joe_filing-link" href="${permalink(p)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a>
+                ${catHtml}
+                <span class="joe_filing-meta"><span>${p.views || 0} 阅读</span><span>${p.commentsNum || 0} 评论</span></span>
+              </li>`;
+              })
+              .join('')}
+          </ul>`
+        )
+        .join('');
+      return `<div class="item">
+        <div class="tail"></div>
+        <div class="head"></div>
+        <div class="wrapper">
+          <details class="joe_filing-year"${index === 0 ? ' open' : ''}>
+            <summary class="panel"><span>${y} 年<em>${countOf(y)} 篇</em></span>${CENSUS_ARROW}</summary>
+            <div class="joe_filing-body">${body}</div>
+          </details>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  return `<div class="joe_archive-hero">
+      <div class="joe_archive-hero__text">
+        <h1 class="joe_archive-hero__title">归档</h1>
+        <p class="joe_archive-hero__sub">${sub}</p>
+      </div>
+    </div>
+    ${statHtml}
+    ${archiveFilters(filters)}
+    <div class="joe_census__filing">
+      <div class="title">文章归档<span>共 ${list.total} 篇</span></div>
+      <div class="content">${filing}</div>
+    </div>`;
+}
+
+/** 归档页（/archive/）：统计 + 分类分布 + 可折叠时间线，支持 ?cat=slug / ?tag=slug */
+export async function renderArchivePage(ctx) {
+  const { db, url } = ctx;
+  const catSlug = url.searchParams.get('cat') || '';
+  const tagSlug = url.searchParams.get('tag') || '';
+
+  // 侧栏与主内容互不依赖，先并行启动，避免归档查询完成后再串行渲染侧栏
+  const asidePromise = asideBlock(ctx);
+  const [nav, stat] = await Promise.all([navMetas(ctx), siteCounts(ctx)]);
+  const cats = nav.cats;
+  const tags = nav.tags;
+  const activeMeta =
+    (catSlug && cats.find((m) => m.slug === catSlug)) ||
+    (tagSlug && tags.find((m) => m.slug === tagSlug)) ||
+    null;
+
+  const query = { type: 'post', pageSize: TIMELINE_LIMIT, allStatus: !!ctx.user };
+  if (activeMeta?.type === 'category') query.categoryMid = activeMeta.mid;
+  if (activeMeta?.type === 'tag') query.tagMid = activeMeta.mid;
+
+  const list = await db.listContentsIndex(query);
+  const enriched = await db.enrichWithStats(list);
+  const mids = [...new Set(enriched.items.flatMap((p) => p.categories || []))];
+  const metas = mids.length ? await db.getMetasBatch(mids) : [];
+  const metaByMid = new Map(metas.map((m) => [m.mid, m]));
+  const a = (p) => assetsUrl(ctx.options, p);
+  const asideHtml = await asidePromise;
+  ctx.contentBody = `<div class="joe_container joe_page joe_body joe_archive-page"><div class="joe_main">${archivePageBody(enriched, metaByMid, {
+    cats,
+    tags,
+    activeMeta,
+    allCount: stat.posts,
+    commentCount: stat.comments,
+  })}</div>${asideHtml}</div>`;
+  return await layout(ctx, {
+    title: `${activeMeta ? `${activeMeta.name} - ` : ''}归档 - ${escapeHtml(ctx.options.title)}`,
+    css: [a('assets/css/joe.census.min.css')],
+  });
+}
+
+/** 便签留言墙（配合后台开关 JGuestbook_Wall 使用） */
+export async function renderGuestbookWall(ctx, page) {
+  const { db, options, url } = ctx;
+  const comments = await db.listComments(page.cid);
+  const latest = comments.slice(-120).reverse();
+  const avatarSource = options.joe?.JAvatarSource || 'weavatar';
+  const assetsBase = options.themeAssetsBase || DEFAULT_ASSETS_BASE;
+  const tones = ['sun', 'rose', 'mint', 'sky', 'lilac'];
+  const notes = latest
+    .map((c, idx) => {
+      const tilt = ((idx % 5) - 2) * 0.7;
+      return `<article class="joe_wall__note" data-tone="${tones[idx % tones.length]}" data-coid="${c.coid}" style="--tilt:${tilt}deg">
+        <span class="joe_wall__pin" aria-hidden="true"></span>
+        <div class="joe_wall__meta">
+          <img width="40" height="40" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(c.mail, 40, avatarSource)}" alt="${escapeHtml(c.author)}" decoding="async">
+          <div><strong>${escapeHtml(c.author)}</strong><time datetime="${formatDate(c.created, 'Y-m-d H:i')}">${formatDate(c.created, 'Y-m-d H:i')}</time></div>
+        </div>
+        <div class="joe_wall__text">${renderCommentText(c.text, assetsBase)}</div>
+      </article>`;
+    })
+    .join('');
+  const posted = url.searchParams.get('posted');
+  const waiting = options.commentStatus === 'waiting';
+  const canPost = true; // 墙模式本身就是留言入口，页面可关闭普通评论区
+  const formHtml = canPost ? `    <form class="joe_wall__form" method="post" action="/comment/${page.cid}">
+      <div class="joe_wall__form-head"><h2>写一张便签</h2><p>留下你的想法，贴到墙上。</p></div>
+      <div class="joe_wall__row">
+        <input type="text" name="author" maxlength="32" placeholder="昵称" required>
+        <input type="email" name="mail" placeholder="邮箱（用于头像）" required>
+      </div>
+      <textarea name="text" rows="4" placeholder="写下你的留言…" required></textarea>
+      <div class="joe_wall__form-foot">
+        <span>${waiting ? '留言需要审核后展示' : '提交后会立即贴在墙上'}</span>
+        <button type="submit">贴上留言</button>
+      </div>
+    </form>` : '<div class="joe_wall__closed">留言板暂时关闭了留言。</div>';
+  ctx.contentBody = `<div class="joe_container joe_wall">
+    <header class="joe_wall__head">
+      <h1>${escapeHtml(page.title)}</h1>
+      <div class="joe_wall__intro">${renderMarkdown(page.text || '')}</div>
+      <p class="joe_wall__sub">共 ${comments.length} 张便签 · 桌面上可以拖动便签重新摆放</p>
+    </header>
+    ${posted ? `<div class="joe_wall__posted">${waiting ? '留言已提交，审核通过后会出现在墙上。' : '留言已贴上墙。'}</div>` : ''}
+    ${formHtml}
+    <section class="joe_wall__board" id="wall">
+      ${notes || '<div class="joe_wall__empty">还没有人留言，来贴第一张便签吧。</div>'}
+    </section>
+  </div>`;
+  const a = (p) => assetsUrl(options, p);
+  return await layout(ctx, {
+    title: `${escapeHtml(page.title)} - ${escapeHtml(options.title)}`,
+    js: [a('assets/js/joe.guestbook.js')],
+  });
+}
+
+/** 关于页兜底（没有 slug=about 的独立页面时使用） */
+export async function renderAboutPage(ctx) {
+  const stat = await siteCounts(ctx);
+  const a = (p) => assetsUrl(ctx.options, p);
+  const intro = ctx.options.description || `${ctx.options.title}，记录技术与生活的一隅。`;
+  ctx.contentBody = `<div class="joe_container joe_page"><div class="joe_main">
+    <section class="joe_panel">
+      <div class="joe_panel__head">
+        <h1 class="joe_panel__title">关于本站</h1>
+      </div>
+      <div class="joe_about__body">
+        <p>${escapeHtml(intro)}</p>
+      </div>
+      <p class="joe_about__stat">共 ${stat.posts} 篇文章 · ${stat.comments} 条评论</p>
+    </section>
+  </div></div>`;
+  return await layout(ctx, {
+    title: `关于本站 - ${escapeHtml(ctx.options.title)}`,
+    css: [a('assets/css/joe.archive.min.css')],
+  });
+}
+
+/** 首页 */
+// cache-bust comment for deployment
+/** 解析轮播/广告配置：一行一条，字段用 || 分隔 */
+function parseBannerRows(raw, withTitle, limit) {
+  const safeUrl = (value) => {
+    const url = String(value || '').trim();
+    return /^(https?:\/\/|\/)/i.test(url) ? url : '';
+  };
+  const rows = [];
+  for (const line of String(raw || '').split(/\r?\n/)) {
+    const text = line.trim();
+    if (!text || text.startsWith('#')) continue;
+    const parts = text.split(/\s*\|\|\s*/).map((part) => part.trim());
+    const image = safeUrl(parts[0]);
+    if (!image) continue;
+    rows.push({
+      image,
+      link: safeUrl(parts[1]),
+      title: withTitle ? parts[2] || '' : '',
+    });
+    if (rows.length >= limit) break;
+  }
+  return rows;
+}
+
+const BANNER_ICON = '<svg class="icon" viewBox="0 0 1026 1024" xmlns="http://www.w3.org/2000/svg" width="18" height="18"><path d="M784.3 1007.961a33.2 33.2 0 0 1-27.106-9.062L540.669 854.55 431.766 962.813c-9.062 9.062-36.168 18.044-45.23 9.062a49.72 49.72 0 0 1-27.106-45.23V727.763a33.2 33.2 0 0 1 9.463-27.106l343.071-370.578a44.748 44.748 0 0 1 63.274 63.274l-334.17 361.515v72.175l63.273-54.211a42.583 42.583 0 0 1 54.212-9.062l198.64 126.386L910.847 140.34 151.647 510.837 323.343 619.34c18.044 9.062 27.106 45.23 9.062 63.273-9.062 18.044-45.23 27.106-63.273 18.044L34.082 547.005c-8.981-8.982-18.043-17.723-18.043-36.168s9.062-27.105 27.105-36.167l903.79-451.815c18.043-9.062 36.167-9.062 45.229 0 18.284 9.223 18.284 27.106 18.284 45.15L829.69 971.794c0 18.043-9.062 27.105-27.105 36.167z" /></svg>';
+
+/** 首页轮播（每行：图片地址 || 跳转链接 || 标题） */
+function bannerBlock(ctx) {
+  const joe = ctx.options.joe || {};
+  if (joe.JIndex_Carousel_Status === 'off') return '';
+  const rows = parseBannerRows(joe.JIndex_Carousel, true, 10);
+  if (!rows.length) return '';
+  const slides = rows
+    .map(
+      (row, index) => `<div class="swiper-slide">
+          <a class="item" href="${escapeHtml(row.link || '#')}"${row.link ? ' target="_blank" rel="noopener noreferrer nofollow"' : ''}>
+            ${index === 0
+              ? `<img width="100%" height="100%" src="${escapeHtml(row.image)}" alt="${escapeHtml(row.title)}" fetchpriority="high" decoding="async" />`
+              : `<img width="100%" height="100%" class="thumbnail lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(row.image)}" alt="${escapeHtml(row.title)}"  decoding="async" / decoding="async">`}
+            ${row.title ? `<div class="title">${escapeHtml(row.title)}</div>` : ''}
+            ${BANNER_ICON}
+          </a>
+        </div>`
+    )
+    .join('');
+  return `<div class="joe_index__banner">
+        <div class="swiper-container">
+          <div class="swiper-wrapper">${slides}</div>
+          <div class="swiper-pagination"></div>
+          <div class="swiper-button-next"></div>
+          <div class="swiper-button-prev"></div>
+        </div>
+      </div>`;
+}
+
+/** 首页广告（一行：广告图片 || 广告链接，限制一条） */
+function adBlock(ctx) {
+  const joe = ctx.options.joe || {};
+  if (joe.JIndex_Ad_Status === 'off') return '';
+  const rows = parseBannerRows(joe.JIndex_Ad, false, 8);
+  if (!rows.length) return '';
+  // 桌面按数量最多 4 列，手机由 CSS 固定为 2 列
+  const columns = Math.min(4, rows.length);
+  const links = rows
+    .map(
+      (ad, index) => `<a class="joe_index__ad-link" href="${escapeHtml(ad.link || '#')}"${ad.link ? ' target="_blank" rel="noopener noreferrer nofollow"' : ''}>
+          ${index === 0
+            ? `<img width="100%" height="200" src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.link || '')}" fetchpriority="high" decoding="async" />`
+            : `<img width="100%" height="200" class="image lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(ad.image)}" alt="${escapeHtml(ad.link || '')}"  decoding="async" / decoding="async">`}
+          <span class="icon">广告</span>
+        </a>`
+    )
+    .join('');
+  return `<div class="joe_index__ad joe_ad-grid" style="--ad-cols:${columns}">${links}</div>`;
+}
+
+export async function renderIndex(ctx) {
+  const a = (p) => assetsUrl(ctx.options, p);
+  const { list, page } = ctx;
+
+  // 处理顶置文章：按「顶置文章IDs」前置，其余保持原顺序
+  const items = applyStickOrder(list.items, parseStickIds(ctx.options));
+  const itemsHtml = items.map((p, i) => indexItem(ctx, p, i === 0)).join('');
+  // 主列表筛选项与侧栏并行渲染
+  const [filterHtml, asideHtml] = await Promise.all([
+    buildIndexFilter(ctx),
+    asideBlock(ctx),
+  ]);
   ctx.contentBody = `<div class="joe_container joe_body">
     <div class="joe_main">
       <div class="joe_index">
+        ${bannerBlock(ctx)}
+        ${adBlock(ctx)}
         <div class="joe_index__title">
           <ul class="joe_index__title-title">
             <li class="item" data-type="created">最新文章</li>
@@ -656,16 +1124,25 @@ export async function renderIndex(ctx) {
         ${pageNav(page, list.pages, '/')}
       </div>
     </div>
-    ${await asideBlock(ctx)}
+    ${asideHtml}
   </div>`;
+  const hasCarousel =
+    ctx.options.joe.JIndex_Carousel_Status !== 'off' &&
+    parseBannerRows(ctx.options.joe.JIndex_Carousel, true, 1).length > 0;
+  const indexCss = [a('assets/css/joe.index.min.css')];
+  const indexJs = [a('assets/lib/wowjs@1.1.3/wow.min.js'), a('assets/js/joe.index.min.js')];
+  if (hasCarousel) {
+    indexCss.unshift(a('assets/lib/swiper@5.4.5/swiper.min.css'));
+    indexJs.unshift(a('assets/lib/swiper@5.4.5/swiper.min.js'));
+  }
   return await layout(ctx, {
     title: `${escapeHtml(ctx.options.title)} - ${escapeHtml(ctx.options.description || '')}`,
-    css: [a('assets/lib/swiper@5.4.5/swiper.min.css'), a('assets/css/joe.index.min.css')],
-    js: [a('assets/lib/swiper@5.4.5/swiper.min.js'), a('assets/lib/wowjs@1.1.3/wow.min.js'), a('assets/js/joe.index.min.js')],
+    css: indexCss,
+    js: indexJs,
   });
 }
 
-function indexItem(ctx, p) {
+function indexItem(ctx, p, eager = false) {
   const a = (path) => assetsUrl(ctx.options, path);
   // p.text 可能不存在（使用 listContentsIndex 时），此时摘要回退到空或 fields.abstract
   const excerpt = p.text ? plainExcerpt(p.text, 90) : (p.fields?.abstract || '');
@@ -683,7 +1160,9 @@ function indexItem(ctx, p) {
   return `<li class="joe_list__item default">
   <div class="line"></div>
   <a href="${permalink(p)}" class="thumbnail" title="${escapeHtml(p.title)}" target="_blank" rel="noopener noreferrer">
-    <img width="100%" height="100%" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}"  decoding="async" / decoding="async">
+    ${eager
+      ? `<img width="100%" height="100%" src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}" fetchpriority="high" decoding="async" />`
+      : `<img width="100%" height="100%" class="lazyload" src="${LAZYLOAD}" data-src="${escapeHtml(coverUrl(ctx, p))}" alt="${escapeHtml(p.title)}"  decoding="async" / decoding="async">`}
     <time datetime="${formatDate(p.created, 'Y-m-d')}">${formatDate(p.created, 'Y-m-d')}</time>
   </a>
   <div class="information">
@@ -713,6 +1192,10 @@ export async function renderPost(ctx) {
     ? `<div class="joe_detail__category">${cats.slice(0, 5).map((c, i) => `<a href="${c.permalink}" class="item item-${i}" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</a>`).join('')}</div>`
     : '';
 
+  // 正文第一张图通常是 LCP，改为立即加载；其余图片继续懒加载
+  let articleHtml = renderMarkdown(post.text);
+  articleHtml = articleHtml.replace(/<img([^>]*?)loading="lazy"/, '<img$1loading="eager" fetchpriority="high"');
+
   ctx.contentBody = `<div class="joe_container joe_bread">
     <ul class="joe_bread__bread">
       <li class="item"><a href="/" class="link" title="首页">首页</a></li>
@@ -722,10 +1205,11 @@ export async function renderPost(ctx) {
   </div>
   <div class="joe_container joe_body">
     <div class="joe_main joe_post">
-      <div class="joe_detail" data-cid="${post.cid}">
+      <div class="joe_detail${ctx.user ? ' joe_detail--admin' : ''}" data-cid="${post.cid}">
         ${ctx.postPreview ? '<div class="joe_detail__preview-banner">管理员预览：这篇文章当前是「隐藏」状态，访客访问时会得到 404。</div>' : ''}
         ${catHtml}
         <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
+        ${ctx.user ? `<a class="joe_detail__edit" href="/admin/${post.type === 'page' ? 'page' : 'post'}?cid=${post.cid}" title="编辑这篇内容"><i class="fa fa-pencil" aria-hidden="true"></i> 编辑</a>` : ''}
         <div class="joe_detail__count">
           <div class="joe_detail__count-information">
             <img width="35" height="35" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(author.mail, 35, avatarSource)}" alt="${escapeHtml(author.screenName)}"  decoding="async" / decoding="async">
@@ -743,7 +1227,7 @@ export async function renderPost(ctx) {
           <time class="joe_detail__count-created" datetime="${formatDate(post.created, 'm/d')}">${formatDate(post.created, 'm/d')}</time>
         </div>
         <article class="joe_detail__article">
-          ${renderMarkdown(post.text)}
+          ${articleHtml}
         </article>
         ${operateBlock(ctx, post, tags)}
         <div class="joe_detail__agree">
@@ -784,19 +1268,17 @@ export async function renderPost(ctx) {
 }
 
 /** 评论区块（Joe 结构 + Owo 表情 + 楼中楼） */
-export async function commentsBlock(ctx, post) {
-  if (!post.allowComment || ctx.options.joe.JCommentStatus === 'off') {
-    return `<div class="joe_comment"><h3 class="joe_comment__title">评论</h3><div class="joe_comment__close"><span>博主关闭了评论</span></div></div>`;
-  }
-  const { db, csrfToken, user } = ctx;
-  const avatarSource = ctx.options.joe?.JAvatarSource || 'weavatar';
-  const all = await db.listComments(post.cid);
+/**
+ * 评论列表（含楼中楼递归）。抽出来单独维护递归结构，
+ * commentsBlock 只负责评论表单与整体容器。
+ */
+function renderCommentList(comments, post, avatarSource, assetsBase) {
   const byParent = new Map();
-  for (const c of all) {
+  for (const c of comments) {
     if (!byParent.has(c.parent)) byParent.set(c.parent, []);
     byParent.get(c.parent).push(c);
   }
-  const renderComment = (c, depth = 0) => {
+  const renderComment = (c) => {
     const children = byParent.get(c.coid) || [];
     return `<li class="comment-list__item">
       <div class="comment-list__item-contain" id="comment-${c.coid}">
@@ -808,7 +1290,7 @@ export async function commentsBlock(ctx, post) {
               ${c.authorId && c.authorId === post.authorId ? '<i class="owner">作者</i>' : ''}
               <div class="agent">${parseAgentOS(c.agent)} · ${parseAgentBrowser(c.agent)}</div>
             </div>
-            <div class="substance">${renderCommentText(c.text)}</div>
+            <div class="substance">${renderCommentText(c.text, assetsBase)}</div>
             <div class="handle">
               <time class="date" datetime="${formatDate(c.created, 'Y-m-d')}">${formatDate(c.created, 'Y-m-d')}</time>
               <span class="reply joe_comment__reply" data-id="comment-${c.coid}" data-coid="${c.coid}">
@@ -818,10 +1300,22 @@ export async function commentsBlock(ctx, post) {
           </div>
         </div>
       </div>
-      ${children.length ? `<div class="comment-list__item-children"><ul class="comment-list">${children.map((ch) => renderComment(ch, depth + 1)).join('')}</ul></div>` : ''}
+      ${children.length ? `<div class="comment-list__item-children"><ul class="comment-list">${children.map(renderComment).join('')}</ul></div>` : ''}
     </li>`;
   };
   const top = byParent.get(0) || [];
+  return top.length ? `<ul class="comment-list">${top.map(renderComment).join('')}</ul>` : '';
+}
+
+export async function commentsBlock(ctx, post) {
+  if (!post.allowComment || ctx.options.joe.JCommentStatus === 'off') {
+    return `<div class="joe_comment"><h3 class="joe_comment__title">评论</h3><div class="joe_comment__close"><span>博主关闭了评论</span></div></div>`;
+  }
+  const { db, csrfToken, user } = ctx;
+  const avatarSource = ctx.options.joe?.JAvatarSource || 'weavatar';
+  const assetsBase = ctx.options.themeAssetsBase || DEFAULT_ASSETS_BASE;
+  const all = await db.listComments(post.cid);
+  const commentListHtml = renderCommentList(all, post, avatarSource, assetsBase);
   return `<div class="joe_comment">
   <h3 class="joe_comment__title">评论 (${post.commentsNum || 0})</h3>
   <div id="respond" class="joe_comment__respond">
@@ -850,12 +1344,15 @@ export async function commentsBlock(ctx, post) {
       </div>
     </form>
   </div>
-  ${top.length ? `<ul class="comment-list">${top.map((c) => renderComment(c)).join('')}</ul>` : ''}
+  ${commentListHtml}
 </div>`;
 }
 
-function renderCommentText(text) {
-  const base = g_ctx.options.themeAssetsBase || '/usr/themes/joe';
+/**
+ * 渲染评论正文（转义 + 画图评论 + Owo 表情 + 换行）。
+ * base 由调用方传入，避免依赖模块级可变上下文（多请求共享模块实例时不安全）。
+ */
+function renderCommentText(text, base = DEFAULT_ASSETS_BASE) {
   let t = escapeHtml(text || '');
   // 画图评论 {!{data:image...}!}
   t = t.replace(/\{!\{(.+?)\}!\}/g, (_, img) => `<img class="owo_image" src="${img}" alt="画图评论" />`);
@@ -874,10 +1371,6 @@ function renderCommentText(text) {
   return t.replace(/\n/g, '<br>');
 }
 
-let g_ctx = { options: { themeAssetsBase: '/usr/themes/joe' } };
-export function setThemeContext(ctx) { g_ctx = ctx; }
-
-// Owo 表情映射（与 assets/json/joe.owo.json 对应，启动时加载）
 let OWO_MAP = {};
 export function setOwoMap(map) { OWO_MAP = map; }
 
@@ -904,7 +1397,7 @@ export async function renderArchive(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page, archiveTitle } = ctx;
   const archiveLabel = ctx.archiveLabel || archiveTitle;
-  const itemsHtml = list.items.map((p) => indexItem(ctx, p)).join('');
+  const itemsHtml = list.items.map((p, i) => indexItem(ctx, p, i === 0)).join('');
   ctx.contentBody = `<div class="joe_container joe_bread">
     <ul class="joe_bread__bread">
       <li class="item"><a href="/" class="link" title="首页">首页</a></li>

@@ -299,7 +299,7 @@ await test('主题：文章底部 operate + pagination 对齐 5i.ink', async () 
   // ---- 分享面板的展开/收起必须有 JS（5i.ink 缺这段，面板永远 visibility:hidden）----
   // 页面真正加载的是 joe.global.min.js，与 .js 是两份独立文件、构建也不会重新生成 min。
   // 所以要去 HTML 里把脚本地址抠出来，取回那个文件校验，别只查 .js。
-  const scripts = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"><\/script>/g)].map((m) => m[1]);
+  const scripts = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"[^>]*><\/script>/g)].map((m) => m[1]);
   assert.ok(scripts.length === 1, `页面应只加载一个 joe.global 脚本，实际：${scripts}`);
   // /usr/ 静态资源由平台静态层响应，函数不返回内容，这里按 URL 映射回仓库文件读
   const g = await readFile(`.${scripts[0].split('?')[0]}`, 'utf8');
@@ -385,7 +385,7 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
   }
 
   // ---- 手风琴 JS 必须在真正被加载的 min 里 ----
-  const src = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"><\/script>/g)];
+  const src = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"[^>]*><\/script>/g)];
   assert.equal(src.length, 1, `应只加载一个 joe.global，实际 ${src.length}`);
   const g = await readFile(`.${src[0][1].split('?')[0]}`, 'utf8');
   assert.ok(/joe_header__slideout-menu/.test(g), 'min 里没有滑出面板的初始化');
@@ -536,9 +536,9 @@ await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', 
 
 await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点）', async () => {
   const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
-  // 侧栏在左：order:-1 + flex 固定宽度，正文 flex:1
+  // 侧栏在右：order:1 + flex 固定宽度，正文 flex:1
   assert.ok(/\.joe_body\s*\{[^}]*display:\s*flex/.test(css), 'joe_body 未启用 flex');
-  assert.ok(/\.joe_body > \.joe_aside\s*\{[^}]*order:\s*-1/.test(css), '侧栏未置于左侧');
+  assert.ok(/\.joe_body > \.joe_aside\s*\{[^}]*order:\s*1/.test(css), '侧栏未置于右侧');
   assert.ok(/\.joe_body > \.joe_main\s*\{[^}]*flex:\s*1 1 auto/.test(css), '正文列未占据剩余宽度');
   // 搜索高亮样式已从内联 <style> 迁到该文件
   assert.ok(css.includes('.joe_header__above-search .result .item.active'));
@@ -857,7 +857,7 @@ await test('主题：分类/标签等归档页的面包屑单行不换行', asyn
   assert.ok(/<a href="\/" class="link" title="首页">首页<\/a>/.test(m[1]), '面包屑首项应为首页链接');
   assert.ok((m[1].match(/class="line">\/<\/li>/g) || []).length >= 1, '面包屑应有分隔符');
   // 样式在归档页确实被加载
-  assert.ok(html.includes('href="/usr/themes/joe/assets/css/joe.layout.css"'), '归档页应加载 layout.css');
+  assert.ok(/href="[^"]*joe\.layout\.css(?:\?[^"]*)?"/.test(html), '归档页应加载 layout.css');
 
   // 面包屑用短名，完整标题留给 title 属性和下方的 .joe_archive__title
   const crumb = (h) => (h.match(/<li class="item" title="([^"]*)">([^<]*)<\/li>/g) || []);

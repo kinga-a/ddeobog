@@ -17,12 +17,19 @@ import { CONFIG } from '../config.js';
 import { currentUser, parseCookies } from '../auth/session.js';
 import { verifyPassword, randomHex } from '../auth/password.js';
 import * as theme from '../render/theme-joe.js';
-import { commentsBlock } from '../render/theme-joe.js';
-import { renderMarkdown, plainExcerpt } from '../render/markdown.js';
+import { plainExcerpt } from '../render/markdown.js';
 import { escapeHtml } from '../render/html.js';
 import { sameOrigin } from '../auth/session.js';
 import { handleJoeApi } from './joe-api.js';
 import { runHooks } from '../plugins.js';
+
+/** 普通评论内容上限（字符） */
+const MAX_COMMENT_LENGTH = 2000;
+/** 画图评论上限（字符）：前端把 canvas 转成 data:image/webp;base64,... 后整体提交 */
+const MAX_DRAW_COMMENT_LENGTH = 700 * 1024;
+/** 画图评论的合法格式 */
+const DRAW_COMMENT_RE = /^\{!\{data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+\}!\}$/;
+const MAIL_RE = /^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/;
 
 export async function handleFrontend(ctx) {
   const { db, request, url, path } = ctx;
@@ -37,6 +44,24 @@ export async function handleFrontend(ctx) {
   // ---- RSS/Atom ----
   if (path === '/feed' || path === '/feed/' || path === '/feed/atom' || path === '/feed/rss')
     return handleFeed(ctx);
+
+  // ---- 归档页（导航「归档」）----
+  if (path === '/archive' || path === '/archive/') return html(await theme.renderArchivePage(ctx));
+
+  // ---- 留言板（便签墙模式，后台开关 JGuestbook_Wall）----
+  if (path === '/guestbook' || path === '/guestbook/') {
+    const page = await db.getContentBySlug('guestbook', 'page');
+    if (page && page.status === 'publish' && ctx.options.joe?.JGuestbook_Wall === 'on') {
+      return html(await theme.renderGuestbookWall(ctx, page));
+    }
+  }
+
+  // ---- 关于页（导航「关于本站」）：优先独立页面 slug=about ----
+  if (path === '/about' || path === '/about/') {
+    const page = await db.getContentBySlug('about', 'page');
+    if (page && page.status === 'publish') return renderSingle(ctx, page);
+    return html(await theme.renderAboutPage(ctx));
+  }
 
   // ---- 搜索跳转 ----
   if (path === '/search' && method === 'GET' && url.searchParams.get('s')) {
@@ -62,15 +87,8 @@ export async function handleFrontend(ctx) {
     type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE,
     allStatus: !!ctx.user,
   });
-  // 批量获取统计数据
-  const cids = list.items.map((e) => e.cid);
-  const statsMap = await db.getStatsBatch(cids);
-  const items = list.items.map((e) => ({
-    ...e,
-    views: statsMap.get(e.cid)?.views || 0,
-    agree: statsMap.get(e.cid)?.agree || 0,
-  }));
-  Object.assign(ctx, { list: { ...list, items }, page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
+  const listWithStats = await db.enrichWithStats(list);
+  Object.assign(ctx, { list: listWithStats, page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
   return html(await theme.renderIndex(ctx));
 }
 
@@ -96,18 +114,25 @@ async function routeInner(ctx) {
     return notFound(ctx);
   }
 
+/** 附件响应头：禁止 MIME 嗅探；SVG/HTML 等危险类型强制下载 */
+function fileHeaders(contentType, name) {
+  const type = contentType || 'application/octet-stream';
+  const dangerous = /svg|html|xhtml/i.test(type);
+  return {
+    'Content-Type': dangerous ? 'application/octet-stream' : type,
+    'Cache-Control': 'public, max-age=86400',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Disposition': `${dangerous ? 'attachment' : 'inline'}; filename="${encodeURIComponent(name || 'file')}"`,
+  };
+}
+
   // /attachment/[cid]/
   if ((match = path.match(/^\/attachment\/(\d+)\/?$/))) {
     const file = await db.getContent(parseInt(match[1], 10));
     if (file && file.type === 'attachment') {
-      const blob = await ctx.db.blob.get(file.slug);
+      const blob = await db.blob.get(file.slug);
       if (blob) {
-        return new Response(blob.body, {
-          headers: {
-            'Content-Type': blob.contentType,
-            'Cache-Control': 'public, max-age=86400',
-          },
-        });
+        return new Response(blob.body, { headers: fileHeaders(blob.contentType, file.slug) });
       }
     }
     return notFound(ctx);
@@ -167,11 +192,9 @@ async function routeInner(ctx) {
 
   // /upload/[...key] —— 附件直读（Blob/KV）
   if ((match = path.match(/^\/upload\/(.+)$/))) {
-    const file = await ctx.db.blob.get(decodeURIComponent(match[1]));
+    const file = await db.blob.get(decodeURIComponent(match[1]));
     if (file) {
-      return new Response(file.body, {
-        headers: { 'Content-Type': file.contentType, 'Cache-Control': 'public, max-age=86400' },
-      });
+      return new Response(file.body, { headers: fileHeaders(file.contentType, decodeURIComponent(match[1])) });
     }
     return notFound(ctx);
   }
@@ -197,6 +220,45 @@ async function verifyPostPassword(pass, stored) {
   return pass === stored;
 }
 
+/**
+ * 相关推荐：优先同标签、其次同分类，不足 3 条再用最新文章补齐。
+ * 这样无标签/单标签文章也不会只出现 1 条推荐，始终保持 3 条卡片布局。
+ */
+async function buildRelated(db, post, allStatus, limit = 4) {
+  const picks = [];
+  const seen = new Set([post.cid]);
+  const take = (items) => {
+    for (const item of items) {
+      if (!item || seen.has(item.cid)) continue;
+      seen.add(item.cid);
+      picks.push(item);
+      if (picks.length >= limit) break;
+    }
+  };
+
+  // 同标签 / 同分类 / 最新 三类候选一次性并行取回，再按优先级填充，
+  // 避免标签、分类、兜底查询串行等待多轮 KV 往返。
+  const [tagLists, catLists, latest] = await Promise.all([
+    Promise.all(
+      (post.tags || []).map((mid) => db.listContentsIndex({ type: 'post', pageSize: limit + 1, tagMid: mid, allStatus }))
+    ),
+    Promise.all(
+      (post.categories || []).map((mid) => db.listContentsIndex({ type: 'post', pageSize: limit + 1, categoryMid: mid, allStatus }))
+    ),
+    db.listContentsIndex({ type: 'post', pageSize: limit + 3, allStatus }),
+  ]);
+  for (const list of tagLists) {
+    if (picks.length >= limit) break;
+    take(list.items);
+  }
+  for (const list of catLists) {
+    if (picks.length >= limit) break;
+    take(list.items);
+  }
+  take(latest.items);
+  return picks.slice(0, limit);
+}
+
 async function renderSingle(ctx, post) {
   const { db, request } = ctx;
   // 密码保护。解锁凭据放在 HttpOnly cookie 里，密码本身只出现在 POST 的请求体中，
@@ -218,23 +280,17 @@ async function renderSingle(ctx, post) {
     relatedList,
     commentsHtml,
   ] = await Promise.all([
-    (async () => {
-      const { contentMetas } = await import('../render/theme-joe.js');
-      return contentMetas(db, post);
-    })(),
+    theme.contentMetas(db, post),
     db.getUser(post.authorId).then((u) => u || { screenName: '博主', mail: '' }),
     db.prevNext(post.cid, post.type),
     db.getStatsBatch([post.cid]),
-    db.listContentsIndex({ type: 'post', pageSize: 4, tagMid: post.tags?.[0], allStatus: !!ctx.user }),
-    (async () => {
-      const { commentsBlock } = await import('../render/theme-joe.js');
-      return commentsBlock(ctx, post);
-    })(),
+    buildRelated(db, post, !!ctx.user),
+    theme.commentsBlock(ctx, post),
   ]);
 
   const views = stats.get(post.cid)?.views || 0;
   const agree = stats.get(post.cid)?.agree || 0;
-  const related = relatedList.items.filter((r) => r.cid !== post.cid).slice(0, 3);
+  const related = relatedList;
 
   // 存入 ctx 供 renderPost 直接使用，避免重复查询
   Object.assign(ctx, {
@@ -293,12 +349,13 @@ function renderProtected(ctx, post, opts = {}) {
       </div>
     </form>
   </div></div></div>`;
-  return html(theme404Layout(ctx, `密码保护 - ${ctx.options.title}`), {
+  return html(simpleLayout(ctx, `密码保护 - ${ctx.options.title}`), {
     ...(opts.status ? { status: opts.status } : {}),
   });
 }
 
-function theme404Layout(ctx, title) {
+/** 密码保护页的最小布局（不加载主题侧栏/页脚） */
+function simpleLayout(ctx, title) {
   // 复用 renderPost 的布局路径：这里直接输出简单页
   const a = (p) => `/usr/themes/joe/${p}`;
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -319,16 +376,8 @@ async function renderArchive(ctx, { type, slug, page, titleFor, labelFor, baseUr
   if (authorId) q.authorId = authorId;
   if (keywords) q.keywords = keywords;
   const list = await db.listContentsIndex(q);
-  // 批量获取统计数据
-  const cids = list.items.map((e) => e.cid);
-  const statsMap = await db.getStatsBatch(cids);
-  const items = list.items.map((e) => ({
-    ...e,
-    views: statsMap.get(e.cid)?.views || 0,
-    agree: statsMap.get(e.cid)?.agree || 0,
-  }));
   Object.assign(ctx, {
-    list: { ...list, items },
+    list: await db.enrichWithStats(list),
     page,
     archiveTitle: titleFor(meta),
     archiveLabel: labelFor ? labelFor(meta) : titleFor(meta),
@@ -362,29 +411,41 @@ function html(body, init = {}) {
   });
 }
 
+/** 评论字段校验，返回错误文案（空串表示通过） */
+function validateComment({ author, mail, text }) {
+  if (!author || author.length > 32) return '昵称不能为空且不能超过32字符';
+  if (!MAIL_RE.test(mail)) return '请输入正确的邮箱地址';
+  if (!text) return '请输入评论内容';
+  if (DRAW_COMMENT_RE.test(text)) {
+    if (text.length > MAX_DRAW_COMMENT_LENGTH) return '画图评论过大，请缩小画布后重试';
+    return '';
+  }
+  if (text.length > MAX_COMMENT_LENGTH) return '评论内容过长';
+  return '';
+}
+
 /** 评论提交（POST /comment/[cid]） */
 async function handleCommentPost(ctx) {
-  const { db, request, url, path } = ctx;
+  const { db, request, path } = ctx;
   // CSRF：拒绝跨站来源的评论提交（表单可被任意站点诱导提交）
   if (!sameOrigin(request)) return commentError('非法来源');
   const cid = parseInt(path.split('/')[2], 10);
   const post = await db.getContent(cid);
-  if (!post || !post.allowComment) return commentError('当前页面不可评论');
+  // 便签留言墙开启时，/guestbook/ 页面即使关闭了普通评论区仍允许贴留言
+  const wallEnabled =
+    !!post && post.type === 'page' && post.slug === 'guestbook' && ctx.options.joe?.JGuestbook_Wall === 'on';
+  if (!post || (!post.allowComment && !wallEnabled)) return commentError('当前页面不可评论');
 
   const form = await request.formData().catch(() => null);
   if (!form) return commentError('请求格式错误');
   const author = String(form.get('author') || '').trim();
   const mail = String(form.get('mail') || '').trim();
   const urlField = String(form.get('url') || '').trim();
-  let text = String(form.get('text') || '').trim();
+  const text = String(form.get('text') || '').trim();
   const parent = parseInt(String(form.get('parent') || form.get('coid') || '0'), 10) || 0;
 
-  if (!author || author.length > 32) return commentError('昵称不能为空且不能超过32字符');
-  if (!/^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/.test(mail)) return commentError('请输入正确的邮箱地址');
-  if (!text) return commentError('请输入评论内容');
-  if (text.length > 2000) return commentError('评论内容过长');
-  // 画图评论 {!{data:image...}!} 长度放宽
-  if (text.length > 2000 && !/^\{!\{/.test(text)) return commentError('评论内容过长');
+  const invalid = validateComment({ author, mail, text });
+  if (invalid) return commentError(invalid);
 
   // 插件钩子：评论提交
   const hooked = await runHooks('commentSubmit', { author, mail, url: urlField, text, parent }, ctx);
@@ -405,7 +466,7 @@ async function handleCommentPost(ctx) {
     agent,
     text,
     parent,
-    status: 'approved', // 可按需改为 waiting（审核）
+    status: ctx.options.commentStatus === 'waiting' ? 'waiting' : 'approved',
   });
 
   await runHooks('commentPost', { cid, author, text }, ctx);

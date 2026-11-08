@@ -2,7 +2,6 @@
  * 安装向导 —— 首次访问时引导创建管理员账号，写入 KV
  * 对应 Typecho install.php 流程（简化为一页）
  */
-import { hashPassword } from '../auth/password.js';
 import { escapeHtml } from '../render/markdown.js';
 
 export async function handleInstall(ctx) {
@@ -90,6 +89,58 @@ function installPage(ctx, error = '') {
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
+/** 安装时写入的示例文章 */
+const SEED_POST = {
+  title: 'Hello TypechoEdge',
+  slug: 'hello',
+  text: `欢迎使用 **TypechoEdge**！
+
+这是一个运行在 \`腾讯 EdgeOne\` 边缘函数上的博客系统，完全兼容 Typecho 数据模型与 Joe 主题。
+
+## 特性
+
+- 数据存储在 **KV 存储**（结构化数据）与 **Blob 存储**（附件）
+- 支持 **Markdown** 写作（标题、代码块、表格、图片……）
+- 首次访问一键安装，账号数据存放在 KV 空间
+- 登录支持 **TOTP 两步验证**（RFC 6238，兼容各类验证器 App）
+- 兼容 Typecho 路由：\`/archives/1/\`、\`/category/xx/\`、\`/tag/xx/\`
+- 插件系统：JS 钩子机制对应 Typecho 插件接口
+
+<!--more-->
+
+## 开始写作
+
+登录 \`/admin\` 后台，新建你的第一篇文章吧！
+
+\`\`\`js
+console.log('Hello from EdgeOne Edge Functions!');
+\`\`\`
+
+> 数据全部保存在你绑定的 KV 命名空间中，可随时在控制台查看。`,
+  authorId: 1,
+  type: 'post',
+  fields: { thumb: '', abstract: '欢迎使用 TypechoEdge —— EdgeOne 边缘函数上的 Typecho 兼容博客' },
+};
+
+/** Typecho options 表的默认值（站点名/描述由安装表单提供） */
+function defaultOptions(title, description) {
+  return {
+    title,
+    description,
+    keywords: '',
+    timezone: '8',
+    installed: 1,
+    pageSize: 10,
+    theme: 'joe',
+    commentsRequireMail: true,
+    commentsRequireURL: false,
+    commentsThreaded: true,
+    commentsMaxNestingLevels: 999,
+    commentStatus: 'approved', // approved 直发 / waiting 先审
+    siteCreated: Math.floor(Date.now() / 1000),
+  };
+}
+
 async function doInstall(ctx) {
   const { db, request, url } = ctx;
   const form = await request.formData();
@@ -115,58 +166,13 @@ async function doInstall(ctx) {
   });
 
   // 默认配置（对应 Typecho options 表）
-  const defaults = {
-    title,
-    description,
-    keywords: '',
-    timezone: '8',
-    installed: 1,
-    pageSize: 10,
-    theme: 'joe',
-    commentsRequireMail: true,
-    commentsRequireURL: false,
-    commentsThreaded: true,
-    commentsMaxNestingLevels: 999,
-    commentStatus: 'approved', // approved 直发 / waiting 先审
-    siteCreated: Math.floor(Date.now() / 1000),
-  };
-  for (const [k, v] of Object.entries(defaults)) await db.setOption(k, v);
+  for (const [k, v] of Object.entries(defaultOptions(title, description))) await db.setOption(k, v);
   // Joe 主题默认配置
   const { JOE_DEFAULTS } = await import('../render/theme-joe.js');
   await db.setOption('theme:joe', JOE_DEFAULTS);
 
   // 示例首篇文章
-  await db.createContent({
-    title: 'Hello TypechoEdge',
-    slug: 'hello',
-    text: `欢迎使用 **TypechoEdge**！
-
-这是一个运行在 \`腾讯 EdgeOne\` 边缘函数上的博客系统，完全兼容 Typecho 数据模型与 Joe 主题。
-
-## 特性
-
-- 数据存储在 **KV 存储**（结构化数据）与 **Blob 存储**（附件）
-- 支持 **Markdown** 写作（标题、代码块、表格、图片……）
-- 首次访问一键安装，账号数据存放在 KV 空间
-- 登录支持 **TOTP 两步验证**（RFC 6238，兼容各类验证器 App）
-- 兼容 Typecho 路由：\`/archives/1/\`、\`/category/xx/\`、\`/tag/xx/\`
-- 插件系统：JS 钩子机制对应 Typecho 插件接口
-
-<!--more-->
-
-## 开始写作
-
-登录 \`/admin\` 后台，新建你的第一篇文章吧！
-
-\`\`\`js
-console.log('Hello from EdgeOne Edge Functions!');
-\`\`\`
-
-> 数据全部保存在你绑定的 KV 命名空间中，可随时在控制台查看。`,
-    authorId: 1,
-    type: 'post',
-    fields: { thumb: '', abstract: '欢迎使用 TypechoEdge —— EdgeOne 边缘函数上的 Typecho 兼容博客' },
-  });
+  await db.createContent(SEED_POST);
 
   // 示例分类
   await db.createMeta({ name: '默认分类', slug: 'default', type: 'category', description: '默认分类' });

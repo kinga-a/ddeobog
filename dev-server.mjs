@@ -47,6 +47,10 @@ async function seed() {
     installed: 1,
   })) await db.kv.putJSON(`opt:${k}`, v);
 
+  // 演示站默认建站日期（后台「站点设置」可改）
+  const { JOE_DEFAULTS } = await import('./src/render/theme-joe.js');
+  await db.kv.putJSON('opt:theme:joe', { ...JOE_DEFAULTS, JBirthDay: '2024/01/01 00:00:00' });
+
   const users = await db.listUsers();
   if (!users.length) {
     await db.createUser({ name: 'admin', mail: 'admin@example.com', password: 'admin123456', screenName: 'admin' });
@@ -58,6 +62,11 @@ async function seed() {
   const catIds = {};
   for (const [name, slug] of cats) catIds[name] = await db.createMeta({ type: 'category', name, slug, description: '' });
 
+  const tagIds = {
+    edgeone: await db.createMeta({ type: 'tag', name: 'EdgeOne', slug: 'edgeone', description: '' }),
+    typography: await db.createMeta({ type: 'tag', name: '排版', slug: 'typography', description: '' }),
+  };
+
   const posts = [
     ['用 EdgeOne 跑一个 Typecho：KV 存数据，Blob 存图片', '这是一篇比较长的技术随笔，用来检验列表页在标题换行、摘要截断以及各种极端内容长度下的排版表现。', '技术'],
     ['设计系统里那些不起眼但很关键的留白', '留白不是空，是让内容呼吸的装置。', '设计'],
@@ -66,11 +75,17 @@ async function seed() {
     ['把旧照片翻出来的时候', '有些东西会变，有些不会。', '随笔'],
     ['QPS 到底该怎么量', '压测的一点笔记，记给自己看。', '技术'],
   ];
+  // 给演示文章一些阅读/点赞数据，让仪表盘与热门列表有内容
+  await db.kv.putJSON('stat:views', { 1: 128, 2: 96, 3: 64, 4: 42, 5: 31, 6: 18 });
+  await db.kv.putJSON('stat:agree', { 1: 12, 2: 8, 3: 5, 4: 3, 5: 2, 6: 1 });
+
+  const tagOf = { 技术: [tagIds.edgeone.mid], 设计: [tagIds.typography.mid], 随笔: [] };
   let i = 0;
   for (const [title, text, cat] of posts) {
-    const r = await db.createContent({
+    await db.createContent({
       title, text, authorId: author.uid, type: 'post',
-      category: cat, tags: [catIds[cat]], slug: `post-${i + 1}`, created: Math.floor(Date.now() / 1000) - i * 3600,
+      categories: [catIds[cat].mid], tags: tagOf[cat],
+      slug: `post-${i + 1}`, created: Math.floor(Date.now() / 1000) - i * 3600,
     });
     i++;
   }
@@ -81,14 +96,42 @@ async function seed() {
   for (const [cid, author2, text, status] of [
     [all[0]?.cid, '路过的风', '写得很清楚，收藏了。', 'approved'],
     [all[0]?.cid, '匿名', '期待后续更新～', 'approved'],
-    [all[1]?.cid, '张三', '留白的说法很有共鸣。', 'pending'],
+    [all[1]?.cid, '张三', '留白的说法很有共鸣。', 'waiting'],
     [all[2]?.cid, 'spam-bot', '加个链接 http://spam.example.com 看看效果', 'spam'],
   ]) {
     if (cid) await db.createComment({ cid, author: author2, mail: 'x@y.z', text, status });
   }
 
-  await db.createMeta({ type: 'tag', name: 'EdgeOne', slug: 'edgeone', description: '' });
-  await db.createMeta({ type: 'tag', name: '排版', slug: 'typography', description: '' });
+  // 关于页面：导航「关于本站」优先渲染 slug=about 的独立页面
+  await db.createContent({
+    title: '关于本站',
+    slug: 'about',
+    type: 'page',
+    status: 'publish',
+    authorId: author.uid,
+    text: `### 关于本站
+
+这里是「墨记」，记录技术与生活的一隅。
+
+- 运行在 **EdgeOne** 边缘函数上
+- 文章与配置存放在 KV，附件存放在 Blob
+- 主题：Joe
+
+### 关于我
+
+一名热爱技术、偶尔写字的开发者。`,
+  });
+
+  // 留言板：独立页面承载评论，顶部导航自动出现「留言板」
+  await db.createContent({
+    title: '留言板',
+    slug: 'guestbook',
+    type: 'page',
+    status: 'publish',
+    allowComment: true,
+    authorId: author.uid,
+    text: '欢迎在这里留下你的想法、建议，或者只是打个招呼。',
+  });
   return db;
 }
 
@@ -98,7 +141,6 @@ if (RESET) {
 }
 
 // ---- HTTP ----
-let cookie = '';
 const ROOT = new URL('.', import.meta.url).pathname;
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
@@ -140,16 +182,16 @@ const server = http.createServer(async (req, res) => {
     const body = Buffer.concat(chunks);
     const headers = {};
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers[k] = v;
-    if (cookie) headers['Cookie'] = cookie;
 
     const request = new Request(`http://${req.headers.host}${req.url}`, {
       method: req.method, headers, body: body.length ? body : undefined, redirect: 'manual',
     });
     const out = await onRequest({ request, env: {}, params: {}, waitUntil() {} });
-    const sc = out.headers.get('Set-Cookie');
-    if (sc) cookie = sc.split(';')[0];
     const buf = Buffer.from(await out.arrayBuffer());
-    res.writeHead(out.status, Object.fromEntries(out.headers.entries()));
+    const outHeaders = Object.fromEntries(out.headers.entries());
+    // 本地预览走 HTTP：浏览器会拒收带 Secure 的会话 Cookie，去掉该标记仅用于预览
+    if (outHeaders['set-cookie']) outHeaders['set-cookie'] = outHeaders['set-cookie'].replace(/;\s*Secure/gi, '');
+    res.writeHead(out.status, outHeaders);
     res.end(buf);
   } catch (e) {
     res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });

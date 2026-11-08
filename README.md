@@ -35,7 +35,7 @@ typecho-edgeone/
 │   └── plugins-builtin/     # 内置插件
 ├── usr/themes/joe/assets/   # Joe 主题静态资源（原版复制）
 ├── edge-functions/          # 构建产物（边缘函数，平台自动路由）
-├── functions/               # 构建产物（Pages Functions 风格目录，二选一生效）
+├── edge-functions/          # 构建产物（Edge Functions 入口）
 ├── build.mjs                # esbuild 打包脚本
 └── edgeone.json             # 构建配置
 ```
@@ -48,7 +48,7 @@ typecho-edgeone/
 2. 登录 [EdgeOne Pages 控制台](https://console.tencentcloud.com/edgeone/pages)，**创建项目 → 导入 Git 仓库**
 3. 构建配置（`edgeone.json` 已写好，控制台确认即可）：
    - 构建命令：`npm run build`
-   - 输出目录：`.`（仓库根目录，静态资源 `usr/` 与函数目录 `edge-functions/` 一并部署）
+   - 输出目录：`./public`（构建时只复制静态资源 `usr/` 到这里；`edge-functions/` 仍由平台按约定目录识别）
 
 ### 2. 绑定 KV 存储（必须）
 

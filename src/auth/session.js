@@ -42,11 +42,18 @@ export async function currentUser(db, request) {
 
 /** 简易 CSRF 防护：同源校验 */
 export function sameOrigin(request) {
-  const origin = request.headers.get('Origin');
-  if (!origin) return true; // 非浏览器或同源表单
   const host = request.headers.get('Host');
+
+  // 浏览器会带 Sec-Fetch-Site：跨站请求直接拒绝，不依赖可缺失的 Origin
+  const site = request.headers.get('Sec-Fetch-Site');
+  if (site && site !== 'same-origin' && site !== 'none') return false;
+
+  const origin = request.headers.get('Origin');
+  const referer = origin ? null : request.headers.get('Referer');
+  const source = origin || referer;
+  if (!source) return true; // 非浏览器请求（curl/服务端）或极旧浏览器
   try {
-    return new URL(origin).host === host;
+    return new URL(source).host === host;
   } catch {
     return false;
   }

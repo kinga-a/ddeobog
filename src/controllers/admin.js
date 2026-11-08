@@ -3,12 +3,13 @@
  * 包含：登录（密码 + TOTP 两步验证）、仪表盘、文章/页面管理、
  *       分类/标签、评论管理、附件上传（Blob）、站点与主题设置、安全设置（TOTP）
  */
-import { verifyPassword, hashPassword } from '../auth/password.js';
-import { currentUser, sessionCookie, clearSessionCookie, parseCookies, sameOrigin } from '../auth/session.js';
+import { verifyPassword, hashPassword, randomHex } from '../auth/password.js';
+import { currentUser, sessionCookie, clearSessionCookie, sameOrigin } from '../auth/session.js';
 import { CONFIG } from '../config.js';
-import { escapeHtml as esc, renderMarkdown, plainExcerpt } from '../render/markdown.js';
+import { escapeHtml as esc, plainExcerpt } from '../render/markdown.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
-import { JOE_DEFAULTS } from '../render/theme-joe.js';
+import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
+import { mcpClientExample } from '../mcp.js';
 
 /**
  * 登录失败限流 —— 按「用户名 + 客户端 IP」维度计数。
@@ -17,6 +18,14 @@ import { JOE_DEFAULTS } from '../render/theme-joe.js';
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+/** 密码通过后进入 TOTP 二次验证的待办会话有效期 */
+const PENDING_TOTP_TTL_MS = 5 * 60 * 1000;
+/** 上传文件大小上限（平台请求体上限 1MB，本地按 5MB 兜底） */
+const MAX_UPLOAD_BYTES = 950 * 1024; // Edge Functions 请求体上限 1MB，留出 multipart 余量
+const ADMIN_LIST_PAGE_SIZE = 20;
+const ADMIN_COMMENT_PAGE_SIZE = 30;
+const ADMIN_ATTACHMENT_PAGE_SIZE = 200;
+const MIN_PASSWORD_LENGTH = 8;
 
 function clientIp(request) {
   const cf = request.headers.get('cf-connecting-ip')
@@ -26,7 +35,7 @@ function clientIp(request) {
   return 'unknown';
 }
 
-async function loginThrottleKey(db, request, name) {
+function loginThrottleKey(request, name) {
   const ip = clientIp(request);
   const raw = `${name || ''}|${ip}`;
   // 简单哈希，避免把原始 IP 作为 KV key 暴露
@@ -36,7 +45,7 @@ async function loginThrottleKey(db, request, name) {
 }
 
 async function checkLoginLocked(db, request, name) {
-  const key = await loginThrottleKey(db, request, name);
+  const key = loginThrottleKey(request, name);
   const rec = await db.kv.getJSON(key);
   if (!rec || !rec.count) return { locked: false, key };
   if (Date.now() - (rec.at || 0) > LOGIN_WINDOW_MS) {
@@ -62,17 +71,58 @@ async function clearLoginFailures(db, key) {
   await db.kv.delete(key);
 }
 
+/** 302 重定向；query 合并到 URL 查询参数 */
+function redirect(url, path, query = {}) {
+  const target = new URL(path, url);
+  for (const [k, v] of Object.entries(query)) target.searchParams.set(k, v);
+  return Response.redirect(target.href, 302);
+}
+
+/** 登录成功：建会话、记录最后登录时间、下发 Cookie */
+async function loginSuccess(db, user) {
+  const token = await db.createSession(user.uid, CONFIG.SESSION_TTL);
+  await db.updateUser(user.uid, { logged: Math.floor(Date.now() / 1000) });
+  return new Response(null, {
+    status: 302,
+    headers: { Location: '/admin', 'Set-Cookie': sessionCookie(token) },
+  });
+}
+
+const ADMIN_POST_ROUTES = new Map([
+  ['post', savePost],
+  ['delete', deletePost],
+  ['meta', saveMeta],
+  ['meta-delete', deleteMeta],
+  ['comment', commentAction],
+  ['upload', uploadFile],
+  ['settings', saveSettings],
+  ['security', securityAction],
+]);
+
+const ADMIN_GET_ROUTES = new Map([
+  ['', dashboard],
+  ['posts', postsList],
+  ['post', (ctx) => postEditor(ctx, 'post')],
+  ['pages', pagesList],
+  ['page', (ctx) => postEditor(ctx, 'page')],
+  ['metas', metasPage],
+  ['comments', commentsPage],
+  ['uploads', uploadsPage],
+  ['settings', settingsPage],
+  ['security', securityPage],
+]);
+
 export async function handleAdmin(ctx) {
   const { db, request, url, path } = ctx;
   const sub = path.slice('/admin'.length).replace(/^\/+|\/+$/g, '') || '';
 
   // ---- 未安装 ----
   if (!(await db.isInstalled())) {
-    return Response.redirect(new URL('/install', url).href, 302);
+    return redirect(url, '/install');
   }
 
   // ---- 登录/登出 ----
-  if (sub === 'login' || sub === 'login/') {
+  if (sub === 'login') {
     if (request.method === 'POST') return doLogin(ctx);
     return loginPage(ctx);
   }
@@ -85,36 +135,20 @@ export async function handleAdmin(ctx) {
   // ---- 以下均需登录 ----
   const auth = await currentUser(db, request);
   if (!auth) {
-    return Response.redirect(new URL('/admin/login', url).href, 302);
+    return redirect(url, '/admin/login');
   }
   const user = auth.user;
   ctx.user = user;
 
   if (request.method === 'POST') {
     if (!sameOrigin(request)) return json({ ok: 0, msg: '非法来源' }, 403);
-    if (sub === 'post' || sub === 'post/') return savePost(ctx);
-    if (sub === 'delete') return deletePost(ctx);
-    if (sub === 'meta') return saveMeta(ctx);
-    if (sub === 'meta-delete') return deleteMeta(ctx);
-    if (sub === 'comment') return commentAction(ctx);
-    if (sub === 'upload') return uploadFile(ctx);
-    if (sub === 'settings') return saveSettings(ctx);
-    if (sub === 'security') return securityAction(ctx);
+    const handler = ADMIN_POST_ROUTES.get(sub);
+    if (handler) return handler(ctx);
   }
 
-  switch (true) {
-    case sub === '': return dashboard(ctx);
-    case sub === 'posts': return postsList(ctx);
-    case sub === 'post': return postEditor(ctx, 'post');
-    case sub === 'pages': return pagesList(ctx);
-    case sub === 'page': return postEditor(ctx, 'page');
-    case sub === 'metas': return metasPage(ctx);
-    case sub === 'comments': return commentsPage(ctx);
-    case sub === 'uploads': return uploadsPage(ctx);
-    case sub === 'settings': return settingsPage(ctx);
-    case sub === 'security': return securityPage(ctx);
-    default: return Response.redirect(new URL('/admin', url).href, 302);
-  }
+  const view = ADMIN_GET_ROUTES.get(sub);
+  if (view) return view(ctx);
+  return redirect(url, '/admin');
 }
 
 /* ==================== 登录 ==================== */
@@ -144,31 +178,30 @@ function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = ''
 }
 
 async function doLogin(ctx) {
-  const { db, request, url } = ctx;
-  const form = await request.formData();
-  const step = form.get('step');
+  const form = await ctx.request.formData();
+  if (form.get('step') === 'totp') return completeTotpLogin(ctx, form);
+  return startPasswordLogin(ctx, form);
+}
 
-  if (step === 'totp') {
-    // 第二步：验证 TOTP
-    const pending = String(form.get('pending') || '');
-    const code = String(form.get('totp') || '');
-    const p = await db.kv.getJSON(`pending:${pending}`);
-    if (!p || p.exp < Date.now()) return loginPage(ctx, { error: '会话已过期，请重新登录' });
-    const user = await db.getUser(p.uid);
-    if (!user || !user.totpEnabled) return loginPage(ctx, { error: '两步验证未启用' });
-    if (!(await verifyTotp(user.totpSecret, code))) {
-      return loginPage(ctx, { error: '验证码错误，请重试', totp: true, pendingToken: pending });
-    }
-    await db.kv.delete(`pending:${pending}`);
-    const token = await db.createSession(user.uid, CONFIG.SESSION_TTL);
-    await db.updateUser(user.uid, { logged: Math.floor(Date.now() / 1000) });
-    return new Response(null, {
-      status: 302,
-      headers: { Location: '/admin', 'Set-Cookie': sessionCookie(token) },
-    });
+/** 第二步：校验 TOTP 动态码 */
+async function completeTotpLogin(ctx, form) {
+  const { db } = ctx;
+  const pending = String(form.get('pending') || '');
+  const code = String(form.get('totp') || '');
+  const p = await db.kv.getJSON(`pending:${pending}`);
+  if (!p || p.exp < Date.now()) return loginPage(ctx, { error: '会话已过期，请重新登录' });
+  const user = await db.getUser(p.uid);
+  if (!user || !user.totpEnabled) return loginPage(ctx, { error: '两步验证未启用' });
+  if (!(await verifyTotp(user.totpSecret, code))) {
+    return loginPage(ctx, { error: '验证码错误，请重试', totp: true, pendingToken: pending });
   }
+  await db.kv.delete(`pending:${pending}`);
+  return loginSuccess(db, user);
+}
 
-  // 第一步：密码
+/** 第一步：用户名 + 密码（失败限流，成功后按需进入 TOTP） */
+async function startPasswordLogin(ctx, form) {
+  const { db, request } = ctx;
   const name = String(form.get('name') || '').trim();
   const password = String(form.get('password') || '');
 
@@ -192,15 +225,10 @@ async function doLogin(ctx) {
     // 进入 TOTP 二次验证
     const { randomHex } = await import('../auth/password.js');
     const pending = randomHex(24);
-    await db.kv.putJSON(`pending:${pending}`, { uid: user.uid, exp: Date.now() + 5 * 60 * 1000 });
+    await db.kv.putJSON(`pending:${pending}`, { uid: user.uid, exp: Date.now() + PENDING_TOTP_TTL_MS });
     return loginPage(ctx, { totp: true, pendingToken: pending });
   }
-  const token = await db.createSession(user.uid, CONFIG.SESSION_TTL);
-  await db.updateUser(user.uid, { logged: Math.floor(Date.now() / 1000) });
-  return new Response(null, {
-    status: 302,
-    headers: { Location: '/admin', 'Set-Cookie': sessionCookie(token) },
-  });
+  return loginSuccess(db, user);
 }
 
 /* ==================== 布局 ==================== */
@@ -248,16 +276,129 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
   (function(){
     var side=document.getElementById('admin-side'),scrim=document.querySelector('.scrim'),
         burger=document.querySelector('.burger');
-    if(!side||!burger)return;
     function setOpen(on){
+      if(!side||!burger) return;
       side.classList.toggle('is-open',on);
       scrim.classList.toggle('is-open',on);
       burger.setAttribute('aria-expanded',on?'true':'false');
     }
-    burger.addEventListener('click',function(){setOpen(!side.classList.contains('is-open'));});
-    scrim.addEventListener('click',function(){setOpen(false);});
-    document.addEventListener('keydown',function(e){if(e.key==='Escape')setOpen(false);});
-    side.addEventListener('click',function(e){if(e.target.closest('a'))setOpen(false);});
+    if(side&&burger){
+      burger.addEventListener('click',function(){setOpen(!side.classList.contains('is-open'));});
+      scrim.addEventListener('click',function(){setOpen(false);});
+      document.addEventListener('keydown',function(e){if(e.key==='Escape')setOpen(false);});
+      side.addEventListener('click',function(e){if(e.target.closest('a'))setOpen(false);});
+    }
+
+    var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var main=document.querySelector('.main');
+    var layoutEl=document.querySelector('.layout');
+    var progress=document.createElement('div');
+    progress.className='nav-progress';
+    document.body.appendChild(progress);
+
+    function enhance(){
+      if(reduce||!main) return;
+      var items=main.querySelectorAll(':scope > h2, :scope > .msg, :scope > .card, :scope > .dash-hero, .dash-stats > .stat, .dash-grid > *');
+      for(var i=0;i<items.length;i++) items[i].style.setProperty('--enter-delay',(i*45)+'ms');
+      var bars=main.querySelectorAll('.dash-bar__track i');
+      for(var b=0;b<bars.length;b++) bars[b].style.setProperty('--enter-delay',(150+b*70)+'ms');
+      var nums=main.querySelectorAll('.stat .num');
+      for(var n=0;n<nums.length;n++) (function(el){
+        var target=parseInt(el.textContent.replace(/[^0-9]/g,''),10);
+        if(!isFinite(target)||target<=0) return;
+        var start=performance.now();
+        el.textContent='0';
+        requestAnimationFrame(function tick(now){
+          var p=Math.min(1,(now-start)/520);
+          var eased=1-Math.pow(1-p,3);
+          el.textContent=Math.round(target*eased);
+          if(p<1) requestAnimationFrame(tick);
+        });
+      })(nums[n]);
+    }
+    enhance();
+
+    function isAdminHref(href){
+      return !!href && href.charAt(0)==='/' && href.indexOf('//')!==0
+        && href.indexOf('/admin')===0
+        && href.indexOf('/admin/login')!==0
+        && href.indexOf('/admin/logout')!==0;
+    }
+
+    function syncSide(doc){
+      var next=doc.querySelector('#admin-side');
+      if(!next||!side) return;
+      var links=side.querySelectorAll('a'),nextLinks=next.querySelectorAll('a');
+      for(var i=0;i<links.length;i++){
+        if(nextLinks[i]) links[i].classList.toggle('active',nextLinks[i].classList.contains('active'));
+      }
+    }
+
+    // 局部替换后重新执行页面内的脚本（如 Markdown 工具栏）
+    function runScripts(container){
+      // 清掉上次导航注入的脚本标签，避免反复进入编辑页时重复初始化
+      var stale=document.querySelectorAll('script[data-spa-script]');
+      for(var s=0;s<stale.length;s++) stale[s].remove();
+      var scripts=container.querySelectorAll('script');
+      for(var i=0;i<scripts.length;i++){
+        var old=scripts[i],el=document.createElement('script');
+        for(var j=0;j<old.attributes.length;j++) el.setAttribute(old.attributes[j].name,old.attributes[j].value);
+        el.async=false;
+        el.setAttribute('data-spa-script','1');
+        el.text=old.textContent;
+        document.body.appendChild(el);
+      }
+    }
+
+    function navigate(href,push){
+      if(!main){ location.href=href; return; }
+      var skeleton=document.createElement('div');
+      skeleton.className='admin-skeleton';
+      skeleton.innerHTML='<div class="sk sk-title"></div><div class="sk-grid"><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div></div><div class="sk-list"><div class="sk sk-line" style="width:94%"></div><div class="sk sk-line" style="width:78%"></div><div class="sk sk-line" style="width:88%"></div><div class="sk sk-line" style="width:66%"></div><div class="sk sk-line" style="width:82%"></div><div class="sk sk-line" style="width:74%"></div></div>';
+      main.appendChild(skeleton);
+      var skTimer=setTimeout(function(){skeleton.classList.add('is-visible');},120);
+      layoutEl.classList.add('is-loading');
+      progress.classList.add('is-active');
+      fetch(href,{headers:{'X-Requested-With':'admin-nav'},credentials:'same-origin'})
+        .then(function(res){
+          if(res.redirected&&res.url.indexOf('/admin/login')>=0){location.href=res.url;throw new Error('login');}
+          if(!res.ok) throw new Error('HTTP '+res.status);
+          return res.text();
+        })
+        .then(function(html){
+          var doc=new DOMParser().parseFromString(html,'text/html');
+          var next=doc.querySelector('.main');
+          if(!next) throw new Error('no main');
+          clearTimeout(skTimer);
+          main.innerHTML=next.innerHTML;
+          runScripts(next);
+          document.title=doc.title;
+          syncSide(doc);
+          if(push) history.pushState({admin:1},'',href);
+          if(reduce) window.scrollTo(0,0); else window.scrollTo({top:0,behavior:'smooth'});
+          enhance();
+        })
+        .catch(function(){ clearTimeout(skTimer); location.href=href; })
+        .finally(function(){
+          clearTimeout(skTimer);
+          layoutEl.classList.remove('is-loading');
+          progress.classList.remove('is-active');
+        });
+    }
+
+    document.addEventListener('click',function(e){
+      if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;
+      var a=e.target.closest('a');
+      if(!a||a.target==='_blank'||a.hasAttribute('download')) return;
+      var href=a.getAttribute('href');
+      if(!isAdminHref(href)) return;
+      if(href===location.pathname+location.search){e.preventDefault();return;}
+      e.preventDefault();
+      if(a.closest('.side')) setOpen(false);
+      navigate(href,true);
+    });
+    window.addEventListener('popstate',function(){navigate(location.pathname+location.search,false);});
+    history.replaceState({admin:1},'');
   })();
   </script></body></html>`;
 }
@@ -274,6 +415,7 @@ const MSG = (ctx) => {
   if (t === 'ok') return `<div class="msg ok">操作成功</div>`;
   if (t === 'err') return `<div class="msg err">操作失败</div>`;
   if (t === 'saved') return `<div class="msg ok">已保存</div>`;
+  if (t === 'token') return `<div class="msg ok">已生成新令牌</div>`;
   return '';
 };
 
@@ -281,31 +423,196 @@ const MSG = (ctx) => {
 
 async function dashboard(ctx) {
   const { db, user } = ctx;
-  const posts = await db.listContents({ type: 'post', pageSize: 1, allStatus: true });
-  const pages = await db.listContents({ type: 'page', pageSize: 1, allStatus: true });
-  const comments = await db.listAllComments({ pageSize: 1 });
-  const waiting = await db.listAllComments({ status: 'waiting', pageSize: 1 });
-  const cats = await db.listMetas('category');
-  const tags = await db.listMetas('tag');
+  const [posts, pages, attachments, comments, waiting, cats, tags] = await Promise.all([
+    db.listContentsIndex({ type: 'post', pageSize: 1, allStatus: true }),
+    db.listContentsIndex({ type: 'page', pageSize: 1, allStatus: true }),
+    db.listContentsIndex({ type: 'attachment', pageSize: 1, allStatus: true }),
+    db.listAllComments({ pageSize: 1 }),
+    db.listAllComments({ status: 'waiting', pageSize: 1 }),
+    db.listMetas('category'),
+    db.listMetas('tag'),
+  ]);
+
+  const [recentPosts, hotPosts, recentComments, waitingComments] = await Promise.all([
+    db.listContentsIndex({ type: 'post', pageSize: 5, allStatus: true }),
+    db.listContentsIndex({ type: 'post', pageSize: 5, order: 'views' }),
+    db.listAllComments({ pageSize: 5 }),
+    db.listAllComments({ status: 'waiting', pageSize: 5 }),
+  ]);
+
+  const cids = [...new Set([...recentPosts.items, ...hotPosts.items].map((p) => p.cid))];
+  const statsMap = cids.length ? await db.getStatsBatch(cids) : new Map();
+  const [viewTotal, agreeTotal, mcpEnabled] = await Promise.all([
+    db.sumStat('views'),
+    db.sumStat('agree'),
+    db.getOption('mcp:enabled'),
+  ]);
+
+  const birthday = normalizeBirthday(ctx.options.joe?.JBirthDay);
+  const runDays = birthday ? Math.max(0, Math.floor((Date.now() - new Date(birthday).getTime()) / 86400000)) : 0;
+  const fmt = (ts) => new Date(ts * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const statusBadge = (status) =>
+    status === 'publish'
+      ? '<span class="badge green">公开</span>'
+      : status === 'hidden'
+        ? '<span class="badge yellow">隐藏</span>'
+        : `<span class="badge">${esc(status)}</span>`;
+  const commentBadge = (status) =>
+    status === 'approved'
+      ? '<span class="badge green">已通过</span>'
+      : status === 'waiting'
+        ? '<span class="badge yellow">待审核</span>'
+        : `<span class="badge">${esc(status)}</span>`;
+  const editUrl = (p) => (p.type === 'page' ? `/admin/page?cid=${p.cid}` : `/admin/post?cid=${p.cid}`);
+  const viewsOf = (p) => statsMap.get(p.cid)?.views || 0;
+  const empty = (text) => `<p class="dash-empty">${text}</p>`;
+
+  const statCard = (href, icon, label, num, meta) => `<a class="stat" href="${href}">
+      <div class="stat__top"><span class="stat__icon"><i class="fa ${icon}" aria-hidden="true"></i></span><span class="stat__label">${label}</span></div>
+      <div class="num">${num}</div>
+      <div class="stat__meta">${meta}</div>
+    </a>`;
+
+  const recentPostRows = recentPosts.items
+    .map(
+      (p) => `<li class="dash-list__item">
+      <div class="dash-list__body">
+        <a class="dash-list__title" href="${editUrl(p)}">${esc(p.title)}</a>
+        <div class="dash-list__meta">${statusBadge(p.status)}<span>${p.commentsNum || 0} 评论</span><span>${viewsOf(p)} 阅读</span></div>
+      </div>
+      <time class="dash-list__time">${fmt(p.created)}</time>
+    </li>`
+    )
+    .join('');
+
+  const hotRows = hotPosts.items
+    .map(
+      (p, i) => `<li class="dash-hot">
+      <i class="dash-hot__rank">${i + 1}</i>
+      <a class="dash-hot__title" href="${editUrl(p)}">${esc(p.title)}</a>
+      <span class="dash-hot__views">${viewsOf(p)} 阅读</span>
+    </li>`
+    )
+    .join('');
+
+  const commentRow = (c) => `<li class="dash-list__item">
+      <div class="dash-list__body">
+        <div class="dash-list__meta"><strong>${esc(c.author)}</strong><span>评论于</span><a href="/archives/${c.cid}/#comment-${c.coid}" target="_blank">文章 #${c.cid}</a>${commentBadge(c.status)}</div>
+        <a class="dash-quote" href="/archives/${c.cid}/#comment-${c.coid}" target="_blank">${esc(plainExcerpt(c.text, 70))}</a>
+      </div>
+      <time class="dash-list__time">${fmt(c.created)}</time>
+    </li>`;
+
+  const waitingRows = waitingComments.items
+    .map(
+      (c) => `<li class="dash-list__item">
+      <div class="dash-list__body">
+        <div class="dash-list__meta"><strong>${esc(c.author)}</strong><a href="/archives/${c.cid}/#comment-${c.coid}" target="_blank">文章 #${c.cid}</a></div>
+        <p class="dash-quote">${esc(plainExcerpt(c.text, 90))}</p>
+      </div>
+      <div class="dash-actions">
+        <form method="post" action="/admin/comment"><input type="hidden" name="op" value="approve"><input type="hidden" name="coid" value="${c.coid}"><button class="btn mini" type="submit">通过</button></form>
+        <form method="post" action="/admin/comment" onsubmit="return confirm('删除这条评论？')"><input type="hidden" name="op" value="delete"><input type="hidden" name="coid" value="${c.coid}"><button class="btn mini danger" type="submit">删除</button></form>
+      </div>
+    </li>`
+    )
+    .join('');
+
+  const maxCat = Math.max(1, ...cats.map((c) => c.count || 0));
+  const catBars = cats
+    .map(
+      (c) => `<div class="dash-bar">
+      <span class="dash-bar__name">${esc(c.name)}</span>
+      <span class="dash-bar__track"><i style="width:${Math.round(((c.count || 0) / maxCat) * 100)}%"></i></span>
+      <span class="dash-bar__num">${c.count || 0}</span>
+    </div>`
+    )
+    .join('');
+
+  const overview = `<dl class="dash-overview">
+      <div><dt>站点主题</dt><dd>Joe</dd></div>
+      <div><dt>建站时长</dt><dd>${runDays} 天</dd></div>
+      <div><dt>两步验证</dt><dd>${user.totpEnabled ? '<span class="badge green">已开启</span>' : '<span class="badge yellow">未开启</span>'}</dd></div>
+      <div><dt>MCP 服务</dt><dd>${mcpEnabled === true ? '<span class="badge green">已开启</span>' : '<span class="badge yellow">未开启</span>'}</dd></div>
+      <div><dt>存储</dt><dd>KV + Blob</dd></div>
+      <div><dt>运行环境</dt><dd>EdgeOne 边缘函数</dd></div>
+    </dl>`;
+
   const body = `${MSG(ctx)}
-  <h2>仪表盘</h2>
-  <div class="stats">
-    <div class="stat"><div class="num">${posts.total}</div><div class="label">文章</div></div>
-    <div class="stat"><div class="num">${pages.total}</div><div class="label">页面</div></div>
-    <div class="stat"><div class="num">${comments.total}</div><div class="label">评论</div></div>
-    <div class="stat"><div class="num">${waiting.total}</div><div class="label">待审评论</div></div>
-    <div class="stat"><div class="num">${cats.length}</div><div class="label">分类</div></div>
-    <div class="stat"><div class="num">${tags.length}</div><div class="label">标签</div></div>
+  <div class="dash-hero">
+    <div class="dash-hero__main">
+      <h2>欢迎回来，${esc(user.screenName || user.name)}</h2>
+      <p>${esc(ctx.options.title)} · 已运行 ${runDays} 天 · 今天是 ${new Date().toLocaleDateString('zh-CN')}</p>
+    </div>
+    <div class="dash-hero__actions">
+      <a class="btn primary" href="/admin/post?type=post"><i class="fa fa-pencil" aria-hidden="true"></i> 写文章</a>
+      <a class="btn" href="/admin/settings"><i class="fa fa-cog" aria-hidden="true"></i> 站点设置</a>
+      <a class="btn" href="/" target="_blank"><i class="fa fa-external-link" aria-hidden="true"></i> 查看站点</a>
+    </div>
   </div>
-  <div class="card">
-    <h2 class="card__title">快捷操作</h2>
-    <div class="quickacts">
-      <a class="btn primary" href="/admin/post?type=post">撰写新文章</a>
-      <a class="btn" href="/admin/page">创建新页面</a>
-      <a class="btn" href="/admin/uploads">上传附件</a>
-      <a class="btn" href="/admin/settings">站点设置</a>
-      <a class="btn" href="/admin/security">两步验证 <span class="badge ${user.totpEnabled ? 'green' : 'yellow'}">${user.totpEnabled ? '已开启' : '未开启'}</span></a>
-      <a class="btn" href="/" target="_blank">查看站点</a>
+
+  <div class="dash-stats">
+    ${statCard('/admin/posts', 'fa-file-text', '文章', posts.total, '公开内容总数')}
+    ${statCard('/admin/pages', 'fa-files-o', '页面', pages.total, '独立页面')}
+    ${statCard('/admin/comments', 'fa-comments', '评论', comments.total, `待审核 ${waiting.total} 条`)}
+    ${statCard('/admin/uploads', 'fa-image', '附件', attachments.total, '图片与文件')}
+    ${statCard('/admin/metas', 'fa-folder', '分类', cats.length, '内容分类')}
+    ${statCard('/admin/metas', 'fa-tags', '标签', tags.length, '内容标签')}
+    ${statCard('/admin/posts', 'fa-eye', '总阅读', viewTotal, '全站累计')}
+    ${statCard('/admin/posts', 'fa-thumbs-up', '总点赞', agreeTotal, '全站累计')}
+  </div>
+
+  <div class="card dash-quickbar">
+    <div class="dash-card__head"><h3>快捷操作</h3><span class="dash-more">常用入口</span></div>
+    <div class="dash-quick">
+      <a class="dash-quick__item" href="/admin/post?type=post"><i class="fa fa-pencil" aria-hidden="true"></i><span>撰写文章</span></a>
+      <a class="dash-quick__item" href="/admin/page"><i class="fa fa-plus" aria-hidden="true"></i><span>创建页面</span></a>
+      <a class="dash-quick__item" href="/admin/metas"><i class="fa fa-folder" aria-hidden="true"></i><span>分类标签</span></a>
+      <a class="dash-quick__item" href="/admin/comments"><i class="fa fa-comments" aria-hidden="true"></i><span>评论管理</span>${waiting.total ? `<em>${waiting.total}</em>` : ''}</a>
+      <a class="dash-quick__item" href="/admin/uploads"><i class="fa fa-upload" aria-hidden="true"></i><span>上传附件</span></a>
+      <a class="dash-quick__item" href="/admin/security"><i class="fa fa-shield" aria-hidden="true"></i><span>安全设置</span></a>
+    </div>
+  </div>
+
+  <div class="dash-grid">
+    <div class="dash-col-8">
+      <div class="card dash-card">
+        <div class="dash-card__head"><h3>最近文章</h3><a class="dash-more" href="/admin/posts">查看全部 →</a></div>
+        ${recentPosts.items.length ? `<ul class="dash-list">${recentPostRows}</ul>` : empty('还没有文章，去写第一篇吧。')}
+      </div>
+    </div>
+    <div class="dash-col-4">
+      <div class="card dash-card">
+        <div class="dash-card__head"><h3>站点概览</h3></div>
+        ${overview}
+      </div>
+    </div>
+
+    <div class="dash-col-6">
+      <div class="card dash-card">
+        <div class="dash-card__head"><h3>待审核评论 ${waiting.total ? `<span class="badge yellow">${waiting.total}</span>` : ''}</h3><a class="dash-more" href="/admin/comments">全部 →</a></div>
+        ${waitingComments.items.length ? `<ul class="dash-list">${waitingRows}</ul>` : empty('没有待审核评论，很好。')}
+        ${waitingComments.items.length ? `<div class="dash-card__foot">待审 ${waiting.total} 条 · 通过或删除后自动从列表移除</div>` : ''}
+      </div>
+    </div>
+    <div class="dash-col-6">
+      <div class="card dash-card">
+        <div class="dash-card__head"><h3>热门文章</h3><a class="dash-more" href="/admin/posts">全部 →</a></div>
+        ${hotPosts.items.length ? `<ol class="dash-hot-list">${hotRows}</ol>` : empty('暂无阅读数据。')}
+      </div>
+    </div>
+
+    <div class="dash-col-7">
+      <div class="card dash-card">
+        <div class="dash-card__head"><h3>最新评论</h3><a class="dash-more" href="/admin/comments">全部 →</a></div>
+        ${recentComments.items.length ? `<ul class="dash-list">${recentComments.items.map(commentRow).join('')}</ul>` : empty('还没有评论。')}
+      </div>
+    </div>
+    <div class="dash-col-5">
+      <div class="card dash-card">
+        <div class="dash-card__head"><h3>分类分布</h3><a class="dash-more" href="/admin/metas">管理 →</a></div>
+        ${cats.length ? `<div class="dash-bars">${catBars}</div>` : empty('还没有分类。')}
+      </div>
     </div>
   </div>`;
   return html(adminLayout(ctx, { title: '仪表盘', active: '', body }));
@@ -316,15 +623,15 @@ async function dashboard(ctx) {
 async function postsList(ctx) {
   const { db, url } = ctx;
   const page = parseInt(url.searchParams.get('page') || '1', 10);
-  const list = await db.listContents({ type: 'post', page, pageSize: 20, allStatus: true });
+  const list = await db.listContents({ type: 'post', page, pageSize: ADMIN_LIST_PAGE_SIZE, allStatus: true });
   const rows = list.items
     .map(
       (p) => `<tr>
-    <td>${p.cid}</td>
-    <td><a href="/archives/${p.cid}/" target="_blank">${esc(p.title)}</a></td>
-    <td><span class="badge ${p.status === 'publish' ? 'green' : p.status === 'hidden' ? 'yellow' : ''}">${p.status === 'publish' ? '公开' : p.status === 'hidden' ? '隐藏' : p.status}</span></td>
-    <td>${p.commentsNum || 0}</td>
-    <td>${new Date(p.created * 1000).toLocaleString('zh-CN')}</td>
+    <td data-label="ID">${p.cid}</td>
+    <td data-label="标题"><a href="/archives/${p.cid}/" target="_blank">${esc(p.title)}</a></td>
+    <td data-label="状态"><span class="badge ${p.status === 'publish' ? 'green' : p.status === 'hidden' ? 'yellow' : ''}">${p.status === 'publish' ? '公开' : p.status === 'hidden' ? '隐藏' : p.status}</span></td>
+    <td data-label="评论">${p.commentsNum || 0}</td>
+    <td data-label="时间">${new Date(p.created * 1000).toLocaleString('zh-CN')}</td>
     <td>
       <a class="btn sm" href="/admin/post?cid=${p.cid}">编辑</a>
       <form method="post" action="/admin/delete" style="display:inline" onsubmit="return confirm('确定删除该文章？')">
@@ -356,10 +663,10 @@ async function pagesList(ctx) {
   const rows = list.items
     .map(
       (p) => `<tr>
-    <td>${p.cid}</td>
-    <td><a href="/${p.slug}/" target="_blank">${esc(p.title)}</a></td>
-    <td><code>/${p.slug}/</code></td>
-    <td><span class="badge ${p.status === 'publish' ? 'green' : ''}">${p.status === 'publish' ? '公开' : p.status}</span></td>
+    <td data-label="ID">${p.cid}</td>
+    <td data-label="标题"><a href="/${p.slug}/" target="_blank">${esc(p.title)}</a></td>
+    <td data-label="路径"><code>/${p.slug}/</code></td>
+    <td data-label="状态"><span class="badge ${p.status === 'publish' ? 'green' : ''}">${p.status === 'publish' ? '公开' : p.status}</span></td>
     <td>
       <a class="btn sm" href="/admin/page?cid=${p.cid}">编辑</a>
       <form method="post" action="/admin/delete" style="display:inline" onsubmit="return confirm('确定删除该页面？')">
@@ -425,6 +732,23 @@ const mdToolbar = () => {
   return `<div class="md-bar" id="joe-md-bar" role="toolbar" aria-label="Markdown 快捷插入">${inner}<span class="md-bar__hint">支持 Markdown</span></div>`;
 };
 
+/** 标签输入框初始值：按文章 tags 的顺序取名称（缺失的 meta 渲染为空） */
+async function postTagNames(db, post) {
+  if (!post || !(post.tags || []).length) return '';
+  const byMid = new Map((await db.getMetasBatch(post.tags)).map((m) => [m.mid, m]));
+  return post.tags.map((mid) => byMid.get(mid)?.name).join(',');
+}
+
+/** 分类复选框列表 */
+function categoryChecks(cats, selected = []) {
+  return cats
+    .map(
+      (c) => `<label style="font-weight:400;display:inline-flex;align-items:center;margin-right:14px;gap:4px">
+      <input type="checkbox" name="categories" value="${c.mid}" ${selected.includes(c.mid) ? 'checked' : ''}> ${esc(c.name)}</label>`
+    )
+    .join('');
+}
+
 async function postEditor(ctx, kind) {
   const { db, url, user } = ctx;
   const cid = parseInt(url.searchParams.get('cid') || '0', 10);
@@ -433,17 +757,8 @@ async function postEditor(ctx, kind) {
   const isNew = !post;
   const isPage = kind === 'page' || post?.type === 'page';
   const cats = await db.listMetas('category');
-  const tags = await db.listMetas('tag');
-  const postTagNames = post
-    ? await Promise.all((post.tags || []).map(async (mid) => (await db.getMeta(mid))?.name).filter(Boolean)).then((a) => a.join(','))
-    : '';
-
-  const catChecks = cats
-    .map(
-      (c) => `<label style="font-weight:400;display:inline-flex;align-items:center;margin-right:14px;gap:4px">
-      <input type="checkbox" name="categories" value="${c.mid}" ${post?.categories?.includes(c.mid) ? 'checked' : ''}> ${esc(c.name)}</label>`
-    )
-    .join('');
+  const tagNames = await postTagNames(db, post);
+  const catChecks = categoryChecks(cats, post?.categories || []);
 
   const body = `${MSG(ctx)}
   <h2>${isNew ? (isPage ? '创建页面' : '撰写文章') : `编辑：${esc(post.title)}`}</h2>
@@ -472,7 +787,7 @@ async function postEditor(ctx, kind) {
         </select></div>
     </div>
     ${isPage ? '' : `<div class="item"><label>所属分类</label><div>${catChecks || '<span class="hint">暂无分类，可先在「分类/标签」中创建</span>'}</div></div>
-    <div class="item"><label>标签（逗号分隔，自动创建）</label><input type="text" name="tags" value="${esc(postTagNames)}" placeholder="生活, 技术"></div>`}
+    <div class="item"><label>标签（逗号分隔，自动创建）</label><input type="text" name="tags" value="${esc(tagNames)}" placeholder="生活, 技术"></div>`}
     <div class="item"><label>自定义字段</label>
       <div class="row">
         <div class="item"><input type="text" name="field_thumb" value="${esc(post?.fields?.thumb || '')}" placeholder="缩略图 URL（thumb）"></div>
@@ -489,6 +804,37 @@ async function postEditor(ctx, kind) {
   return html(adminLayout(ctx, { title: isNew ? '撰写' : '编辑', active: isPage ? 'page' : 'post', body }));
 }
 
+/** 解析逗号分隔的标签名，按需创建，返回 mid 列表 */
+async function resolveTagIds(db, rawTags) {
+  const names = String(rawTags || '')
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!names.length) return [];
+  const existing = new Map((await db.listMetas('tag')).map((t) => [t.name, t]));
+  const ids = [];
+  for (const name of names) {
+    let tag = existing.get(name);
+    if (!tag) {
+      tag = await db.createMeta({ name, slug: name, type: 'tag' });
+      existing.set(name, tag);
+    }
+    ids.push(tag.mid);
+  }
+  return ids;
+}
+
+/** 合并自定义字段：表单提供则覆盖，留空则删除 */
+function parsePostFields(form, existing = {}) {
+  const fields = { ...existing };
+  for (const k of ['thumb', 'abstract', 'mode']) {
+    const v = String(form.get(`field_${k}`) || '').trim();
+    if (v) fields[k] = v;
+    else delete fields[k];
+  }
+  return fields;
+}
+
 async function savePost(ctx) {
   const { db, user, url } = ctx;
   const form = await ctx.request.formData();
@@ -499,24 +845,10 @@ async function savePost(ctx) {
   let slug = String(form.get('slug') || '').trim();
   if (type === 'page' && !slug) slug = 'page-' + Date.now().toString(36);
 
-  // 处理分类
+  const existing = cid ? await db.getContent(cid) : null;
   const categories = form.getAll('categories').map(Number).filter(Boolean);
-  // 处理标签（按名创建/查找）
-  const tags = [];
-  for (const rawName of String(form.get('tags') || '').split(/[,，]/)) {
-    const name = rawName.trim();
-    if (!name) continue;
-    let tag = (await db.listMetas('tag')).find((t) => t.name === name);
-    if (!tag) tag = await db.createMeta({ name, slug: name, type: 'tag' });
-    tags.push(tag.mid);
-  }
-
-  const fields = { ...(cid ? (await db.getContent(cid))?.fields || {} : {}) };
-  for (const k of ['thumb', 'abstract', 'mode']) {
-    const v = String(form.get('field_' + k) || '').trim();
-    if (v) fields[k] = v;
-    else delete fields[k];
-  }
+  const tags = await resolveTagIds(db, form.get('tags'));
+  const fields = parsePostFields(form, existing?.fields || {});
 
   // 访问密码不落明文。留空 = 不修改（编辑时沿用旧值）；改造前写下的明文，
   // 在这篇文章下次被保存时自动转成 PBKDF2。
@@ -524,9 +856,8 @@ async function savePost(ctx) {
   let password = '';
   if (rawPassword) {
     password = await hashPassword(rawPassword);
-  } else if (cid) {
-    const old = await db.getContent(cid);
-    password = old?.password || '';
+  } else if (existing) {
+    password = existing.password || '';
   }
 
   const data = {
@@ -548,7 +879,7 @@ async function savePost(ctx) {
   } else {
     await db.createContent(data);
   }
-  return Response.redirect(new URL(`/admin/${type === 'page' ? 'pages' : 'posts'}?msg=saved`, url).href, 302);
+  return redirect(url, type === 'page' ? '/admin/pages' : '/admin/posts', { msg: 'saved' });
 }
 
 async function deletePost(ctx) {
@@ -562,7 +893,7 @@ async function deletePost(ctx) {
     if (row && row.type === 'attachment') back = '/admin/uploads';
     await db.deleteContent(cid);
   }
-  return Response.redirect(new URL(`${back}?msg=ok`, url).href, 302);
+  return redirect(url, back, { msg: 'ok' });
 }
 
 /* ==================== 分类/标签 ==================== */
@@ -573,7 +904,7 @@ async function metasPage(ctx) {
   const tags = await db.listMetas('tag');
   const metaTable = (list, type) => `<table><thead><tr><th>名称</th><th>缩略名</th><th>文章数</th><th class="col-act">操作</th></tr></thead><tbody>
     ${list.map((m) => `<tr>
-      <td class="cell-strong">${esc(m.name)}</td><td><code>${esc(m.slug)}</code></td><td>${m.count}</td>
+      <td class="cell-strong" data-label="名称">${esc(m.name)}</td><td data-label="缩略名"><code>${esc(m.slug)}</code></td><td data-label="文章数">${m.count}</td>
       <td>
         <div class="meta-ops">
           <form method="post" action="/admin/meta">
@@ -623,14 +954,14 @@ async function saveMeta(ctx) {
   const mid = parseInt(form.get('mid') || '0', 10);
   const name = String(form.get('name') || '').trim();
   const type = form.get('type') === 'tag' ? 'tag' : 'category';
-  if (!name) return Response.redirect(new URL('/admin/metas?msg=err', url).href, 302);
+  if (!name) return redirect(url, '/admin/metas', { msg: 'err' });
   if (mid) {
     await db.updateMeta(mid, { name });
   } else {
     const slug = String(form.get('slug') || '').trim() || name;
     await db.createMeta({ name, slug, type });
   }
-  return Response.redirect(new URL('/admin/metas?msg=saved', url).href, 302);
+  return redirect(url, '/admin/metas', { msg: 'saved' });
 }
 
 async function deleteMeta(ctx) {
@@ -638,7 +969,7 @@ async function deleteMeta(ctx) {
   const form = await ctx.request.formData();
   const mid = parseInt(form.get('mid') || '0', 10);
   if (mid) await db.deleteMeta(mid);
-  return Response.redirect(new URL('/admin/metas?msg=ok', url).href, 302);
+  return redirect(url, '/admin/metas', { msg: 'ok' });
 }
 
 /* ==================== 评论管理 ==================== */
@@ -647,7 +978,7 @@ async function commentsPage(ctx) {
   const { db, url } = ctx;
   const status = url.searchParams.get('status') || '';
   const page = parseInt(url.searchParams.get('page') || '1', 10);
-  const list = await db.listAllComments({ status: status || undefined, page, pageSize: 30 });
+  const list = await db.listAllComments({ status: status || undefined, page, pageSize: ADMIN_COMMENT_PAGE_SIZE });
   const tabs = `<p style="margin-bottom:14px;font-size:14px">
     <a href="/admin/comments" ${!status ? 'style="font-weight:700"' : ''}>全部</a> ·
     <a href="/admin/comments?status=approved" ${status === 'approved' ? 'style="font-weight:700"' : ''}>已通过</a> ·
@@ -655,12 +986,12 @@ async function commentsPage(ctx) {
   const rows = list.items
     .map(
       (c) => `<tr>
-    <td>${c.coid}</td>
-    <td>${esc(c.author)}<br><span class="hint">${esc(c.mail)}</span></td>
-    <td style="max-width:420px">${esc(plainExcerpt(c.text, 80))}</td>
-    <td><a href="/archives/${c.cid}/#comment-${c.coid}" target="_blank">#${c.cid}</a></td>
-    <td><span class="badge ${c.status === 'approved' ? 'green' : 'yellow'}">${c.status === 'approved' ? '已通过' : '待审核'}</span></td>
-    <td>${new Date(c.created * 1000).toLocaleString('zh-CN')}</td>
+    <td data-label="ID">${c.coid}</td>
+    <td data-label="作者">${esc(c.author)}<br><span class="hint">${esc(c.mail)}</span></td>
+    <td data-label="内容" style="max-width:420px">${esc(plainExcerpt(c.text, 80))}</td>
+    <td data-label="文章"><a href="/archives/${c.cid}/#comment-${c.coid}" target="_blank">#${c.cid}</a></td>
+    <td data-label="状态"><span class="badge ${c.status === 'approved' ? 'green' : 'yellow'}">${c.status === 'approved' ? '已通过' : '待审核'}</span></td>
+    <td data-label="时间">${new Date(c.created * 1000).toLocaleString('zh-CN')}</td>
     <td>
       ${c.status === 'waiting' ? `<form method="post" action="/admin/comment" style="display:inline"><input type="hidden" name="coid" value="${c.coid}"><input type="hidden" name="op" value="approve"><button class="btn sm" type="submit">通过</button></form>` : `<form method="post" action="/admin/comment" style="display:inline"><input type="hidden" name="coid" value="${c.coid}"><input type="hidden" name="op" value="waiting"><button class="btn sm" type="submit">转为待审</button></form>`}
       <form method="post" action="/admin/comment" style="display:inline" onsubmit="return confirm('确定删除该评论？')"><input type="hidden" name="coid" value="${c.coid}"><input type="hidden" name="op" value="delete"><button class="btn sm danger" type="submit">删除</button></form>
@@ -682,27 +1013,27 @@ async function commentAction(ctx) {
   const form = await ctx.request.formData();
   const coid = parseInt(form.get('coid') || '0', 10);
   const op = form.get('op');
-  if (!coid) return Response.redirect(new URL('/admin/comments?msg=err', url).href, 302);
+  if (!coid) return redirect(url, '/admin/comments', { msg: 'err' });
   if (op === 'approve') await db.updateComment(coid, { status: 'approved' });
   else if (op === 'waiting') await db.updateComment(coid, { status: 'waiting' });
   else if (op === 'delete') await db.deleteComment(coid);
-  return Response.redirect(new URL('/admin/comments?msg=ok', url).href, 302);
+  return redirect(url, '/admin/comments', { msg: 'ok' });
 }
 
 /* ==================== 附件 ==================== */
 
 async function uploadsPage(ctx) {
   const { db } = ctx;
-  const files = (await db.listContents({ type: 'attachment', pageSize: 200, allStatus: true })).items;
+  const files = (await db.listContents({ type: 'attachment', pageSize: ADMIN_ATTACHMENT_PAGE_SIZE, allStatus: true })).items;
   const rows = files
     .map(
       (f) => `<tr>
-    <td>${f.cid}</td>
-    <td>${f.fields?.contentType || 'file'}</td>
-    <td><a href="/upload/${encodeURIComponent(f.slug)}" target="_blank">${esc(f.slug)}</a></td>
-    <td>${(f.fields?.size / 1024 || 0).toFixed(1)} KB</td>
-    <td>${new Date(f.created * 1000).toLocaleString('zh-CN')}</td>
-    <td><code>/upload/${esc(f.slug)}</code></td>
+    <td data-label="ID">${f.cid}</td>
+    <td data-label="类型">${f.fields?.contentType || 'file'}</td>
+    <td data-label="文件名"><a href="/upload/${encodeURIComponent(f.slug)}" target="_blank">${esc(f.slug)}</a></td>
+    <td data-label="大小">${(f.fields?.size / 1024 || 0).toFixed(1)} KB</td>
+    <td data-label="时间">${new Date(f.created * 1000).toLocaleString('zh-CN')}</td>
+    <td data-label="地址"><code>/upload/${esc(f.slug)}</code></td>
     <td>
       <form method="post" action="/admin/delete" onsubmit="return confirm('删除附件？')">
         <input type="hidden" name="cid" value="${f.cid}">
@@ -731,12 +1062,17 @@ async function uploadFile(ctx) {
   const form = await ctx.request.formData();
   const file = form.get('file');
   if (!file || typeof file === 'string') {
-    return Response.redirect(new URL('/admin/uploads?msg=err', url).href, 302);
+    return redirect(url, '/admin/uploads', { msg: 'err' });
   }
-  const name = `${Date.now().toString(36)}-${file.name.replace(/[^\w.\-]+/g, '_')}`;
+  const originalName = String(file.name || '');
+  if (/\.(svg|html?|xhtml)$/i.test(originalName) || /svg|html|xhtml/i.test(file.type || '')) {
+    // SVG/HTML 可在本站源下执行脚本，直接拒绝
+    return redirect(url, '/admin/uploads', { msg: 'err' });
+  }
+  const name = `${Date.now().toString(36)}-${originalName.replace(/[^\w.\-]+/g, '_')}`;
   const buf = await file.arrayBuffer();
-  if (buf.byteLength > 5 * 1024 * 1024) {
-    return Response.redirect(new URL('/admin/uploads?msg=err', url).href, 302);
+  if (buf.byteLength > MAX_UPLOAD_BYTES) {
+    return redirect(url, '/admin/uploads', { msg: 'err' });
   }
   await db.blob.set(name, buf, file.type);
   const row = await db.createContent({
@@ -747,13 +1083,17 @@ async function uploadFile(ctx) {
     authorId: ctx.user.uid,
     fields: { contentType: file.type, size: buf.byteLength },
   });
-  return Response.redirect(new URL('/admin/uploads?msg=ok', url).href, 302);
+  return redirect(url, '/admin/uploads', { msg: 'ok' });
 }
 
 /* ==================== 站点设置 ==================== */
 
+/** 开关型下拉（开启/关闭），统一后台设置项的输出结构 */
+function onOffSelect(name, value) {
+  return `<select name="${name}"><option value="on" ${value !== 'off' ? 'selected' : ''}>开启</option><option value="off" ${value === 'off' ? 'selected' : ''}>关闭</option></select>`;
+}
+
 async function settingsPage(ctx) {
-  const { db } = ctx;
   const o = ctx.options;
   const theme = o.joe || JOE_DEFAULTS;
   const body = `${MSG(ctx)}
@@ -776,7 +1116,7 @@ async function settingsPage(ctx) {
     <div class="row">
       <div class="item"><label>Logo 图片 URL</label><input type="text" name="j_JLogo" value="${esc(theme.JLogo || '')}"></div>
       <div class="item"><label>Favicon URL</label><input type="text" name="j_JFavicon" value="${esc(theme.JFavicon || '')}"></div>
-      <div class="item"><label>建站日期（运行时间）</label><input type="text" name="j_JBirthDay" value="${esc(theme.JBirthDay || '')}" placeholder="2024/01/01 00:00:00"></div>
+      <div class="item"><label>建站日期（运行时间）</label><input type="text" name="j_JBirthDay" value="${esc(theme.JBirthDay || '')}" placeholder="2024/01/01（可省略时间）"></div>
     </div>
     <div class="row">
       <div class="item"><label>侧栏博主昵称</label><input type="text" name="j_JAside_Author_Nick" value="${esc(theme.JAside_Author_Nick || '')}"></div>
@@ -789,23 +1129,41 @@ async function settingsPage(ctx) {
       <div class="item"><label>热门文章侧栏数量</label><input type="number" name="j_JAside_Hot_Num" value="${esc(theme.JAside_Hot_Num || '5')}" min="0" max="10"></div>
     </div>
     <div class="row">
-      <div class="item"><label>最新回复侧栏</label><select name="j_JAside_Newreply_Status"><option value="on" ${theme.JAside_Newreply_Status !== 'off' ? 'selected' : ''}>开启</option><option value="off" ${theme.JAside_Newreply_Status === 'off' ? 'selected' : ''}>关闭</option></select></div>
-      <div class="item"><label>人生倒计时侧栏</label><select name="j_JAside_Timelife_Status"><option value="on" ${theme.JAside_Timelife_Status !== 'off' ? 'selected' : ''}>开启</option><option value="off" ${theme.JAside_Timelife_Status === 'off' ? 'selected' : ''}>关闭</option></select></div>
-      <div class="item"><label>评论功能</label><select name="j_JCommentStatus"><option value="on" ${theme.JCommentStatus !== 'off' ? 'selected' : ''}>开启</option><option value="off" ${theme.JCommentStatus === 'off' ? 'selected' : ''}>关闭</option></select></div>
+      <div class="item"><label>最新回复侧栏</label>${onOffSelect('j_JAside_Newreply_Status', theme.JAside_Newreply_Status)}</div>
+      <div class="item"><label>人生倒计时侧栏</label>${onOffSelect('j_JAside_Timelife_Status', theme.JAside_Timelife_Status)}</div>
+      <div class="item"><label>评论功能</label>${onOffSelect('j_JCommentStatus', theme.JCommentStatus)}</div>
     </div>
     <div class="row">
-      <div class="item"><label>舔狗日记侧栏</label><select name="j_JAside_Flatterer"><option value="on" ${theme.JAside_Flatterer !== 'off' ? 'selected' : ''}>开启</option><option value="off" ${theme.JAside_Flatterer === 'off' ? 'selected' : ''}>关闭</option></select></div>
+      <div class="item"><label>便签留言墙（需先建页面“guestbook”）</label>${onOffSelect('j_JGuestbook_Wall', theme.JGuestbook_Wall)}</div>
+      <div class="item"><label>舔狗日记侧栏</label>${onOffSelect('j_JAside_Flatterer', theme.JAside_Flatterer)}</div>
       <div class="item"><label>顶置文章IDs（逗号分隔）</label><input type="text" name="j_JStickPosts" value="${esc(theme.JStickPosts || '')}" placeholder="例如：1,2,3"></div>
+    </div>
+    <div class="row">
       <div class="item"><label>头像源</label><select name="j_JAvatarSource">
         <option value="weavatar" ${theme.JAvatarSource === 'weavatar' ? 'selected' : ''}>WeAvatar (weavatar.com)</option>
         <option value="cravatar" ${theme.JAvatarSource === 'cravatar' ? 'selected' : ''}>Cravatar (cravatar.cn)</option>
         <option value="gravatar" ${theme.JAvatarSource === 'gravatar' ? 'selected' : ''}>Gravatar (gravatar.com)</option>
       </select></div>
-    </div>
-    <div class="row">
       <div class="item"><label>导航最多显示页面数</label><input type="number" name="j_JNavMaxNum" value="${esc(theme.JNavMaxNum || '6')}" min="1" max="20"></div>
       <div class="item"><label>ICP 备案号</label><input type="text" name="j_JICP" value="${esc(theme.JICP || '')}"></div>
+    </div>
+    <div class="row">
       <div class="item"><label>页脚自定义内容</label><input type="text" name="j_JFooter_Custom" value="${esc(theme.JFooter_Custom || '')}"></div>
+    </div>
+    <h2 style="font-size:16px;margin:20px 0 14px">首页模块</h2>
+    <div class="row">
+      <div class="item"><label>首页轮播</label>${onOffSelect('j_JIndex_Carousel_Status', theme.JIndex_Carousel_Status)}</div>
+      <div class="item"><label>首页广告</label>${onOffSelect('j_JIndex_Ad_Status', theme.JIndex_Ad_Status)}</div>
+    </div>
+    <div class="item">
+      <label>轮播图数据</label>
+      <textarea name="j_JIndex_Carousel" rows="7" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d9d9d9;border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.7" placeholder="https://example.com/1.jpg || https://baidu.com || 百度一下">${esc(theme.JIndex_Carousel || '')}</textarea>
+      <p class="hint">用于显示首页轮播图，请务必填写正确的格式<br>格式：图片地址 || 跳转链接 || 标题（中间使用两个竖杠分隔）<br>其他：一行一个，一行代表一个轮播图<br>例如：<br>https://puui.qpic.cn/media_img/lena/PICykqaoi_580_1680/0 || https://baidu.com || 百度一下<br>https://puui.qpic.cn/tv/0/1223447268_1580580/0 || https://v.qq.com || 腾讯视频</p>
+    </div>
+    <div class="item">
+      <label>广告位数据</label>
+      <textarea name="j_JIndex_Ad" rows="6" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d9d9d9;border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.7" placeholder="https://example.com/ad.jpg || https://baidu.com">${esc(theme.JIndex_Ad || '')}</textarea>
+      <p class="hint">请务必填写正确的格式<br>格式：广告图片 || 广告链接（中间使用两个竖杠分隔）<br>其他：一行一个，最多 8 个；桌面一排最多 4 个，手机一排 2 个<br>例如：<br>https://puui.qpic.cn/media_img/lena/PICykqaoi_580_1680/0 || https://baidu.com<br>https://puui.qpic.cn/tv/0/1223447268_1580580/0 || https://v.qq.com</p>
     </div>
     <button class="btn primary" type="submit">保存设置</button>
   </form>
@@ -825,10 +1183,20 @@ async function saveSettings(ctx) {
   // Joe 主题配置合并
   const theme = { ...((await db.getOption('theme:joe')) || JOE_DEFAULTS) };
   for (const [key, val] of form.entries()) {
-    if (key.startsWith('j_')) theme[key.slice(2)] = String(val);
+    if (!key.startsWith('j_')) continue;
+    const name = key.slice(2);
+    if (name === 'JBirthDay') {
+      // 建站日期允许省略时间，保存时统一成前端脚本认识的格式
+      theme[name] = normalizeBirthday(String(val));
+    } else if (name === 'JIndex_Carousel' || name === 'JIndex_Ad') {
+      // 多行配置统一换行，保留一行一条
+      theme[name] = String(val).replace(/\r\n?/g, '\n').trim();
+    } else {
+      theme[name] = String(val);
+    }
   }
   await db.setOption('theme:joe', theme);
-  return Response.redirect(new URL('/admin/settings?msg=saved', url).href, 302);
+  return redirect(url, '/admin/settings', { msg: 'saved' });
 }
 
 /* ==================== 安全设置（TOTP） ==================== */
@@ -873,6 +1241,30 @@ async function securityPage(ctx) {
     </div>`;
   }
 
+  const mcpEnabled = (await db.getOption('mcp:enabled')) === true;
+  const mcpToken = String((await db.getOption('mcp:token')) || '');
+  const mcpEndpoint = `${url.protocol}//${url.host}`;
+  const mcpSection = `<div class="card">
+    <h2 class="card__title">MCP 服务</h2>
+    <p class="card__intro">开启后，AI 客户端可通过 MCP 协议管理文章、分类、标签、评论与附件。<br>访问令牌等同于管理员 API 权限，请勿泄露。</p>
+    <form method="post" action="/admin/security">
+      <input type="hidden" name="op" value="mcp">
+      <div class="item"><label>启用 MCP</label>${onOffSelect('enabled', mcpEnabled ? 'on' : 'off')}</div>
+      <div class="item"><label>访问令牌</label><input type="text" name="token" value="${esc(mcpToken)}" placeholder="留空将自动生成" autocomplete="off"></div>
+      <div class="form-actions">
+        <button class="btn primary" type="submit">保存 MCP 设置</button>
+      </div>
+    </form>
+    <form method="post" action="/admin/security">
+      <input type="hidden" name="op" value="mcp-generate">
+      <div class="form-actions form-actions--start" style="margin-top:10px">
+        <button class="btn" type="submit">重新生成令牌</button>
+      </div>
+    </form>
+    <p class="hint" style="margin-top:14px">MCP 端点：<code>${esc(mcpEndpoint)}/mcp</code></p>
+    <pre style="margin:10px 0 0;padding:12px;background:#f6f8fa;border-radius:6px;font-size:12px;line-height:1.6;overflow:auto;white-space:pre-wrap;word-break:break-all">${esc(mcpClientExample(mcpEndpoint))}</pre>
+  </div>`;
+
   const body = `${MSG(ctx)}
   <h2>安全设置</h2>
   <div class="card">
@@ -891,53 +1283,86 @@ async function securityPage(ctx) {
         <button class="btn primary" type="submit">修改密码</button>
       </div>
     </form>
-  </div>`;
+  </div>
+  ${mcpSection}`;
   return html(adminLayout(ctx, { title: '安全设置', active: 'security', body }));
 }
 
-async function securityAction(ctx) {
+async function enableTotp(ctx, form) {
   const { db, url, user } = ctx;
+  const secret = await db.getOption(`totpPending:${user.uid}`);
+  const code = String(form.get('totp') || '');
+  if (!secret || !(await verifyTotp(secret, code))) {
+    return redirect(url, '/admin/security', { step: 'bind', msg: 'err' });
+  }
+  await db.updateUser(user.uid, { totpEnabled: true, totpSecret: secret });
+  await db.setOption(`totpPending:${user.uid}`, null);
+  return redirect(url, '/admin/security', { msg: 'saved' });
+}
+
+async function disableTotp(ctx, form) {
+  const { db, url, user } = ctx;
+  const code = String(form.get('totp') || '');
+  if (!(await verifyTotp(user.totpSecret, code))) {
+    return redirect(url, '/admin/security', { msg: 'err' });
+  }
+  await db.updateUser(user.uid, { totpEnabled: false, totpSecret: null });
+  return redirect(url, '/admin/security', { msg: 'ok' });
+}
+
+async function changePassword(ctx, form) {
+  const { db, url, user } = ctx;
+  const old = String(form.get('old') || '');
+  const p1 = String(form.get('password') || '');
+  const p2 = String(form.get('password2') || '');
+  if (!(await verifyPassword(old, user.passwordHash)) || p1.length < MIN_PASSWORD_LENGTH || p1 !== p2) {
+    return redirect(url, '/admin/security', { msg: 'err' });
+  }
+  const { hashPassword } = await import('../auth/password.js');
+  await db.updateUser(user.uid, { passwordHash: await hashPassword(p1) });
+  return redirect(url, '/admin/security', { msg: 'saved' });
+}
+
+/** 保存 MCP 开关与访问令牌（令牌为空时自动生成） */
+async function saveMcpSettings(ctx, form) {
+  const { db, url } = ctx;
+  const enabled = form.get('enabled') === 'on';
+  let token = String(form.get('token') || '').trim();
+  if (!token) token = `mcp_${randomHex(24)}`;
+  if (token.length < 24 || new Set(token).size < 8) return redirect(url, '/admin/security', { msg: 'err' });
+  await db.setOption('mcp:enabled', enabled);
+  await db.setOption('mcp:token', token);
+  return redirect(url, '/admin/security', { msg: 'saved' });
+}
+
+/** 重新生成 MCP 令牌（开关状态保持不变） */
+async function generateMcpToken(ctx) {
+  await ctx.db.setOption('mcp:token', `mcp_${randomHex(24)}`);
+  return redirect(ctx.url, '/admin/security', { msg: 'token' });
+}
+
+const SECURITY_ACTIONS = new Map([
+  ['enable', enableTotp],
+  ['disable', disableTotp],
+  ['password', changePassword],
+  ['mcp', saveMcpSettings],
+  ['mcp-generate', generateMcpToken],
+]);
+
+async function securityAction(ctx) {
   const form = await ctx.request.formData();
-  const op = form.get('op');
-
-  if (op === 'enable') {
-    const secret = await db.getOption(`totpPending:${user.uid}`);
-    const code = String(form.get('totp') || '');
-    if (!secret || !(await verifyTotp(secret, code))) {
-      return Response.redirect(new URL('/admin/security?step=bind&msg=err', url).href, 302);
-    }
-    await db.updateUser(user.uid, { totpEnabled: true, totpSecret: secret });
-    await db.setOption(`totpPending:${user.uid}`, null);
-    return Response.redirect(new URL('/admin/security?msg=saved', url).href, 302);
-  }
-
-  if (op === 'disable') {
-    const code = String(form.get('totp') || '');
-    if (!(await verifyTotp(user.totpSecret, code))) {
-      return Response.redirect(new URL('/admin/security?msg=err', url).href, 302);
-    }
-    await db.updateUser(user.uid, { totpEnabled: false, totpSecret: null });
-    return Response.redirect(new URL('/admin/security?msg=ok', url).href, 302);
-  }
-
-  if (op === 'password') {
-    const old = String(form.get('old') || '');
-    const p1 = String(form.get('password') || '');
-    const p2 = String(form.get('password2') || '');
-    if (!(await verifyPassword(old, user.passwordHash)) || p1.length < 8 || p1 !== p2) {
-      return Response.redirect(new URL('/admin/security?msg=err', url).href, 302);
-    }
-    const { hashPassword } = await import('../auth/password.js');
-    await db.updateUser(user.uid, { passwordHash: await hashPassword(p1) });
-    return Response.redirect(new URL('/admin/security?msg=saved', url).href, 302);
-  }
-
-  return Response.redirect(new URL('/admin/security', url).href, 302);
+  const handler = SECURITY_ACTIONS.get(form.get('op'));
+  if (handler) return handler(ctx, form);
+  return redirect(ctx.url, '/admin/security');
 }
 
 function html(body, init = {}) {
   return new Response(body, {
     ...init,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', ...(init.headers || {}) },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...(init.headers || {}),
+    },
   });
 }

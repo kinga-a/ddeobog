@@ -1,5 +1,6 @@
 /** HTML 辅助：分页、日期、头像等 */
 import { escapeHtml } from './markdown.js';
+import { md5Hex } from './md5.js';
 
 /** Joe 风格分页（ul.joe_pagination）
  * 链接必须是路径式，不能用 ?page=N —— 前端路由只认 /page/N/ 与
@@ -34,8 +35,16 @@ export function pageNav(page, pages, baseUrl, edge = 2) {
 
 /** Cravatar/WeAvatar/Gravatar 兼容头像（国内可用） */
 export function avatarUrl(mail, size = 100, avatarSource = 'weavatar') {
-  // 直接返回 Cravatar 默认头像（不使用 MD5），侧栏博主头像可通过 options.joe.JAside_Author_Avatar 设置
-  return `https://cravatar.cn/avatar/?d=mp&s=${size}`;
+  const email = String(mail || '').trim().toLowerCase();
+  const bases = {
+    cravatar: 'https://cravatar.cn/avatar/',
+    gravatar: 'https://gravatar.com/avatar/',
+    weavatar: 'https://weavatar.com/avatar/',
+  };
+  const base = bases[avatarSource] || bases.weavatar;
+  // 没有邮箱时回退默认头像；有邮箱时使用邮箱 MD5 查询用户头像
+  if (!email) return `${base}?d=mp&s=${size}`;
+  return `${base}${md5Hex(email)}?d=mp&s=${size}`;
 }
 
 export function formatDate(ts, fmt = 'Y-m-d') {

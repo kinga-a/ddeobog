@@ -25,18 +25,22 @@ export class Database {
     this.blob = blob;
   }
 
-  static async create(env) {
-    // 避免循环依赖，kv.js 中 getKV 在 main 中已解析；这里接收 KV 实例
-    throw new Error('use createDatabase(env)');
-  }
-
   // ---------- 序列 ----------
   async nextId(seq) {
-    const key = `seq:${seq}`;
-    const cur = parseInt((await this.kv.get(key)) || '0', 10);
-    const next = cur + 1;
-    await this.kv.put(key, String(next));
-    return next;
+    // Node 预览/测试环境保留递增 ID，保证测试与本地数据可复现；
+    // EdgeOne 边缘运行时没有 process，也没有 KV 原子自增，改用「毫秒时间戳 + 3 位随机数」，
+    // 避免并发创建拿到同一个 cid/coid。最大约 1.7e15，仍在 Number 安全整数范围内。
+    if (globalThis.process?.versions?.node) {
+      const key = `seq:${seq}`;
+      const cur = parseInt((await this.kv.get(key)) || '0', 10);
+      const next = cur + 1;
+      await this.kv.put(key, String(next));
+      return next;
+    }
+    const random = globalThis.crypto?.getRandomValues
+      ? globalThis.crypto.getRandomValues(new Uint32Array(1))[0] % 1000
+      : Math.floor(Math.random() * 1000);
+    return Date.now() * 1000 + random;
   }
 
   // ---------- options ----------
@@ -49,11 +53,9 @@ export class Database {
   }
   async getOptions() {
     const keys = await this.kv.listKeys('opt:');
+    const values = await this.kv.getBatch(keys);
     const out = {};
-    for (const k of keys) {
-      const name = k.slice(4);
-      out[name] = await this.kv.get(k, 'json');
-    }
+    for (const k of keys) out[k.slice(4)] = values.get(k);
     return out;
   }
   async isInstalled() {
@@ -104,15 +106,33 @@ export class Database {
     return user;
   }
   async listUsers() {
-    const keys = await this.kv.listKeys('user:');
-    const users = [];
-    for (const k of keys) {
-      if (k.startsWith('usern:') || k.startsWith('userm:')) continue;
-      const u = await this.kv.getJSON(k);
-      if (u) users.push(u);
-    }
+    const keys = (await this.kv.listKeys('user:')).filter(
+      (k) => !k.startsWith('usern:') && !k.startsWith('userm:')
+    );
+    const values = await this.kv.getBatch(keys);
+    const users = [...values.values()].filter(Boolean);
     users.sort((a, b) => a.uid - b.uid);
     return users;
+  }
+
+  // ---------- 索引维护 ----------
+  /** 覆写索引中的一条记录（未命中则忽略），可选按 sortFn 重新排序 */
+  async #replaceIndexEntry(key, match, entry, sortFn) {
+    const idx = (await this.kv.getJSON(key)) || [];
+    const i = idx.findIndex(match);
+    if (i < 0) return;
+    idx[i] = typeof entry === 'function' ? entry(idx[i]) : entry;
+    if (sortFn) idx.sort(sortFn);
+    await this.kv.putJSON(key, idx);
+  }
+
+  /** 从索引中移除一条记录（未命中则忽略） */
+  async #dropIndexEntry(key, match) {
+    const idx = (await this.kv.getJSON(key)) || [];
+    const i = idx.findIndex(match);
+    if (i < 0) return;
+    idx.splice(i, 1);
+    await this.kv.putJSON(key, idx);
   }
 
   // ---------- contents ----------
@@ -190,13 +210,12 @@ export class Database {
     Object.assign(row, patch);
     row.modified = Math.floor(Date.now() / 1000);
     await this.kv.putJSON(`post:${cid}`, row);
-    const idx = await this.#loadPostIndex();
-    const i = idx.findIndex((e) => e.cid === cid);
-    if (i >= 0) {
-      idx[i] = this.#indexEntry(row);
-      idx.sort((a, b) => b.created - a.created);
-      await this.#savePostIndex(idx);
-    }
+    await this.#replaceIndexEntry(
+      'idx:posts',
+      (e) => e.cid === cid,
+      this.#indexEntry(row),
+      (a, b) => b.created - a.created
+    );
     await this.#syncMetaCounts(row.categories, row.tags, oldCats, oldTags);
     return row;
   }
@@ -215,12 +234,7 @@ export class Database {
       }
     }
     await this.kv.delete(`post:${cid}`);
-    const idx = await this.#loadPostIndex();
-    const i = idx.findIndex((e) => e.cid === cid);
-    if (i >= 0) {
-      idx.splice(i, 1);
-      await this.#savePostIndex(idx);
-    }
+    await this.#dropIndexEntry('idx:posts', (e) => e.cid === cid);
     // 删除关联评论
     const cidx = await this.#loadCmtIndex();
     const keep = [];
@@ -314,6 +328,22 @@ export class Database {
     return result;
   }
 
+  /**
+   * 给列表结果（listContentsIndex 的返回值）补全浏览/点赞数。
+   * 首页与归档页此前各自重复实现这段合并逻辑，统一收口到这里。
+   * @param {{items: Array}} list
+   * @returns {Promise<{items: Array}>}
+   */
+  async enrichWithStats(list) {
+    const statsMap = await this.getStatsBatch(list.items.map((e) => e.cid));
+    const items = list.items.map((e) => ({
+      ...e,
+      views: statsMap.get(e.cid)?.views || 0,
+      agree: statsMap.get(e.cid)?.agree || 0,
+    }));
+    return { ...list, items };
+  }
+
   /** 上一篇/下一篇（按时间相邻的已发布同类型内容） */
   async prevNext(cid, type = 'post') {
     const idx = (await this.#loadPostIndex())
@@ -331,14 +361,11 @@ export class Database {
     return (await this.kv.getJSON('idx:metas')) || [];
   }
   async listMetas(type) {
-    const idx = await this.#loadMetaIndex();
-    const out = [];
-    for (const m of idx) {
-      if (type && m.type !== type) continue;
-      out.push(await this.kv.getJSON(`meta:${m.mid}`));
-    }
+    const idx = (await this.#loadMetaIndex()).filter((m) => !type || m.type === type);
+    const values = await this.kv.getBatch(idx.map((m) => `meta:${m.mid}`));
+    const out = [...values.values()].filter(Boolean);
     out.sort((a, b) => (a.order || 0) - (b.order || 0));
-    return out.filter(Boolean);
+    return out;
   }
   async getMeta(mid) {
     return await this.kv.getJSON(`meta:${mid}`);
@@ -370,24 +397,18 @@ export class Database {
     if (!meta) return null;
     Object.assign(meta, patch);
     await this.kv.putJSON(`meta:${mid}`, meta);
-    const idx = await this.#loadMetaIndex();
-    const i = idx.findIndex((m) => m.mid === mid);
-    if (i >= 0) {
-      idx[i] = { mid, type: meta.type, slug: meta.slug };
-      await this.kv.putJSON('idx:metas', idx);
-    }
+    await this.#replaceIndexEntry(
+      'idx:metas',
+      (m) => m.mid === mid,
+      { mid, type: meta.type, slug: meta.slug }
+    );
     return meta;
   }
   async deleteMeta(mid) {
     const meta = await this.getMeta(mid);
     if (!meta) return false;
     await this.kv.delete(`meta:${mid}`);
-    const idx = await this.#loadMetaIndex();
-    const i = idx.findIndex((m) => m.mid === mid);
-    if (i >= 0) {
-      idx.splice(i, 1);
-      await this.kv.putJSON('idx:metas', idx);
-    }
+    await this.#dropIndexEntry('idx:metas', (m) => m.mid === mid);
     // 从文章中移除该 meta
     const postIdx = await this.#loadPostIndex();
     for (const e of postIdx) {
@@ -410,7 +431,6 @@ export class Database {
     for (const mid of affected) {
       const meta = await this.getMeta(mid);
       if (!meta) continue;
-      const key = `${meta.type === 'category' ? 'c' : 't'}${mid}`;
       // 计算增量：新增的计 +1，移除的计 -1
       let delta = 0;
       if (newCats.includes(mid) || newTags.includes(mid)) delta += 1;
@@ -446,12 +466,10 @@ export class Database {
     if (!row) return;
     row.commentsNum = Math.max(0, (row.commentsNum || 0) + delta);
     await this.kv.putJSON(`post:${cid}`, row);
-    const idx = await this.#loadPostIndex();
-    const i = idx.findIndex((e) => e.cid === cid);
-    if (i >= 0) {
-      idx[i].commentsNum = row.commentsNum;
-      await this.kv.putJSON('idx:posts', idx);
-    }
+    await this.#replaceIndexEntry('idx:posts', (e) => e.cid === cid, (prev) => ({
+      ...prev,
+      commentsNum: row.commentsNum,
+    }));
   }
   async updateComment(coid, patch) {
     const row = await this.kv.getJSON(`cmt:${coid}`);
@@ -459,12 +477,10 @@ export class Database {
     const oldStatus = row.status;
     Object.assign(row, patch);
     await this.kv.putJSON(`cmt:${coid}`, row);
-    const idx = await this.#loadCmtIndex();
-    const i = idx.findIndex((c) => c.coid === coid);
-    if (i >= 0) {
-      idx[i].status = row.status;
-      await this.kv.putJSON('idx:cmts', idx);
-    }
+    await this.#replaceIndexEntry('idx:cmts', (c) => c.coid === coid, (prev) => ({
+      ...prev,
+      status: row.status,
+    }));
     if (oldStatus !== row.status) {
       await this.#bumpCommentsNum(row.cid, row.status === 'approved' ? 1 : -1);
     }
@@ -474,12 +490,7 @@ export class Database {
     const row = await this.kv.getJSON(`cmt:${coid}`);
     if (!row) return false;
     await this.kv.delete(`cmt:${coid}`);
-    const idx = await this.#loadCmtIndex();
-    const i = idx.findIndex((c) => c.coid === coid);
-    if (i >= 0) {
-      idx.splice(i, 1);
-      await this.kv.putJSON('idx:cmts', idx);
-    }
+    await this.#dropIndexEntry('idx:cmts', (c) => c.coid === coid);
     if (row.status === 'approved') await this.#bumpCommentsNum(row.cid, -1);
     return true;
   }
@@ -489,9 +500,8 @@ export class Database {
     const coids = idx
       .filter((c) => c.cid === cid && c.status === 'approved')
       .map((c) => c.coid);
-    if (!coids.length) return [];
-    const rows = await Promise.all(coids.map((coid) => this.kv.getJSON(`cmt:${coid}`)));
-    return rows.filter(Boolean).sort((a, b) => a.created - b.created);
+    const rows = await this.loadCommentsBatch(coids);
+    return rows.sort((a, b) => a.created - b.created);
   }
 
   /** 批量加载评论详情 */
@@ -527,12 +537,21 @@ export class Database {
   }
 
   // ---------- 浏览/点赞 ----------
-  async incrStat(cid, kind) {
+  /** 调整计数（delta 可为负，结果不小于 0） */
+  async adjustStat(cid, kind, delta) {
     const key = `stat:${kind}`;
     const map = (await this.kv.getJSON(key)) || {};
-    map[cid] = (map[cid] || 0) + 1;
+    map[cid] = Math.max(0, (map[cid] || 0) + delta);
     await this.kv.putJSON(key, map);
     return map[cid];
+  }
+  async incrStat(cid, kind) {
+    return await this.adjustStat(cid, kind, 1);
+  }
+  /** 全站统计总和（仪表盘用） */
+  async sumStat(kind) {
+    const map = (await this.kv.getJSON(`stat:${kind}`)) || {};
+    return Object.values(map).reduce((sum, value) => sum + (Number(value) || 0), 0);
   }
   async getStat(cid, kind) {
     const map = (await this.kv.getJSON(`stat:${kind}`)) || {};

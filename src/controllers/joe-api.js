@@ -2,6 +2,13 @@
  * Joe 主题开放 API（/joe/api）—— 兼容 Joe 原版 routeType 协议
  */
 import { thumbnail, parseStickIds } from '../render/html.js';
+import { escapeHtml } from '../render/markdown.js';
+
+const MAX_PAGE_SIZE = 50;
+const SEARCH_MAX_PAGE_SIZE = 20;
+const DEFAULT_SEARCH_SIZE = 8;
+const LAZYLOAD_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+const ASSETS_BASE = '/usr/themes/joe';
 
 export async function handleJoeApi({ db, request, url, user = null, options = {} }) {
   // 注意：不能用 `request.formData().catch(...)`。
@@ -24,8 +31,8 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
 
   switch (routeType) {
     case 'publish_list': {
-      const page = parseInt(get('page') || '1', 10);
-      const pageSize = Math.min(parseInt(get('pageSize') || '10', 10), 50);
+      const page = Math.max(parseInt(get('page') || '1', 10) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(get('pageSize') || '10', 10) || 10, 1), MAX_PAGE_SIZE);
       const type = get('type') || 'created'; // created|views|commentsNum|agree
       const orderMap = { created: 'created', views: 'views', commentsNum: 'commentsNum', agree: 'agree' };
       // 登录管理员在首页 tab 里也要看到隐藏文章。
@@ -61,41 +68,47 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
         }
       }
 
-      const data = await Promise.all(
-        list.map(async (p) => {
-          const cats = [];
-          for (const mid of p.categories || []) {
-            const m = await db.getMeta(mid);
-            if (m) cats.push({ name: m.name, permalink: `/category/${encodeURIComponent(m.slug)}/` });
-          }
-          return {
-            cid: p.cid,
-            title: p.title,
-            permalink: `/archives/${p.cid}/`,
-            abstract: p.fields?.abstract || '',
-            created: fmt(p.created),
-            views: await db.getStat(p.cid, 'views'),
-            commentsNum: p.commentsNum || 0,
-            agree: await db.getStat(p.cid, 'agree'),
-            category: cats,
-            // 角标靠 type==='sticky' 判断（joe.index.js 里就是这么渲染的）。
-            // 后台的「顶置文章IDs」不改文章的 status，所以这里要把置顶的
-            // 显式标成 sticky，否则角标永远不显示。
-            type: p.status === 'sticky' || stickSet.has(String(p.cid)) ? 'sticky' : p.type,
-            // 必须始终给得出图，否则客户端渲染会写出字面量 "undefined"：
-            // joe.index.js 的 initDom() 会清空服务端渲染的列表，改用 publish_list
-            // 的数据重画，取的是 _.image[0]——空数组取出来就是 undefined，
-            // data-src 变成 "undefined"，lazysizes 再把这串当地址写进 src，图彻底不显示。
-            image: [thumbnail(p, `${options.themeAssetsBase || '/usr/themes/joe'}/assets`)],
-            lazyload: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
-            time: fmt(p.created, 'YYYY-MM-DD'),
-            mode: 'default',
-            // 客户端据此渲染「隐藏」角标。匿名请求拿不到 hidden 条目，
-            // 所以这个字段对匿名用户始终是 publish，角标不会误显示。
-            status: p.status,
-          };
-        })
-      );
+      // 批量取统计数据与分类，避免逐条 getStat/getMeta 的 N+1 查询
+      const cids = list.map((p) => p.cid);
+      const mids = [...new Set(list.flatMap((p) => p.categories || []))];
+      const [statsMap, metas] = await Promise.all([
+        db.getStatsBatch(cids),
+        db.getMetasBatch(mids),
+      ]);
+      const metaByMid = new Map(metas.map((m) => [m.mid, m]));
+
+      const data = list.map((p) => {
+        const stats = statsMap.get(p.cid) || {};
+        return {
+          cid: p.cid,
+          title: escapeHtml(p.title),
+          permalink: `/archives/${p.cid}/`,
+          abstract: escapeHtml(p.fields?.abstract || ''),
+          created: fmt(p.created),
+          views: stats.views || 0,
+          commentsNum: p.commentsNum || 0,
+          agree: stats.agree || 0,
+          category: (p.categories || [])
+            .map((mid) => metaByMid.get(mid))
+            .filter(Boolean)
+            .map((m) => ({ name: escapeHtml(m.name), permalink: `/category/${encodeURIComponent(m.slug)}/` })),
+          // 角标靠 type==='sticky' 判断（joe.index.js 里就是这么渲染的）。
+          // 后台的「顶置文章IDs」不改文章的 status，所以这里要把置顶的
+          // 显式标成 sticky，否则角标永远不显示。
+          type: p.status === 'sticky' || stickSet.has(String(p.cid)) ? 'sticky' : p.type,
+          // 必须始终给得出图，否则客户端渲染会写出字面量 "undefined"：
+          // joe.index.js 的 initDom() 会清空服务端渲染的列表，改用 publish_list
+          // 的数据重画，取的是 _.image[0]——空数组取出来就是 undefined，
+          // data-src 变成 "undefined"，lazysizes 再把这串当地址写进 src，图彻底不显示。
+          image: [escapeHtml(thumbnail(p, `${options.themeAssetsBase || ASSETS_BASE}/assets`))],
+          lazyload: LAZYLOAD_PLACEHOLDER,
+          time: fmt(p.created, 'YYYY-MM-DD'),
+          mode: 'default',
+          // 客户端据此渲染「隐藏」角标。匿名请求拿不到 hidden 条目，
+          // 所以这个字段对匿名用户始终是 publish，角标不会误显示。
+          status: p.status,
+        };
+      });
       return json(data);
     }
     case 'handle_views': {
@@ -106,12 +119,10 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
     }
     case 'handle_agree': {
       const cid = parseInt(get('cid'), 10);
-      const kind = get('type') === 'disagree' ? -1 : 1;
+      const delta = get('type') === 'disagree' ? -1 : 1;
       if (!cid) return json(null, 0);
-      const map = (await db.kv.getJSON('stat:agree')) || {};
-      map[cid] = Math.max(0, (map[cid] || 0) + kind);
-      await db.kv.putJSON('stat:agree', map);
-      return json({ agree: map[cid] });
+      const agree = await db.adjustStat(cid, 'agree', delta);
+      return json({ agree });
     }
     case 'baidu_record':
     case 'baidu_push':
@@ -120,22 +131,22 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
     case 'search': {
       const kw = (get('s') || get('keywords') || '').trim();
       if (!kw) return json({ total: 0, data: [] });
-      const pageSize = Math.min(parseInt(get('pageSize') || '8', 10), 20);
-      const { items, total } = await db.listContents({
+      const pageSize = Math.min(Math.max(parseInt(get('pageSize') || String(DEFAULT_SEARCH_SIZE), 10) || DEFAULT_SEARCH_SIZE, 1), SEARCH_MAX_PAGE_SIZE);
+      const { items, total } = await db.listContentsIndex({
         type: 'post',
         page: 1,
         pageSize,
         keywords: kw,
       });
-      const data = await Promise.all(
-        items.map(async (p) => ({
-          cid: p.cid,
-          title: p.title,
-          permalink: `/archives/${p.cid}/`,
-          views: await db.getStat(p.cid, 'views'),
-          time: fmt(p.created, 'YYYY-MM-DD'),
-        }))
-      );
+      const cids = items.map((p) => p.cid);
+      const statsMap = await db.getStatsBatch(cids);
+      const data = items.map((p) => ({
+        cid: p.cid,
+        title: escapeHtml(p.title),
+        permalink: `/archives/${p.cid}/`,
+        views: statsMap.get(p.cid)?.views || 0,
+        time: fmt(p.created, 'YYYY-MM-DD'),
+      }));
       return json({ total, data });
     }
     default:

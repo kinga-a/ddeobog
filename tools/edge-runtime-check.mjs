@@ -1,26 +1,37 @@
 /**
- * 在「只暴露 Web 标准 API」的沙箱里执行 CLI 产出的边缘函数 iife，
- * 复现真实边缘运行时的初始化环境，定位模块初始化期抛错（即线上 545）。
+ * 在「只暴露 Web 标准 API」的沙箱里执行边缘函数，复现真实边缘运行时的初始化环境。
  *
- * 线上现象：任何路径返回 545 "Error return from script"，
- * 而 src/main.js 的 catch 会返回 500 —— 说明异常发生在 onRequest 被调用之前，
- * 即脚本初始化阶段。
+ * 优先检查 CLI 产物 `.edgeone/edge-functions/index.js`；
+ * 若不存在（常规 CI / 本地开发），则用 esbuild 把 `src/main.js` 打成 IIFE 再检查，
+ * 这样 `npm test` 每次都能验证「没有误用 process / Buffer / require 等 Node 专有 API」。
  *
  * 用法：node tools/edge-runtime-check.mjs
  */
 import vm from 'node:vm';
 import { existsSync, readFileSync } from 'node:fs';
+import { build } from 'esbuild';
 
-const FILE = '.edgeone/edge-functions/index.js';
+const CLI_FILE = '.edgeone/edge-functions/index.js';
 
-// .edgeone/ 由 `edgeone pages build` 生成且已在 .gitignore 中，
-// CI 与平台构建不会执行 CLI，因此这里缺失时跳过而不是失败。
-if (!existsSync(FILE)) {
-  console.log('- 跳过边缘运行时检查（缺少 .edgeone/，先运行 `edgeone pages build`）');
-  process.exit(0);
+let code;
+let label;
+if (existsSync(CLI_FILE)) {
+  code = readFileSync(CLI_FILE, 'utf8');
+  label = CLI_FILE;
+} else {
+  // 与 build.mjs 使用同一入口，但输出为可注入沙箱的 IIFE
+  const result = await build({
+    entryPoints: ['src/main.js'],
+    bundle: true,
+    format: 'iife',
+    globalName: 'EdgeApp',
+    platform: 'neutral',
+    write: false,
+    logLevel: 'silent',
+  });
+  code = result.outputFiles[0].text;
+  label = 'src/main.js (IIFE)';
 }
-
-const code = readFileSync(FILE, 'utf8');
 
 // 边缘运行时提供的 API（见官方文档 Edge Functions / Runtime APIs）
 const allow = [
@@ -36,7 +47,7 @@ const sandbox = Object.create(null);
 for (const k of allow) {
   if (k in globalThis) sandbox[k] = globalThis[k];
 }
-// 边缘运行时会注入 addEventListener（CLI 产物在模块顶层调用它注册 fetch 处理器）
+// CLI 产物会在模块顶层调用 addEventListener 注册 fetch 处理器
 sandbox.addEventListener = (type, cb) => {
   sandbox.__fetchHandler = cb;
 };
@@ -46,29 +57,37 @@ const ctx = vm.createContext(sandbox, { name: 'edge-runtime' });
 
 let initError = null;
 try {
-  vm.runInContext(code, ctx, { filename: FILE, timeout: 20000 });
+  vm.runInContext(code, ctx, { filename: label, timeout: 20000 });
 } catch (e) {
   initError = e;
 }
 
 if (initError) {
-  console.error('❌ 脚本初始化抛错：');
+  console.error(`❌ 脚本初始化抛错（${label}）：`);
   console.error(initError && initError.stack ? initError.stack : String(initError));
   process.exit(1);
 }
 
-if (typeof sandbox.__fetchHandler !== 'function') {
-  console.error('❌ 初始化完成但未注册 fetch 处理器');
+const handler =
+  sandbox.__fetchHandler ||
+  (sandbox.EdgeApp && (sandbox.EdgeApp.onRequest || sandbox.EdgeApp.default));
+
+if (typeof handler !== 'function') {
+  console.error('❌ 初始化完成但未找到请求处理器（onRequest / addEventListener）');
   process.exit(1);
 }
 
-console.log('✓ 初始化通过，已注册 fetch 处理器');
+console.log(`✓ 初始化通过，已找到请求处理器（${label}）`);
 
 // 用一个假的 KV 绑定跑一次真实请求
 const store = new Map();
 const kv = {
-  async get(key) {
-    return store.has(key) ? store.get(key) : null;
+  async get(key, type) {
+    if (!store.has(key)) return null;
+    const value = store.get(key);
+    if (type === 'json') return typeof value === 'string' ? JSON.parse(value) : value;
+    if (type === 'arrayBuffer') return typeof value === 'string' ? new TextEncoder().encode(value).buffer : value;
+    return value;
   },
   async put(key, value) {
     store.set(key, value);
@@ -77,7 +96,7 @@ const kv = {
     store.delete(key);
   },
   async list() {
-    return { keys: [...store.keys()].map((k) => ({ key: k })), complete: true, cursor: '' };
+    return { keys: [...store.keys()].map((key) => ({ key })), complete: true, cursor: '' };
   },
 };
 
@@ -88,6 +107,8 @@ sandbox.BLOG_KV = kv;
 let responded = null;
 const event = {
   request: new Request('https://example.com/install', { method: 'GET' }),
+  env: { BLOG_KV: kv },
+  params: {},
   waitUntil: () => {},
   respondWith: (p) => {
     responded = p;
@@ -96,11 +117,11 @@ const event = {
 
 (async () => {
   try {
-    sandbox.__fetchHandler(event, { fetch: globalThis.fetch, env: {} });
-    const res = await responded;
-    if (res.status !== 200) {
-      console.error(`❌ onRequest 返回 ${res.status}，期望 200`);
-      console.error('  body:', (await res.text()).slice(0, 400).replace(/\n/g, ' '));
+    const returned = handler(event, { fetch: globalThis.fetch, env: { BLOG_KV: kv } });
+    const res = await (returned && typeof returned.then === 'function' ? returned : responded);
+    if (!res || res.status !== 200) {
+      console.error(`❌ onRequest 返回 ${res && res.status}，期望 200`);
+      if (res) console.error('  body:', (await res.text()).slice(0, 400).replace(/\n/g, ' '));
       process.exit(1);
     }
     console.log('✓ onRequest 返回 200（边缘运行时全链路可用）');

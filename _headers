@@ -2,41 +2,33 @@
 # 文件名带 hash 的可以永久缓存，不带的用较短缓存
 
 # CSS 文件
-/assets/*.css
+/usr/themes/joe/assets/*.css
   Cache-Control: public, max-age=31536000, immutable
 
 # JS 文件
-/assets/*.js
+/usr/themes/joe/assets/*.js
   Cache-Control: public, max-age=31536000, immutable
 
 # 图片资源（png/jpg/gif/svg/webp）
-/assets/*.png
+/usr/themes/joe/assets/*.png
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.jpg
+/usr/themes/joe/assets/*.jpg
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.jpeg
+/usr/themes/joe/assets/*.jpeg
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.gif
+/usr/themes/joe/assets/*.gif
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.svg
+/usr/themes/joe/assets/*.svg
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.webp
+/usr/themes/joe/assets/*.webp
   Cache-Control: public, max-age=31536000, immutable
 
 # 字体文件
-/assets/*.woff
+/usr/themes/joe/assets/*.woff
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.woff2
+/usr/themes/joe/assets/*.woff2
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.ttf
+/usr/themes/joe/assets/*.ttf
   Cache-Control: public, max-age=31536000, immutable
-/assets/*.eot
+/usr/themes/joe/assets/*.eot
   Cache-Control: public, max-age=31536000, immutable
-
-# HTML 页面（短缓存，每次都校验）
-/*.html
-  Cache-Control: public, max-age=0, must-revalidate
-
-# 根路径首页
-/
-  Cache-Control: public, max-age=0, must-revalidate

@@ -21,7 +21,7 @@
  * 因此这里用 minifySyntax / minifyWhitespace 单独开启压缩，保留全部标识符名。
  */
 import { build } from 'esbuild';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, cpSync, existsSync } from 'node:fs';
 
 const result = await build({
   entryPoints: ['src/main.js'],
@@ -57,6 +57,12 @@ if (!/\bfunction\s+onRequest\b/.test(code)) {
 
 writeFileSync('edge-functions/[[default]].js', code);
 writeFileSync('edge-functions/index.js', code);
+
+// 静态资源只发布 usr/：避免 src/、test*.mjs、package.json、node_modules 被当作静态文件公开
+rmSync('public', { recursive: true, force: true });
+mkdirSync('public', { recursive: true });
+cpSync('usr', 'public/usr', { recursive: true });
+if (existsSync('_headers')) cpSync('_headers', 'public/_headers');
 
 console.log('Bundle size:', (code.length / 1024).toFixed(1), 'KB');
 console.log('✓ edge-functions/[[default]].js  (catch-all)');
