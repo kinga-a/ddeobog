@@ -6,41 +6,40 @@
 
 /* ---- 中性灰阶：白 + 灰，无彩色强调 ---- */
 :root {
-  --paper:      #f6f6f7;
+  --paper:      #f0f2f5;
   --surface:    #ffffff;
   --surface-2:  #fafafa;
-  --surface-3:  #f0f0f1;
-  --line:       #e4e4e7;
-  --line-soft:  #ededf0;
+  --surface-3:  #f5f5f5;
+  --line:       #e8e8e8;
+  --line-soft:  #f0f0f0;
 
-  --ink:        #18181b;
-  --ink-2:      #3f3f46;
-  --ink-3:      #71717a;
-  --ink-4:      #a1a1aa;
+  --ink:        #1f1f1f;
+  --ink-2:      #434343;
+  --ink-3:      #8c8c8c;
+  --ink-4:      #bfbfbf;
 
-  /* 主色＝近黑，替代朱砂 */
-  --accent:      #18181b;
-  --accent-ink:  #3f3f46;
-  --accent-soft: #f0f0f1;
-  --accent-line: #d4d4d8;
+  /* 品牌蓝：Ant Design 风格 */
+  --accent:      #0958d9;
+  --accent-ink:  #0958d9;
+  --accent-soft: #e6f4ff;
+  --accent-line: #91caff;
   --on-accent:   #ffffff;
-  --accent-hover: #3f3f46;
+  --accent-hover: #1677ff;
 
-  /* 语义色仅用于状态可辨，保持低饱和 */
-  --ok:          #3f7d63;
-  --ok-soft:     #eef6f2;
-  --warn:        #8a6d2a;
-  --warn-soft:   #faf6ea;
-  --danger:      #b3423a;
-  --danger-soft: #fbeceb;
+  --ok:          #389e0d;
+  --ok-soft:     #f6ffed;
+  --warn:        #d48806;
+  --warn-soft:   #fffbe6;
+  --danger:      #cf1322;
+  --danger-soft: #fff1f0;
 
   --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
+  --r-md: 8px;
+  --r-lg: 12px;
 
-  --sh-1: 0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.05);
-  --sh-2: 0 2px 4px rgba(0,0,0,.04), 0 10px 24px -10px rgba(0,0,0,.14);
-  --sh-3: 0 20px 48px -18px rgba(0,0,0,.22);
+  --sh-1: 0 1px 2px rgba(0,0,0,.03), 0 1px 6px -2px rgba(0,0,0,.06);
+  --sh-2: 0 2px 8px rgba(0,0,0,.06), 0 12px 24px -12px rgba(0,0,0,.12);
+  --sh-3: 0 20px 48px -18px rgba(0,0,0,.2);
 
   --ease: cubic-bezier(.22,.68,.32,1);
   --t: 180ms;
@@ -50,28 +49,28 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper:      #0f0f11;
-    --surface:    #18181b;
-    --surface-2:  #1c1c1f;
-    --surface-3:  #26262a;
-    --line:       #2e2e33;
-    --line-soft:  #26262a;
+    --paper:      #141414;
+    --surface:    #1f1f1f;
+    --surface-2:  #262626;
+    --surface-3:  #303030;
+    --line:       #303030;
+    --line-soft:  #262626;
 
-    --ink:   #fafafa;
-    --ink-2: #d4d4d8;
-    --ink-3: #a1a1aa;
-    --ink-4: #6b6b74;
+    --ink:   #f5f5f5;
+    --ink-2: #d9d9d9;
+    --ink-3: #8c8c8c;
+    --ink-4: #595959;
 
-    --accent:      #fafafa;
-    --accent-ink:  #d4d4d8;
-    --accent-soft: #27272a;
-    --accent-line: #3f3f46;
-    --on-accent:   #18181b;
-    --accent-hover: #d4d4d8;
+    --accent:      #1677ff;
+    --accent-ink:  #4096ff;
+    --accent-soft: #111d2c;
+    --accent-line: #15325b;
+    --on-accent:   #ffffff;
+    --accent-hover: #4096ff;
 
-    --ok:   #5aa87f;   --ok-soft:     #12241c;
-    --warn: #c2a05a;   --warn-soft:   #262015;
-    --danger: #dd7a72; --danger-soft: #2a1615;
+    --ok:    #49aa19; --ok-soft:    #162312;
+    --warn:  #d89614; --warn-soft:  #2b2111;
+    --danger:#dc4446; --danger-soft:#2c1618;
 
     --sh-1: 0 1px 2px rgba(0,0,0,.30);
     --sh-2: 0 2px 4px rgba(0,0,0,.26), 0 10px 24px -10px rgba(0,0,0,.50);
@@ -2077,14 +2076,14 @@ label { letter-spacing: .015em; }
 /* ---------- 色彩：近黑主色 + 一处冷蓝焦点 ---------- */
 
 :root {
-  --rf-accent: #409eff;
-  --rf-accent-soft: rgba(64, 158, 255, .14);
+  --rf-accent: #1677ff;
+  --rf-accent-soft: rgba(22, 119, 255, .12);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --rf-accent: #54b5db;
-    --rf-accent-soft: rgba(84, 181, 219, .18);
+    --rf-accent: #4096ff;
+    --rf-accent-soft: rgba(64, 150, 255, .18);
   }
 }
 
@@ -2106,3 +2105,137 @@ a:hover { color: var(--rf-accent); }
 /* 分页/当前项等轻量强调 */
 .badge.green { background: var(--ok-soft); color: var(--ok); }
 .badge.yellow { background: var(--warn-soft); color: var(--warn); }
+
+/* ============================================================
+   Ant Design 风格覆盖（参考浅灰底 + 白卡片 + 品牌蓝）
+   ============================================================ */
+
+.layout { background: var(--paper); }
+
+.side {
+  background: var(--surface);
+  border-right: 1px solid var(--line-soft);
+}
+
+.side a.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.side a.active::before { display: none; }
+.side a.active i { color: var(--accent-ink); opacity: 1; }
+.side a:hover { background: var(--surface-3); color: var(--ink); }
+
+.card {
+  border-color: var(--line-soft);
+  box-shadow: var(--sh-1);
+}
+.card:hover { border-color: var(--line); }
+
+.stat { border-color: var(--line-soft); }
+.stat:hover { border-color: var(--accent-line); }
+
+.btn {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+.btn:hover {
+  background: var(--surface-2);
+  border-color: var(--accent-line);
+  color: var(--accent-ink);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 0 rgba(5, 145, 255, .1);
+}
+.btn.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+a { color: var(--accent-ink); }
+a:hover { color: var(--accent-hover); }
+
+.main > h2::before { background: var(--accent); }
+
+th { background: var(--surface-2); color: var(--ink-3); }
+tbody tr:hover { background: var(--surface-2); }
+
+.badge.green { background: var(--ok-soft); color: var(--ok); }
+.badge.yellow { background: var(--warn-soft); color: var(--warn); }
+
+/* ---------- 侧栏品牌图标 ---------- */
+
+.brand__line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.brand__mark {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface-3);
+}
+
+.brand__mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- 顶部面包屑栏 ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.crumbs a { color: var(--ink-3); }
+.crumbs a:hover { color: var(--accent-ink); }
+.crumbs i { font-size: 11px; color: var(--ink-4); }
+.crumbs span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.topbar__actions { flex: none; }
+.topbar__actions .btn { min-height: 32px; font-size: 12.5px; }
+
+@media (max-width: 760px) {
+  .main { padding-top: 58px; }
+  .topbar { margin-bottom: 14px; }
+  .topbar__actions .btn { display: none; }
+}
+
+/* 折叠侧栏时用品牌图标代替文字 */
+@media (max-width: 1080px) {
+  .side .brand::before { content: none; }
+  .side .brand__line { justify-content: center; }
+  .side .brand__mark { margin: 0; }
+}

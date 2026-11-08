@@ -7,6 +7,7 @@ import { verifyPassword, hashPassword, randomHex } from '../auth/password.js';
 import { currentUser, sessionCookie, clearSessionCookie, sameOrigin } from '../auth/session.js';
 import { CONFIG } from '../config.js';
 import { escapeHtml as esc, plainExcerpt } from '../render/markdown.js';
+import { avatarUrl } from '../render/html.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
 import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
 import { mcpClientExample, loadMcpServers, saveMcpServers } from '../mcp.js';
@@ -264,6 +265,10 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
     ['login', '查看站点', 'fa-external-link'],
     ['logout', '退出登录', 'fa-sign-out'],
   ];
+  const joe = ctx.options.joe || {};
+  const brandAvatar =
+    joe.JAside_Author_Avatar ||
+    avatarUrl(ctx.user?.mail || '', 44, joe.JAvatarSource || 'weavatar');
   const menu = menus
     .map(([slug, label, icon]) => {
       const href = slug === 'login' ? '/' : `/admin/${slug}`;
@@ -283,10 +288,28 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
   <div class="scrim"></div>
   <div class="layout">
     <nav class="side" id="admin-side">
-      <div class="brand">${esc(ctx.options.title)}<small>TypechoEdge v${CONFIG.VERSION}</small></div>
+      <div class="brand">
+        <span class="brand__line">
+          <span class="brand__mark" aria-hidden="true"><img src="${esc(brandAvatar)}" alt="" width="28" height="28" loading="lazy" decoding="async"></span>
+          <span class="brand__text">${esc(ctx.options.title)}</span>
+        </span>
+        <small>TypechoEdge v${CONFIG.VERSION}</small>
+      </div>
       ${menu}
     </nav>
-    <main class="main">${body}</main>
+    <main class="main">
+      <div class="topbar">
+        <nav class="crumbs" aria-label="面包屑">
+          <a href="/admin">工作台</a>
+          <i class="fa fa-angle-right" aria-hidden="true"></i>
+          <span aria-current="page">${esc(title)}</span>
+        </nav>
+        <div class="topbar__actions">
+          <a class="btn sm" href="/" target="_blank" rel="noopener">查看站点</a>
+        </div>
+      </div>
+      ${body}
+    </main>
   </div>
   <script>
   (function(){

@@ -513,3 +513,12 @@ html body .joe_aside__item-contain a {
     margin-right: 10px;
   }
 }
+
+
+/* iOS 26：Safari 采样视口 fixed 层的 background-color 决定工具栏颜色。
+   遮罩不能只靠 backdrop-filter（会回退到系统默认色），给显式纯色。 */
+html body .joe_header__mask {
+  background-color: rgba(0, 0, 0, .42);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}

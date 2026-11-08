@@ -166,15 +166,50 @@ ${imagePreconnect}
   localStorage.getItem("data-night") && document.querySelector("html").setAttribute("data-night", "night");
   // iOS Safari：让底部工具栏与安全区跟随夜间模式
   (function(){
-    var meta = document.querySelector('meta[name="theme-color"]');
+    var root = document.documentElement;
     function sync(){
-      var night = document.documentElement.getAttribute("data-night") === "night";
-      if (meta) meta.setAttribute("content", night ? "#121212" : "#ffffff");
+      var night = root.getAttribute("data-night") === "night";
+      var color = night ? "#232323" : "#ffffff";
+      // 安卓 WebView / Via 只在 meta 节点重新挂载时读取主题色，
+      // 单纯改 content 不会刷新工具栏，所以每次切换都重建这个节点。
+      var old = document.querySelector('meta[name="theme-color"]');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      var next = document.createElement("meta");
+      next.setAttribute("name", "theme-color");
+      next.setAttribute("content", color);
+      (document.head || root).appendChild(next);
+      // 让 WebView 的滚动条、表单控件也跟随主题
+      root.style.colorScheme = night ? "dark" : "light";
+      // iOS 26 起 Safari 不再读取 theme-color，改为采样页面实际背景色；
+      // 这里显式写内联背景并强制重绘，切换主题时触发重新采样。
+      root.style.backgroundColor = color;
+      var body = document.body;
+      if (body) {
+        body.style.backgroundColor = color;
+        void body.offsetHeight;
+      }
     }
     sync();
     if (window.MutationObserver) {
-      new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-night"] });
+      new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ["data-night"] });
     }
+    // 侧栏遮罩是全屏 fixed 层：打开时会让 Safari 采样到遮罩色，
+    // 关闭后必须移出渲染树并重新采样，否则工具栏会停在旧颜色。
+    document.addEventListener("click", function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var mask = document.querySelector(".joe_header__mask");
+      if (!mask) return;
+      if (t.closest(".joe_header__above-slideicon")) {
+        mask.style.display = "";
+        setTimeout(sync, 350);
+      } else if (t.closest(".joe_header__mask")) {
+        setTimeout(function () {
+          mask.style.display = "none";
+          sync();
+        }, 300);
+      }
+    });
   })();
   window.Joe = {
     THEME_URL: \`${a('')}\`,
