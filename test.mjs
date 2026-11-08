@@ -990,6 +990,164 @@ await test('后台 MCP 卡片：端点、掩码令牌、复制与显示控件', 
   assert.ok(html.includes('/mcp<'), '应展示 MCP 端点');
 });
 
+// ---- 备份恢复 ----
+
+await test('备份页：统计、导出、导入与 WebDAV 表单齐全', async () => {
+  const res = await call('GET', '/admin/backup');
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  for (const needle of [
+    '备份恢复', 'backup-stats', '下载备份文件', '从文件恢复',
+    'webdav-save', 'webdav-test', 'webdav-put', 'backup?export=1',
+  ]) {
+    assert.ok(html.includes(needle), `备份页缺少 ${needle}`);
+  }
+  assert.ok(html.includes('name="file"'), '应提供导入文件选择框');
+  assert.ok(html.includes('name="confirm"'), '恢复前应要求确认');
+});
+
+await test('备份导出：附件下载、合法 JSON、不含会话与 WebDAV 密码', async () => {
+  const res = await call('GET', '/admin/backup?export=1');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-disposition') || '', /attachment; filename="typecho-edge-\d{8}-\d{6}\.json"/);
+  const data = JSON.parse(await res.text());
+  assert.equal(data.format, 'typecho-edge-backup');
+  assert.equal(data.version, 1);
+  assert.ok(data.data['opt:title'], '应包含站点配置');
+  assert.ok(data.data['idx:posts'], '应包含文章索引');
+  assert.ok(!Object.keys(data.data).some((k) => k.startsWith('sess:')), '不应导出会话');
+  assert.ok(!('opt:backup:webdav' in data.data), '不应导出 WebDAV 凭据');
+});
+
+await test('备份导入：上传导出的 JSON 可还原被改动的数据', async () => {
+  const exported = await (await call('GET', '/admin/backup?export=1')).text();
+  const backup = JSON.parse(exported);
+  const cid = Object.keys(backup.data).find((k) => k.startsWith('post:'));
+  assert.ok(cid, '备份里应有文章');
+  const original = backup.data[cid];
+
+  // 故意改坏，再用备份恢复
+  const broken = { ...original, title: '被改坏的标题' };
+  globalThis.BLOG_KV.map.set(cid, JSON.stringify(broken));
+
+  const fd = new FormData();
+  fd.set('op', 'import');
+  fd.set('mode', 'merge');
+  fd.set('confirm', '1');
+  fd.set('file', new Blob([exported], { type: 'application/json' }), 'backup.json');
+  const req = new Request('https://blog.example.com/admin/backup', {
+    method: 'POST',
+    headers: { Cookie: cookie },
+    body: fd,
+  });
+  const res = await onRequest({ request: req, env: {}, params: {}, waitUntil: () => {} });
+  assert.equal(res.status, 302, `导入应重定向，实际 ${res.status}`);
+  assert.match(res.headers.get('Location') || '', /ok=/);
+
+  const restored = JSON.parse(globalThis.BLOG_KV.map.get(cid));
+  assert.equal(restored.title, original.title, '恢复后标题应与备份一致');
+});
+
+await test('备份加密：POST 密码导出密文，导入需同一密码', async () => {
+  const fd = new FormData();
+  fd.set('password', 'backup-pass-123');
+  const exported = await onRequest({
+    request: new Request('https://blog.example.com/admin/backup?export=1', {
+      method: 'POST',
+      headers: { Cookie: cookie },
+      body: fd,
+    }),
+    env: {},
+    params: {},
+    waitUntil: () => {},
+  });
+  assert.equal(exported.status, 200);
+  const envelope = JSON.parse(await exported.text());
+  assert.equal(envelope.format, 'typecho-edge-backup-encrypted');
+  assert.ok(!JSON.stringify(envelope).includes('"text"'), '密文不应包含正文结构');
+  assert.ok(!JSON.stringify(envelope).includes('"post:'), '密文不应包含键名');
+
+  const upload = (password) => {
+    const body = new FormData();
+    body.set('op', 'import');
+    body.set('mode', 'merge');
+    body.set('confirm', '1');
+    body.set('password', password);
+    body.set('file', new Blob([JSON.stringify(envelope)], { type: 'application/json' }), 'encrypted.json');
+    return onRequest({
+      request: new Request('https://blog.example.com/admin/backup', {
+        method: 'POST',
+        headers: { Cookie: cookie },
+        body,
+      }),
+      env: {},
+      params: {},
+      waitUntil: () => {},
+    });
+  };
+
+  const wrong = await upload('wrong-pass');
+  assert.match(wrong.headers.get('Location') || '', /err=/, '错误密码应返回错误');
+
+  const right = await upload('backup-pass-123');
+  assert.match(right.headers.get('Location') || '', /ok=/, '正确密码应恢复成功');
+});
+
+await test('WebDAV 配置：保存后不回显密码，导出也不包含', async () => {
+  const saved = await call('POST', '/admin/backup', {
+    form: {
+      op: 'webdav-save',
+      url: 'https://dav.example.com/remote.php/dav/files/blog',
+      username: 'blog',
+      password: 'dav-pass-123',
+      dir: 'backups/typecho',
+      keep: '5',
+      backupPassword: 'dav-backup-pass',
+    },
+  });
+  assert.equal(saved.status, 302);
+
+  const html = await (await call('GET', '/admin/backup')).text();
+  assert.ok(!html.includes('dav-pass-123'), '页面不应回显 WebDAV 密码');
+  assert.ok(!html.includes('dav-backup-pass'), '页面不应回显备份加密密码');
+  assert.ok(html.includes('已保存，留空保持不变'), '应提示密码已保存');
+
+  const data = JSON.parse(await (await call('GET', '/admin/backup?export=1')).text());
+  assert.ok(!('opt:backup:webdav' in data.data), '导出不应包含 WebDAV 凭据');
+});
+
+await test('回收站：后台删除进入回收站，可恢复也可清空', async () => {
+  await call('POST', '/admin/post', {
+    form: { type: 'post', title: '待回收文章', text: '正文', status: 'publish' },
+  });
+  const idx = JSON.parse(globalThis.BLOG_KV.map.get('idx:posts'));
+  const target = idx.find((e) => e.title === '待回收文章');
+  assert.ok(target, '应创建出待回收文章');
+
+  const del = await call('POST', '/admin/delete', { form: { cid: target.cid } });
+  assert.equal(del.status, 302);
+  assert.ok(!globalThis.BLOG_KV.map.has(`post:${target.cid}`), '正式表应已移除');
+
+  const page = await (await call('GET', '/admin/trash')).text();
+  assert.ok(page.includes('回收站'));
+  assert.ok(page.includes('待回收文章'), '回收站应显示删除的文章');
+  assert.ok(page.includes('清空回收站'));
+
+  const restore = await call('POST', '/admin/trash', { form: { op: 'restore', key: `trash:content:${target.cid}` } });
+  assert.equal(restore.status, 302);
+  const row = JSON.parse(globalThis.BLOG_KV.map.get(`post:${target.cid}`));
+  assert.equal(row.title, '待回收文章', '恢复后文章应回到正式表');
+
+  // 再删一次并清空
+  await call('POST', '/admin/delete', { form: { cid: target.cid } });
+  const empty = await call('POST', '/admin/trash', { form: { op: 'empty' } });
+  assert.equal(empty.status, 302);
+  const idxAfter = JSON.parse(globalThis.BLOG_KV.map.get('idx:posts'));
+  assert.ok(!idxAfter.some((e) => e.cid === target.cid), '清空后不应再出现在索引');
+  const keys = [...globalThis.BLOG_KV.map.keys()].filter((k) => k.startsWith('trash:'));
+  assert.equal(keys.length, 0, '回收站应为空');
+});
+
 // ---- TOTP ----
 
 await test('TOTP：获取绑定二维码页面', async () => {

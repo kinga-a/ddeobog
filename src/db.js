@@ -220,13 +220,13 @@ export class Database {
     return row;
   }
 
-  async deleteContent(cid) {
+  async deleteContent(cid, { keepBlob = false } = {}) {
     const row = await this.getContent(cid);
     if (!row) return false;
     // 附件的字节不在 KV 里，KV 行删掉后 slug 就再也找不回来了，
     // 必须先清 Blob 对象再删记录，否则 Blob 空间永久残留（KV 降级通道的
     // file:data: 同理）。这里失败只告警不阻断——记录才是列表的真相。
-    if (row.type === 'attachment' && row.slug) {
+    if (!keepBlob && row.type === 'attachment' && row.slug) {
       try {
         await this.blob.delete(row.slug);
       } catch (e) {
@@ -245,6 +245,203 @@ export class Database {
     await this.kv.putJSON('idx:cmts', keep);
     await this.#syncMetaCounts([], [], row.categories, row.tags);
     return true;
+  }
+
+  /* ---------- 回收站 ---------- */
+
+  /** 软删除内容：先存副本，再从正式数据移除；附件保留 Blob 以便恢复 */
+  async trashContent(cid, actor = 'admin') {
+    const row = await this.getContent(cid);
+    if (!row) return false;
+    const cidx = await this.#loadCmtIndex();
+    const coids = cidx.filter((c) => c.cid === cid).map((c) => c.coid);
+    const comments = await this.loadCommentsBatch(coids);
+    const key = `trash:content:${cid}`;
+    await this.kv.putJSON(key, {
+      key,
+      kind: 'content',
+      type: row.type,
+      id: cid,
+      title: row.title || row.slug || String(cid),
+      deletedAt: Math.floor(Date.now() / 1000),
+      actor,
+      data: { row, comments },
+    });
+    await this.deleteContent(cid, { keepBlob: true });
+    return true;
+  }
+
+  /** 软删除评论 */
+  async trashComment(coid, actor = 'admin') {
+    const row = await this.kv.getJSON(`cmt:${coid}`);
+    if (!row) return false;
+    const key = `trash:comment:${coid}`;
+    const preview = String(row.text || '').replace(/\s+/g, ' ').slice(0, 40);
+    await this.kv.putJSON(key, {
+      key,
+      kind: 'comment',
+      type: 'comment',
+      id: coid,
+      title: `${row.author || '匿名'}：${preview}`,
+      deletedAt: Math.floor(Date.now() / 1000),
+      actor,
+      data: { comment: row },
+    });
+    await this.deleteComment(coid);
+    return true;
+  }
+
+  /** 软删除分类/标签，并记录受影响的文章以便恢复 */
+  async trashMeta(mid, actor = 'admin') {
+    const meta = await this.getMeta(mid);
+    if (!meta) return false;
+    const listName = meta.type === 'category' ? 'categories' : 'tags';
+    const idx = await this.#loadPostIndex();
+    const affectedPosts = idx.filter((e) => (e[listName] || []).includes(mid)).map((e) => e.cid);
+    const key = `trash:meta:${mid}`;
+    await this.kv.putJSON(key, {
+      key,
+      kind: 'meta',
+      type: meta.type,
+      id: mid,
+      title: meta.name || meta.slug || String(mid),
+      deletedAt: Math.floor(Date.now() / 1000),
+      actor,
+      data: { meta, affectedPosts },
+    });
+    await this.deleteMeta(mid);
+    return true;
+  }
+
+  /** 列出回收站条目（按删除时间倒序） */
+  async listTrash() {
+    const keys = await this.kv.listKeys('trash:');
+    if (!keys.length) return [];
+    const map = await this.kv.getBatch(keys);
+    return [...map.values()]
+      .filter(Boolean)
+      .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+  }
+
+  /** 从回收站恢复一条记录 */
+  async restoreTrash(key) {
+    const entry = await this.kv.getJSON(key);
+    if (!entry) throw new Error('回收站条目不存在');
+    if (entry.kind === 'content') await this.#restoreTrashContent(entry);
+    else if (entry.kind === 'comment') await this.#restoreTrashComment(entry);
+    else if (entry.kind === 'meta') await this.#restoreTrashMeta(entry);
+    else throw new Error('未知的回收站条目类型');
+    await this.kv.delete(key);
+    return entry;
+  }
+
+  async #restoreTrashContent(entry) {
+    const row = entry.data && entry.data.row;
+    if (!row) throw new Error('回收站条目缺少内容数据');
+    if (await this.getContent(row.cid)) throw new Error('同 ID 内容已存在，无法恢复');
+    const comments = (entry.data.comments || []).filter(Boolean);
+    row.commentsNum = comments.filter((c) => c.status === 'approved').length;
+    await this.kv.putJSON(`post:${row.cid}`, row);
+
+    const idx = await this.#loadPostIndex();
+    if (!idx.some((e) => e.cid === row.cid)) {
+      idx.unshift(this.#indexEntry(row));
+      await this.#savePostIndex(idx);
+    }
+
+    if (comments.length) {
+      const cidx = await this.#loadCmtIndex();
+      for (const c of comments) {
+        await this.kv.putJSON(`cmt:${c.coid}`, c);
+        if (!cidx.some((x) => x.coid === c.coid)) {
+          cidx.push({ coid: c.coid, cid: c.cid, created: c.created, status: c.status });
+        }
+      }
+      await this.kv.putJSON('idx:cmts', cidx);
+    }
+
+    await this.#syncMetaCounts(row.categories || [], row.tags || []);
+  }
+
+  async #restoreTrashComment(entry) {
+    const row = entry.data && entry.data.comment;
+    if (!row) throw new Error('回收站条目缺少评论数据');
+    if (await this.kv.getJSON(`cmt:${row.coid}`)) throw new Error('同 ID 评论已存在，无法恢复');
+    await this.kv.putJSON(`cmt:${row.coid}`, row);
+    const idx = await this.#loadCmtIndex();
+    if (!idx.some((c) => c.coid === row.coid)) {
+      idx.push({ coid: row.coid, cid: row.cid, created: row.created, status: row.status });
+      await this.kv.putJSON('idx:cmts', idx);
+    }
+    if (row.status === 'approved') await this.#bumpCommentsNum(row.cid, 1);
+  }
+
+  async #restoreTrashMeta(entry) {
+    const meta = entry.data && entry.data.meta;
+    if (!meta) throw new Error('回收站条目缺少分类/标签数据');
+    if (await this.getMeta(meta.mid)) throw new Error('同 ID 分类/标签已存在，无法恢复');
+    await this.kv.putJSON(`meta:${meta.mid}`, meta);
+
+    const midx = await this.#loadMetaIndex();
+    if (!midx.some((m) => m.mid === meta.mid)) {
+      midx.push({ mid: meta.mid, type: meta.type, slug: meta.slug });
+      await this.kv.putJSON('idx:metas', midx);
+    }
+
+    const listName = meta.type === 'category' ? 'categories' : 'tags';
+    for (const cid of entry.data.affectedPosts || []) {
+      const row = await this.getContent(cid);
+      if (!row) continue;
+      row[listName] = [...new Set([...(row[listName] || []), meta.mid])];
+      await this.kv.putJSON(`post:${cid}`, row);
+      await this.#replaceIndexEntry('idx:posts', (e) => e.cid === cid, (prev) => ({
+        ...prev,
+        [listName]: row[listName],
+      }));
+    }
+
+    await this.#recountMeta(meta.mid, meta.type);
+  }
+
+  /** 按文章索引重算某分类/标签的文章数 */
+  async #recountMeta(mid, type) {
+    const listName = type === 'category' ? 'categories' : 'tags';
+    const idx = await this.#loadPostIndex();
+    const count = idx.filter((e) => (e[listName] || []).includes(mid)).length;
+    const meta = await this.getMeta(mid);
+    if (meta) {
+      meta.count = count;
+      await this.kv.putJSON(`meta:${mid}`, meta);
+    }
+    await this.#replaceIndexEntry('idx:metas', (m) => m.mid === mid, (prev) => ({ ...prev, count }));
+  }
+
+  /** 永久删除一条回收站记录（附件同时删除 Blob） */
+  async purgeTrash(key) {
+    const entry = await this.kv.getJSON(key);
+    if (!entry) return false;
+    if (entry.kind === 'content' && entry.type === 'attachment') {
+      const slug = entry.data && entry.data.row && entry.data.row.slug;
+      if (slug) {
+        try {
+          await this.blob.delete(slug);
+        } catch (e) {
+          console.error('[db] 清理回收站附件失败:', slug, e && e.message);
+        }
+      }
+    }
+    await this.kv.delete(key);
+    return true;
+  }
+
+  /** 清空回收站 */
+  async emptyTrash() {
+    const keys = await this.kv.listKeys('trash:');
+    let removed = 0;
+    for (const key of keys) {
+      if (await this.purgeTrash(key)) removed += 1;
+    }
+    return removed;
   }
 
   /**

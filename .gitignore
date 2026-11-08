@@ -3,3 +3,4 @@ node_modules/
 *_TODO.md
 STICKY_BADGE_TODO.md
 public/
+.dev-kv.json

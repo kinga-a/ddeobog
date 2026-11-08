@@ -10,6 +10,16 @@ import { escapeHtml as esc, plainExcerpt } from '../render/markdown.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
 import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
 import { mcpClientExample, loadMcpServers, saveMcpServers } from '../mcp.js';
+import { exportBackup, importBackup, isBackupKey, backupFileName } from '../backup.js';
+import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypto.js';
+import {
+  normalizeConfig,
+  listBackups,
+  putBackup,
+  getBackup,
+  deleteBackup,
+  testConnection,
+} from '../webdav.js';
 
 /**
  * 登录失败限流 —— 按「用户名 + 客户端 IP」维度计数。
@@ -96,6 +106,8 @@ const ADMIN_POST_ROUTES = new Map([
   ['comment', commentAction],
   ['upload', uploadFile],
   ['settings', saveSettings],
+  ['backup', backupAction],
+  ['trash', trashAction],
   ['security', securityAction],
 ]);
 
@@ -109,6 +121,8 @@ const ADMIN_GET_ROUTES = new Map([
   ['comments', commentsPage],
   ['uploads', uploadsPage],
   ['settings', settingsPage],
+  ['backup', backupPage],
+  ['trash', trashPage],
   ['security', securityPage],
 ]);
 
@@ -243,8 +257,10 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
     ['metas', '分类/标签', 'fa-folder'],
     ['comments', '评论管理', 'fa-comments'],
     ['uploads', '附件管理', 'fa-image'],
-    ['settings', '站点设置', 'fa-cog'],
-    ['security', '安全设置', 'fa-shield'],
+['settings', '站点设置', 'fa-cog'],
+  ['backup', '备份恢复', 'fa-database'],
+  ['trash', '回收站', 'fa-trash'],
+  ['security', '安全设置', 'fa-shield'],
     ['login', '查看站点', 'fa-external-link'],
     ['logout', '退出登录', 'fa-sign-out'],
   ];
@@ -945,7 +961,7 @@ async function deletePost(ctx) {
   if (cid) {
     const row = await db.getContent(cid);
     if (row && row.type === 'attachment') back = '/admin/uploads';
-    await db.deleteContent(cid);
+    await db.trashContent(cid, 'admin');
   }
   return redirect(url, back, { msg: 'ok' });
 }
@@ -1022,7 +1038,7 @@ async function deleteMeta(ctx) {
   const { db, url } = ctx;
   const form = await ctx.request.formData();
   const mid = parseInt(form.get('mid') || '0', 10);
-  if (mid) await db.deleteMeta(mid);
+  if (mid) await db.trashMeta(mid, 'admin');
   return redirect(url, '/admin/metas', { msg: 'ok' });
 }
 
@@ -1070,7 +1086,7 @@ async function commentAction(ctx) {
   if (!coid) return redirect(url, '/admin/comments', { msg: 'err' });
   if (op === 'approve') await db.updateComment(coid, { status: 'approved' });
   else if (op === 'waiting') await db.updateComment(coid, { status: 'waiting' });
-  else if (op === 'delete') await db.deleteComment(coid);
+  else if (op === 'delete') await db.trashComment(coid, 'admin');
   return redirect(url, '/admin/comments', { msg: 'ok' });
 }
 
@@ -1524,6 +1540,375 @@ const SECURITY_ACTIONS = new Map([
   ['mcp-generate', generateMcpTokenFor],
   ['mcp-delete', deleteMcpServer],
 ]);
+
+/* ==================== 备份恢复 ==================== */
+
+/** 备份页提示条：允许任意文本，统一转义后再输出 */
+function flashNotice(ctx) {
+  const ok = ctx.url.searchParams.get('ok');
+  const err = ctx.url.searchParams.get('err');
+  if (ok) return `<div class="msg ok">${esc(ok)}</div>`;
+  if (err) return `<div class="msg err">${esc(err)}</div>`;
+  return '';
+}
+
+function formatBytes(n) {
+  const num = Number(n) || 0;
+  if (num < 1024) return `${num} B`;
+  if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+  return `${(num / 1024 / 1024).toFixed(2)} MB`;
+}
+
+async function loadWebdavConfig(db) {
+  const raw = await db.getOption('backup:webdav');
+  if (!raw) return null;
+  try {
+    return normalizeConfig(raw);
+  } catch {
+    return null;
+  }
+}
+
+function configFromForm(form, prev) {
+  const password = String(form.get('password') || '');
+  const backupPassword = String(form.get('backupPassword') || '');
+  return normalizeConfig({
+    url: form.get('url'),
+    username: form.get('username'),
+    password: password || (prev && prev.password) || '',
+    backupPassword: backupPassword || (prev && prev.backupPassword) || '',
+    dir: form.get('dir'),
+    keep: form.get('keep'),
+  });
+}
+
+async function backupPage(ctx) {
+  const { db, url } = ctx;
+
+  // 直接下载备份文件（Content-Disposition，不经过页面渲染）
+  if (url.searchParams.get('export') === '1') {
+    const backup = await exportBackup(db, {
+      title: ctx.options.title,
+      description: ctx.options.description,
+      primaryUrl: ctx.siteUrl,
+    });
+    return new Response(JSON.stringify(backup, null, 2), {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${backupFileName()}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  const cfg = await loadWebdavConfig(db);
+  const allKeys = await db.kv.listKeys();
+  const keyCount = allKeys.filter(isBackupKey).length;
+  const postTotal = (await db.listContentsIndex({ type: 'post', pageSize: 1, allStatus: true })).total;
+  const pageTotal = (await db.listContentsIndex({ type: 'page', pageSize: 1, allStatus: true })).total;
+  const cmtIdx = await db.kv.getJSON('idx:cmts');
+  const commentTotal = Array.isArray(cmtIdx) ? cmtIdx.length : 0;
+
+  let files = [];
+  let listErr = '';
+  if (cfg) {
+    try {
+      files = await listBackups(cfg);
+    } catch (e) {
+      listErr = e && e.message ? e.message : String(e);
+    }
+  }
+
+  const stats = [
+    ['数据键', keyCount],
+    ['文章', postTotal],
+    ['页面', pageTotal],
+    ['评论', commentTotal],
+  ]
+    .map(([label, num]) => `<div class="stat"><div class="num">${num}</div><div class="label">${label}</div></div>`)
+    .join('');
+
+  const fileRows = files
+    .map((f) => {
+      const sub = `${formatBytes(f.size)}${f.modified ? ` · ${esc(f.modified)}` : ''}`;
+      return (
+        '<li><div class="meta"><div class="name">' + esc(f.name) + '</div><div class="sub">' + sub + '</div></div>' +
+        '<div class="ops">' +
+        '<form method="post" action="/admin/backup" onsubmit="return confirm(\'恢复会用该备份改写现有数据，确定继续？\')">' +
+        '<input type="hidden" name="op" value="webdav-restore"><input type="hidden" name="file" value="' + esc(f.name) + '">' +
+        '<select name="mode"><option value="merge">合并</option><option value="replace">覆盖</option></select>' +
+        '<button class="btn sm" type="submit">恢复</button></form>' +
+        '<form method="post" action="/admin/backup" onsubmit="return confirm(\'确定删除该备份？\')">' +
+        '<input type="hidden" name="op" value="webdav-delete"><input type="hidden" name="file" value="' + esc(f.name) + '">' +
+        '<button class="btn sm danger" type="submit">删除</button></form>' +
+        '</div></li>'
+      );
+    })
+    .join('');
+
+  const body = `${flashNotice(ctx)}
+  <h2>备份恢复</h2>
+
+  <div class="card">
+    <h3 class="card__title">整体备份</h3>
+    <p class="card__intro">导出站点数据为 JSON 文件，可用于迁移或灾难恢复。</p>
+    <div class="backup-stats">${stats}</div>
+    <form method="post" action="/admin/backup?export=1">
+      <div class="row">
+        <div class="item"><label>加密密码（可选）</label><input type="password" name="password" autocomplete="new-password" placeholder="至少 6 位；留空导出未加密 JSON"></div>
+      </div>
+      <div class="form-actions form-actions--start">
+        <button class="btn primary" type="submit">下载备份文件</button>
+      </div>
+      <p class="hint">填写密码会导出 AES-256-GCM 加密备份，恢复时需要同一密码。包含文章正文、页面、分类、标签、评论、索引、站点配置与用户；不含附件二进制、会话与 WebDAV 密码。</p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 class="card__title">从文件恢复</h3>
+    <form method="post" action="/admin/backup" enctype="multipart/form-data">
+      <input type="hidden" name="op" value="import">
+      <div class="row">
+        <div class="item"><label>备份文件（.json，≤ 900KB）</label><input type="file" name="file" accept=".json,application/json" required></div>
+        <div class="item"><label>恢复方式</label><select name="mode">
+          <option value="merge">合并：覆盖同名数据，保留其它内容</option>
+          <option value="replace">覆盖：先清空现有内容再恢复</option>
+        </select></div>
+      </div>
+      <div class="item"><label>备份密码（加密备份必填）</label><input type="password" name="password" autocomplete="off" placeholder="未加密备份可留空"></div>
+      <div class="item"><label class="check-inline"><input type="checkbox" name="confirm" value="1" required> 我已知晓恢复会修改现有数据</label></div>
+      <button class="btn primary" type="submit">开始恢复</button>
+      <p class="hint">超过 900KB 的备份请使用 WebDAV 恢复，边缘函数请求体上限为 1MB。</p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 class="card__title">WebDAV 备份</h3>
+    <p class="card__intro">支持 Nextcloud、坚果云、群晖、Alist 等 WebDAV 服务，备份以 JSON 文件存放在指定目录，可选用备份密码加密。</p>
+    <form method="post" action="/admin/backup">
+      <div class="row">
+        <div class="item"><label>WebDAV 地址</label><input type="url" name="url" value="${esc(cfg ? cfg.url : '')}" placeholder="https://dav.example.com/remote.php/dav/files/user" required></div>
+        <div class="item"><label>用户名</label><input type="text" name="username" value="${esc(cfg ? cfg.username : '')}" autocomplete="username"></div>
+        <div class="item"><label>密码 / 应用密码</label><input type="password" name="password" value="" placeholder="${cfg && cfg.password ? '已保存，留空保持不变' : '输入密码'}" autocomplete="current-password"></div>
+      </div>
+      <div class="row">
+        <div class="item"><label>远程目录</label><input type="text" name="dir" value="${esc(cfg ? cfg.dir : 'backups/typecho')}" placeholder="backups/typecho"></div>
+        <div class="item"><label>保留份数</label><input type="number" name="keep" min="1" max="50" value="${cfg ? cfg.keep : 10}"></div>
+      </div>
+      <div class="row">
+        <div class="item"><label>备份加密密码（可选）</label><input type="password" name="backupPassword" value="" autocomplete="new-password" placeholder="${cfg && cfg.backupPassword ? '已保存，留空保持不变' : '留空则保存明文备份'}"></div>
+      </div>
+      <div class="form-actions form-actions--start">
+        <button class="btn primary" type="submit" name="op" value="webdav-save">保存配置</button>
+        <button class="btn" type="submit" name="op" value="webdav-test">测试连接</button>
+        <button class="btn" type="submit" name="op" value="webdav-put" ${cfg ? '' : 'disabled'}>立即备份到 WebDAV</button>
+      </div>
+      ${cfg ? '' : '<p class="hint">先保存配置，才能一键备份或从 WebDAV 恢复。</p>'}
+    </form>
+    ${listErr ? `<div class="msg err">读取 WebDAV 目录失败：${esc(listErr)}</div>` : ''}
+    ${cfg ? (fileRows ? `<ul class="backup-files">${fileRows}</ul>` : '<p class="hint">目录里还没有备份文件。</p>') : ''}
+  </div>`;
+
+  return html(adminLayout(ctx, { title: '备份恢复', active: 'backup', body }));
+}
+
+async function backupAction(ctx) {
+  const { db, url } = ctx;
+  const form = await ctx.request.formData();
+  const op = String(form.get('op') || '');
+
+  const fail = (message) => redirect(url, '/admin/backup', { err: String(message).slice(0, 120) });
+  const done = (message) => redirect(url, '/admin/backup', { ok: String(message).slice(0, 120) });
+
+  // 带密码的导出走 POST，密码不进入 URL
+  if (url.searchParams.get('export') === '1') {
+    const backup = await exportBackup(db, {
+      title: ctx.options.title,
+      description: ctx.options.description,
+      primaryUrl: ctx.siteUrl,
+    });
+    const password = String(form.get('password') || '');
+    const payload = password ? await encryptBackup(backup, password) : backup;
+    return new Response(JSON.stringify(payload, null, 2), {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${backupFileName()}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  try {
+    const prev = await db.getOption('backup:webdav');
+
+    if (op === 'import') {
+      const file = form.get('file');
+      if (!file || typeof file === 'string') return fail('请选择备份文件');
+      if (file.size > 900 * 1024) return fail('文件超过 900KB，请使用 WebDAV 恢复');
+      if (form.get('confirm') !== '1') return fail('请先勾选确认');
+      let obj;
+      try {
+        obj = JSON.parse(await file.text());
+      } catch {
+        return fail('备份文件不是合法 JSON');
+      }
+      if (isEncryptedBackup(obj)) {
+        obj = await decryptBackup(obj, form.get('password'));
+      }
+      const mode = form.get('mode') === 'replace' ? 'replace' : 'merge';
+      const { written } = await importBackup(db, obj, { mode });
+      return done(`已恢复 ${written} 项数据`);
+    }
+
+    if (op === 'webdav-save') {
+      await db.setOption('backup:webdav', configFromForm(form, prev));
+      return done('WebDAV 配置已保存');
+    }
+
+    if (op === 'webdav-test') {
+      const result = await testConnection(configFromForm(form, prev));
+      return done(result && result.created ? '连接成功，已自动创建备份目录' : '连接成功，目录可访问');
+    }
+
+    if (op === 'webdav-put') {
+      const cfg = configFromForm(form, prev);
+      await db.setOption('backup:webdav', cfg);
+      const backup = await exportBackup(db, {
+        title: ctx.options.title,
+        description: ctx.options.description,
+        primaryUrl: ctx.siteUrl,
+      });
+      const name = backupFileName();
+      const payload = cfg.backupPassword ? await encryptBackup(backup, cfg.backupPassword) : backup;
+      await putBackup(cfg, name, JSON.stringify(payload));
+      // 只保留最近 keep 份，清理失败不影响本次备份
+      try {
+        const files = await listBackups(cfg);
+        for (const f of files.slice(cfg.keep)) await deleteBackup(cfg, f.name);
+      } catch {
+        // ignore
+      }
+      return done(`已备份到 WebDAV：${name}`);
+    }
+
+    if (op === 'webdav-restore') {
+      const cfg = await loadWebdavConfig(db);
+      if (!cfg) return fail('请先保存 WebDAV 配置');
+      const name = String(form.get('file') || '');
+      if (!name) return fail('缺少备份文件名');
+      let obj = await getBackup(cfg, name);
+      if (isEncryptedBackup(obj)) {
+        if (!cfg.backupPassword) return fail('该备份已加密，请先在 WebDAV 配置中填写备份密码');
+        obj = await decryptBackup(obj, cfg.backupPassword);
+      }
+      const mode = form.get('mode') === 'replace' ? 'replace' : 'merge';
+      const { written } = await importBackup(db, obj, { mode });
+      return done(`已从 ${name} 恢复 ${written} 项数据`);
+    }
+
+    if (op === 'webdav-delete') {
+      const cfg = await loadWebdavConfig(db);
+      if (!cfg) return fail('请先保存 WebDAV 配置');
+      const name = String(form.get('file') || '');
+      if (!name) return fail('缺少备份文件名');
+      await deleteBackup(cfg, name);
+      return done(`已删除备份：${name}`);
+    }
+
+    return redirect(url, '/admin/backup');
+  } catch (e) {
+    return fail(e && e.message ? e.message : '操作失败');
+  }
+}
+
+/* ==================== 回收站 ==================== */
+
+const TRASH_LABELS = {
+  post: '文章',
+  page: '页面',
+  attachment: '附件',
+  comment: '评论',
+  category: '分类',
+  tag: '标签',
+};
+
+async function trashPage(ctx) {
+  const { db } = ctx;
+  const items = await db.listTrash();
+
+  const rows = items
+    .map((it) => {
+      const label = TRASH_LABELS[it.type] || it.type;
+      const time = it.deletedAt ? new Date(it.deletedAt * 1000).toLocaleString('zh-CN') : '';
+      const sub = `${time}${it.actor === 'mcp' ? ' · 来自 MCP' : ' · 后台删除'}`;
+      return (
+        '<li><div class="meta"><div class="name">[' + esc(label) + '] ' + esc(it.title || String(it.id)) + '</div>' +
+        '<div class="sub">' + esc(sub) + '</div></div>' +
+        '<div class="ops">' +
+        '<form method="post" action="/admin/trash">' +
+        '<input type="hidden" name="op" value="restore"><input type="hidden" name="key" value="' + esc(it.key) + '">' +
+        '<button class="btn sm" type="submit">恢复</button></form>' +
+        '<form method="post" action="/admin/trash" onsubmit="return confirm(\'永久删除后不可恢复，确定？\')">' +
+        '<input type="hidden" name="op" value="purge"><input type="hidden" name="key" value="' + esc(it.key) + '">' +
+        '<button class="btn sm danger" type="submit">彻底删除</button></form>' +
+        '</div></li>'
+      );
+    })
+    .join('');
+
+  const body = `${flashNotice(ctx)}
+  <h2>回收站</h2>
+  <div class="card">
+    <div class="mcp-head">
+      <div>
+        <h3 class="card__title">已删除内容</h3>
+        <p class="card__intro">后台与 MCP 的删除会先进入回收站，可恢复或永久删除；清空回收站会同时删除附件文件。</p>
+      </div>
+      <span class="mcp-count">${items.length} 项</span>
+    </div>
+    ${items.length ? `<ul class="backup-files">${rows}</ul>` : '<p class="hint">回收站是空的。</p>'}
+    ${
+      items.length
+        ? `<form method="post" action="/admin/trash" onsubmit="return confirm('确定清空回收站？该操作不可恢复，附件文件也会被删除。')" style="margin-top:16px">
+      <input type="hidden" name="op" value="empty">
+      <button class="btn danger" type="submit">清空回收站</button>
+    </form>`
+        : ''
+    }
+  </div>`;
+
+  return html(adminLayout(ctx, { title: '回收站', active: 'trash', body }));
+}
+
+async function trashAction(ctx) {
+  const { db, url } = ctx;
+  const form = await ctx.request.formData();
+  const op = String(form.get('op') || '');
+  const key = String(form.get('key') || '');
+
+  const fail = (message) => redirect(url, '/admin/trash', { err: String(message).slice(0, 120) });
+  const done = (message) => redirect(url, '/admin/trash', { ok: String(message).slice(0, 120) });
+
+  try {
+    if (op === 'restore') {
+      if (!key.startsWith('trash:')) return fail('无效的回收站条目');
+      await db.restoreTrash(key);
+      return done('已恢复');
+    }
+    if (op === 'purge') {
+      if (!key.startsWith('trash:')) return fail('无效的回收站条目');
+      await db.purgeTrash(key);
+      return done('已彻底删除');
+    }
+    if (op === 'empty') {
+      const n = await db.emptyTrash();
+      return done(`已清空 ${n} 项`);
+    }
+    return redirect(url, '/admin/trash');
+  } catch (e) {
+    return fail(e && e.message ? e.message : '操作失败');
+  }
+}
 
 async function securityAction(ctx) {
   const form = await ctx.request.formData();

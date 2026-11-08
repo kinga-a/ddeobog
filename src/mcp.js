@@ -280,7 +280,7 @@ const TOOLS = [
   },
   {
     name: 'delete_post',
-    description: '删除文章/页面，并级联删除其评论。',
+    description: '删除文章/页面（移入回收站，可在后台恢复）。',
     inputSchema: {
       type: 'object',
       properties: { cid: { type: 'integer', description: '内容 cid' } },
@@ -289,9 +289,9 @@ const TOOLS = [
     async run(ctx, args) {
       const cid = numberOr(args.cid, 0);
       if (!cid) throw new Error('缺少 cid');
-      const ok = await ctx.db.deleteContent(cid);
+      const ok = await ctx.db.trashContent(cid, 'mcp');
       if (!ok) throw new Error('内容不存在');
-      return { ok: true, cid };
+      return { ok: true, cid, trash: true };
     },
   },
 
@@ -353,16 +353,16 @@ const TOOLS = [
   },
   {
     name: 'delete_category',
-    description: '删除分类（文章上的该分类会被移除）。',
+    description: '删除分类（移入回收站；文章上的该分类会被移除）。',
     inputSchema: {
       type: 'object',
       properties: { mid: { type: 'integer' } },
       required: ['mid'],
     },
     async run(ctx, args) {
-      const ok = await ctx.db.deleteMeta(numberOr(args.mid, 0));
+      const ok = await ctx.db.trashMeta(numberOr(args.mid, 0), 'mcp');
       if (!ok) throw new Error('分类不存在');
-      return { ok: true, mid: numberOr(args.mid, 0) };
+      return { ok: true, mid: numberOr(args.mid, 0), trash: true };
     },
   },
 
@@ -424,16 +424,16 @@ const TOOLS = [
   },
   {
     name: 'delete_tag',
-    description: '删除标签（文章上的该标签会被移除）。',
+    description: '删除标签（移入回收站；文章上的该标签会被移除）。',
     inputSchema: {
       type: 'object',
       properties: { mid: { type: 'integer' } },
       required: ['mid'],
     },
     async run(ctx, args) {
-      const ok = await ctx.db.deleteMeta(numberOr(args.mid, 0));
+      const ok = await ctx.db.trashMeta(numberOr(args.mid, 0), 'mcp');
       if (!ok) throw new Error('标签不存在');
-      return { ok: true, mid: numberOr(args.mid, 0) };
+      return { ok: true, mid: numberOr(args.mid, 0), trash: true };
     },
   },
 
@@ -496,7 +496,7 @@ const TOOLS = [
   },
   {
     name: 'delete_comment',
-    description: '删除评论。',
+    description: '删除评论（移入回收站，可在后台恢复）。',
     inputSchema: {
       type: 'object',
       properties: { coid: { type: 'integer' } },
@@ -505,9 +505,9 @@ const TOOLS = [
     async run(ctx, args) {
       const coid = numberOr(args.coid, 0);
       if (!coid) throw new Error('缺少 coid');
-      const ok = await ctx.db.deleteComment(coid);
+      const ok = await ctx.db.trashComment(coid, 'mcp');
       if (!ok) throw new Error('评论不存在');
-      return { ok: true, coid };
+      return { ok: true, coid, trash: true };
     },
   },
 
@@ -608,7 +608,7 @@ const TOOLS = [
   },
   {
     name: 'delete_media',
-    description: '删除附件（同时删除 Blob 中的文件）。',
+    description: '删除附件（移入回收站，清空回收站时才删除 Blob 文件）。',
     inputSchema: {
       type: 'object',
       properties: { cid: { type: 'integer' } },
@@ -619,8 +619,46 @@ const TOOLS = [
       if (!cid) throw new Error('缺少 cid');
       const row = await ctx.db.getContent(cid);
       if (!row || row.type !== 'attachment') throw new Error('附件不存在');
-      await ctx.db.deleteContent(cid);
-      return { ok: true, cid };
+      await ctx.db.trashContent(cid, 'mcp');
+      return { ok: true, cid, trash: true };
+    },
+  },
+  {
+    name: 'list_trash',
+    description: '列出回收站内容（删除的文章、页面、评论、分类、标签、附件）。',
+    inputSchema: { type: 'object', properties: {} },
+    async run(ctx) {
+      const items = await ctx.db.listTrash();
+      return items.map((it) => ({
+        key: it.key,
+        type: it.type,
+        title: it.title,
+        deletedAt: it.deletedAt,
+        actor: it.actor,
+      }));
+    },
+  },
+  {
+    name: 'restore_trash',
+    description: '从回收站恢复一条内容，key 来自 list_trash。',
+    inputSchema: {
+      type: 'object',
+      properties: { key: { type: 'string', description: '回收站条目的 key' } },
+      required: ['key'],
+    },
+    async run(ctx, args) {
+      const key = String(args.key || '');
+      if (!key.startsWith('trash:')) throw new Error('无效的 key');
+      const entry = await ctx.db.restoreTrash(key);
+      return { ok: true, key, type: entry.type };
+    },
+  },
+  {
+    name: 'empty_trash',
+    description: '清空回收站（不可恢复，附件文件会被删除）。',
+    inputSchema: { type: 'object', properties: {} },
+    async run(ctx) {
+      return { ok: true, removed: await ctx.db.emptyTrash() };
     },
   },
 ];

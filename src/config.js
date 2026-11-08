@@ -19,5 +19,5 @@ export const CONFIG = {
   // 默认主题
   DEFAULT_THEME: 'joe',
   // 版本
-  VERSION: '1.2.4',
+  VERSION: '1.4.1',
 };

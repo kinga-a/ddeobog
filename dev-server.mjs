@@ -4,18 +4,44 @@
  *
  *   node dev-server.mjs [--reset] [--port 5173]
  *
- * --reset 清空内存 KV 并重新安装 + 灌入示例内容。
+ * --reset 清空 KV 并重新安装 + 灌入示例内容。
+ *
+ * KV 会持久化到 .dev-kv.json（重启不丢配置），--reset 才会清空。
  */
 import http from 'node:http';
-import { stat, readFile } from 'node:fs/promises';
+import { stat, readFile, writeFile } from 'node:fs/promises';
 
 const argv = process.argv.slice(2);
 const RESET = argv.includes('--reset');
 const PORT = Number(argv[argv.indexOf('--port') + 1]) || 5173;
 const HOST = '127.0.0.1';
 
+const KV_FILE = new URL('.dev-kv.json', import.meta.url).pathname;
+
 class MockKV {
-  constructor() { this.map = new Map(); }
+  constructor() { this.map = new Map(); this.timer = null; }
+
+  /** 启动时恢复上次的数据（--reset 时不调用） */
+  async load() {
+    try {
+      const raw = JSON.parse(await readFile(KV_FILE, 'utf8'));
+      for (const [key, value] of Object.entries(raw || {})) this.map.set(key, String(value));
+    } catch {
+      // 文件不存在或损坏，按空库启动
+    }
+  }
+
+  #scheduleSave() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => { this.flush().catch(() => {}); }, 300);
+  }
+
+  /** 立即写盘 */
+  async flush() {
+    clearTimeout(this.timer);
+    await writeFile(KV_FILE, JSON.stringify(Object.fromEntries(this.map)), 'utf8');
+  }
+
   async get(key, opts) {
     const v = this.map.get(key);
     if (v === undefined) return null;
@@ -23,8 +49,8 @@ class MockKV {
     if (type === 'json' || type === 'array') { try { return JSON.parse(v); } catch { return null; } }
     return v;
   }
-  async put(key, value) { this.map.set(key, String(value)); }
-  async delete(key) { this.map.delete(key); }
+  async put(key, value) { this.map.set(key, String(value)); this.#scheduleSave(); }
+  async delete(key) { this.map.delete(key); this.#scheduleSave(); }
   async list({ prefix = '', limit = 1000 } = {}) {
     const keys = [...this.map.keys()].filter((k) => k.startsWith(prefix)).sort();
     return { keys: keys.slice(0, limit).map((k) => ({ key: k, name: k })), complete: true, cursor: null };
@@ -32,6 +58,7 @@ class MockKV {
 }
 
 const KV = new MockKV();
+if (!RESET) await KV.load();
 globalThis.BLOG_KV = KV;
 
 const { default: onRequest } = await import('./src/main.js');
@@ -138,6 +165,7 @@ async function seed() {
 if (RESET) {
   KV.map.clear();
   await seed();
+  await KV.flush();
 }
 
 // ---- HTTP ----
