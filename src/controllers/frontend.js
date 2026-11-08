@@ -22,6 +22,7 @@ import { escapeHtml } from '../render/html.js';
 import { sameOrigin } from '../auth/session.js';
 import { handleJoeApi } from './joe-api.js';
 import { runHooks } from '../plugins.js';
+import { IS_NODE, DEFAULT_PAGES, ensureDefaultPage } from '../default-pages.js';
 
 /** 普通评论内容上限（字符） */
 const MAX_COMMENT_LENGTH = 2000;
@@ -50,15 +51,19 @@ export async function handleFrontend(ctx) {
 
   // ---- 留言板（便签墙模式，后台开关 JGuestbook_Wall）----
   if (path === '/guestbook' || path === '/guestbook/') {
-    const page = await db.getContentBySlug('guestbook', 'page');
-    if (page && page.status === 'publish' && ctx.options.joe?.JGuestbook_Wall === 'on') {
+    let page = await db.getContentBySlug('guestbook', 'page');
+    if (!page && !IS_NODE) page = await ensureDefaultPage(db, 'guestbook');
+    // 页面被删除 / Node 预览未创建时用内置文案兜底，避免导航链接 404
+    page = page || DEFAULT_PAGES.guestbook;
+    if (page.status === 'publish' && ctx.options.joe?.JGuestbook_Wall === 'on') {
       return html(await theme.renderGuestbookWall(ctx, page));
     }
   }
 
-  // ---- 关于页（导航「关于本站」）：优先独立页面 slug=about ----
+  // ---- 关于页（导航「关于本站」）：优先独立页面 slug=about；边缘端首次访问自动创建 ----
   if (path === '/about' || path === '/about/') {
-    const page = await db.getContentBySlug('about', 'page');
+    let page = await db.getContentBySlug('about', 'page');
+    if (!page && !IS_NODE) page = await ensureDefaultPage(db, 'about');
     if (page && page.status === 'publish') return renderSingle(ctx, page);
     return html(await theme.renderAboutPage(ctx));
   }

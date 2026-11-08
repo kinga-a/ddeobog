@@ -627,6 +627,30 @@ const TOOLS = [
 
 const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
+/* ==================== 多令牌配置 ==================== */
+/** 读取 MCP 令牌列表；自动兼容旧版单令牌 mcp:enabled/mcp:token */
+export async function loadMcpServers(db) {
+  const list = await db.getOption('mcp:list');
+  if (Array.isArray(list)) return list;
+  const token = await db.getOption('mcp:token');
+  if (!token) return [];
+  return [{
+    id: 'legacy',
+    name: '默认 MCP',
+    remark: '由旧版单令牌自动迁移',
+    token: String(token),
+    enabled: (await db.getOption('mcp:enabled')) === true,
+    createdAt: 0,
+  }];
+}
+
+/** 保存令牌列表，并清理旧版单令牌字段 */
+export async function saveMcpServers(db, list) {
+  await db.setOption('mcp:list', list);
+  await db.setOption('mcp:enabled', null);
+  await db.setOption('mcp:token', null);
+}
+
 /* ==================== JSON-RPC 分发 ==================== */
 
 async function dispatch(ctx, message) {
@@ -682,20 +706,20 @@ export async function handleMcp(ctx) {
   const { request, db } = ctx;
 
   // 未启用时直接 404，不暴露端点是否存在
-  const enabled = await db.getOption('mcp:enabled');
-  if (enabled !== true) return new Response('Not Found', { status: 404 });
+  const servers = (await loadMcpServers(db)).filter((s) => s && s.enabled !== false && s.token);
+  if (!servers.length) return new Response('Not Found', { status: 404 });
 
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (request.method !== 'POST') {
     return jsonResponse({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Method Not Allowed' } }, 405);
   }
 
-  const token = await db.getOption('mcp:token');
   const authorization = request.headers.get('Authorization') || '';
   const provided = authorization.startsWith('Bearer ')
     ? authorization.slice(7).trim()
     : (request.headers.get('X-MCP-Token') || '').trim();
-  if (!token || !safeEqual(provided, text(token))) {
+  const matched = servers.find((server) => safeEqual(provided, text(server.token)));
+  if (!matched) {
     return jsonResponse({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unauthorized' } }, 401, {
       'WWW-Authenticate': 'Bearer',
     });

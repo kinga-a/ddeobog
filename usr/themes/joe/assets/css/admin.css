@@ -1611,3 +1611,28 @@ tbody tr:hover { box-shadow: inset 3px 0 0 var(--accent); }
   }
   .metas .meta-ops .btn { flex: 0 0 auto; }
 }
+
+/* ---------- 多 MCP 令牌 ---------- */
+.mcp-item {
+  padding: 14px 0;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.mcp-list .mcp-item:first-child { padding-top: 0; }
+.mcp-item__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.mcp-item__remark {
+  margin: 0 0 10px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.mcp-item--new {
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  border-bottom: 0;
+}

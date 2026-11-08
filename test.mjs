@@ -713,6 +713,16 @@ await test('创建独立页面 + 前台访问 /[slug]/', async () => {
   assert.ok(home.includes('href="/about/"'), '导航应包含独立页面');
 });
 
+await test('留言板默认可用：未建页面时 /guestbook/ 仍返回便签墙', async () => {
+  const res = await call('GET', '/guestbook/');
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.ok(body.includes('留言板'), '页面应包含留言板标题');
+  assert.ok(body.includes('joe_wall__board'), '默认应启用便签墙');
+  const home = await call('GET', '/').then((r) => r.text());
+  assert.ok(home.includes('href="/guestbook/"'), '导航应始终包含留言板');
+});
+
 await test('主题：侧边面板分组为 分类/标签/页面，且标签链接有效', async () => {
   // 先造一篇带标签的文章，确保「标签」分组真的有子项可渲染
   const created = await call('POST', '/admin/post', {

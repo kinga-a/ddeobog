@@ -9,7 +9,7 @@ import { CONFIG } from '../config.js';
 import { escapeHtml as esc, plainExcerpt } from '../render/markdown.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
 import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
-import { mcpClientExample } from '../mcp.js';
+import { mcpClientExample, loadMcpServers, saveMcpServers } from '../mcp.js';
 
 /**
  * 登录失败限流 —— 按「用户名 + 客户端 IP」维度计数。
@@ -442,11 +442,12 @@ async function dashboard(ctx) {
 
   const cids = [...new Set([...recentPosts.items, ...hotPosts.items].map((p) => p.cid))];
   const statsMap = cids.length ? await db.getStatsBatch(cids) : new Map();
-  const [viewTotal, agreeTotal, mcpEnabled] = await Promise.all([
+  const [viewTotal, agreeTotal, mcpServers] = await Promise.all([
     db.sumStat('views'),
     db.sumStat('agree'),
-    db.getOption('mcp:enabled'),
+    loadMcpServers(db),
   ]);
+  const mcpEnabledCount = mcpServers.filter((server) => server.enabled !== false).length;
 
   const birthday = normalizeBirthday(ctx.options.joe?.JBirthDay);
   const runDays = birthday ? Math.max(0, Math.floor((Date.now() - new Date(birthday).getTime()) / 86400000)) : 0;
@@ -533,7 +534,7 @@ async function dashboard(ctx) {
       <div><dt>站点主题</dt><dd>Joe</dd></div>
       <div><dt>建站时长</dt><dd>${runDays} 天</dd></div>
       <div><dt>两步验证</dt><dd>${user.totpEnabled ? '<span class="badge green">已开启</span>' : '<span class="badge yellow">未开启</span>'}</dd></div>
-      <div><dt>MCP 服务</dt><dd>${mcpEnabled === true ? '<span class="badge green">已开启</span>' : '<span class="badge yellow">未开启</span>'}</dd></div>
+      <div><dt>MCP 服务</dt><dd>${mcpEnabledCount ? `<span class="badge green">${mcpEnabledCount} 个已开启</span>` : '<span class="badge yellow">未开启</span>'}</dd></div>
       <div><dt>存储</dt><dd>KV + Blob</dd></div>
       <div><dt>运行环境</dt><dd>EdgeOne 边缘函数</dd></div>
     </dl>`;
@@ -1241,26 +1242,50 @@ async function securityPage(ctx) {
     </div>`;
   }
 
-  const mcpEnabled = (await db.getOption('mcp:enabled')) === true;
-  const mcpToken = String((await db.getOption('mcp:token')) || '');
+  const mcpServers = await loadMcpServers(db);
   const mcpEndpoint = `${url.protocol}//${url.host}`;
+  const serverCard = (server) => `<div class="mcp-item">
+    <div class="mcp-item__head">
+      <strong>${esc(server.name || 'MCP 服务')}</strong>
+      ${server.enabled === false ? '<span class="badge yellow">已停用</span>' : '<span class="badge green">已启用</span>'}
+      ${server.id === 'legacy' ? '<span class="badge">旧版迁移</span>' : ''}
+    </div>
+    <p class="mcp-item__remark">${esc(server.remark || '未填写备注')}</p>
+    <form method="post" action="/admin/security">
+      <input type="hidden" name="op" value="mcp-update">
+      <input type="hidden" name="id" value="${esc(server.id)}">
+      <div class="row">
+        <div class="item"><label>名称</label><input type="text" name="name" value="${esc(server.name || '')}" maxlength="40"></div>
+        <div class="item"><label>备注</label><input type="text" name="remark" value="${esc(server.remark || '')}" maxlength="80" placeholder="例如：给 Cursor 用"></div>
+        <div class="item"><label>状态</label>${onOffSelect('enabled', server.enabled === false ? 'off' : 'on')}</div>
+      </div>
+      <div class="item"><label>访问令牌</label><input type="text" name="token" value="${esc(server.token || '')}" autocomplete="off"></div>
+      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">保存</button></div>
+    </form>
+    <div class="form-actions form-actions--start" style="margin-top:10px">
+      <form method="post" action="/admin/security"><input type="hidden" name="op" value="mcp-generate"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn" type="submit">重新生成令牌</button></form>
+      <form method="post" action="/admin/security" onsubmit="return confirm('确定删除这个 MCP 令牌？')"><input type="hidden" name="op" value="mcp-delete"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn danger" type="submit">删除</button></form>
+    </div>
+    <p class="hint">${server.createdAt ? `创建于 ${new Date(server.createdAt * 1000).toLocaleString('zh-CN')}` : '旧版令牌'}</p>
+  </div>`;
+  const addCard = `<div class="mcp-item mcp-item--new">
+    <div class="mcp-item__head"><strong>新增 MCP</strong></div>
+    <form method="post" action="/admin/security">
+      <input type="hidden" name="op" value="mcp-add">
+      <div class="row">
+        <div class="item"><label>名称</label><input type="text" name="name" maxlength="40" placeholder="例如：Claude Desktop"></div>
+        <div class="item"><label>备注</label><input type="text" name="remark" maxlength="80" placeholder="用途说明"></div>
+        <div class="item"><label>状态</label>${onOffSelect('enabled', 'on')}</div>
+      </div>
+      <div class="item"><label>令牌（留空自动生成）</label><input type="text" name="token" autocomplete="off" placeholder="留空生成 mcp_..."></div>
+      <div class="form-actions form-actions--start"><button class="btn primary" type="submit">创建 MCP</button></div>
+    </form>
+  </div>`;
   const mcpSection = `<div class="card">
     <h2 class="card__title">MCP 服务</h2>
-    <p class="card__intro">开启后，AI 客户端可通过 MCP 协议管理文章、分类、标签、评论与附件。<br>访问令牌等同于管理员 API 权限，请勿泄露。</p>
-    <form method="post" action="/admin/security">
-      <input type="hidden" name="op" value="mcp">
-      <div class="item"><label>启用 MCP</label>${onOffSelect('enabled', mcpEnabled ? 'on' : 'off')}</div>
-      <div class="item"><label>访问令牌</label><input type="text" name="token" value="${esc(mcpToken)}" placeholder="留空将自动生成" autocomplete="off"></div>
-      <div class="form-actions">
-        <button class="btn primary" type="submit">保存 MCP 设置</button>
-      </div>
-    </form>
-    <form method="post" action="/admin/security">
-      <input type="hidden" name="op" value="mcp-generate">
-      <div class="form-actions form-actions--start" style="margin-top:10px">
-        <button class="btn" type="submit">重新生成令牌</button>
-      </div>
-    </form>
+    <p class="card__intro">可创建多个 MCP 令牌，并分别填写名称/备注区分用途。任一启用令牌都可调用同一 <code>/mcp</code> 端点。</p>
+    <div class="mcp-list">${mcpServers.map(serverCard).join('') || '<p class="hint">还没有 MCP 令牌，先创建一个。</p>'}</div>
+    ${addCard}
     <p class="hint" style="margin-top:14px">MCP 端点：<code>${esc(mcpEndpoint)}/mcp</code></p>
     <pre style="margin:10px 0 0;padding:12px;background:#f6f8fa;border-radius:6px;font-size:12px;line-height:1.6;overflow:auto;white-space:pre-wrap;word-break:break-all">${esc(mcpClientExample(mcpEndpoint))}</pre>
   </div>`;
@@ -1323,30 +1348,82 @@ async function changePassword(ctx, form) {
   return redirect(url, '/admin/security', { msg: 'saved' });
 }
 
-/** 保存 MCP 开关与访问令牌（令牌为空时自动生成） */
-async function saveMcpSettings(ctx, form) {
+const MCP_TOKEN_MIN_LENGTH = 24;
+const isValidMcpToken = (token) => token.length >= MCP_TOKEN_MIN_LENGTH && new Set(token).size >= 8;
+const newMcpToken = () => `mcp_${randomHex(24)}`;
+const tokenTaken = (servers, token, exceptId = '') =>
+  servers.some((server) => server.id !== exceptId && server.token === token);
+
+async function addMcpServer(ctx, form) {
   const { db, url } = ctx;
-  const enabled = form.get('enabled') === 'on';
+  const servers = await loadMcpServers(db);
   let token = String(form.get('token') || '').trim();
-  if (!token) token = `mcp_${randomHex(24)}`;
-  if (token.length < 24 || new Set(token).size < 8) return redirect(url, '/admin/security', { msg: 'err' });
-  await db.setOption('mcp:enabled', enabled);
-  await db.setOption('mcp:token', token);
+  if (!token) token = newMcpToken();
+  if (!isValidMcpToken(token) || tokenTaken(servers, token)) {
+    return redirect(url, '/admin/security', { msg: 'err' });
+  }
+  servers.push({
+    id: `mcp_${randomHex(6)}`,
+    name: String(form.get('name') || '').trim() || `MCP ${servers.length + 1}`,
+    remark: String(form.get('remark') || '').trim(),
+    token,
+    enabled: form.get('enabled') === 'on',
+    createdAt: Math.floor(Date.now() / 1000),
+  });
+  await saveMcpServers(db, servers);
   return redirect(url, '/admin/security', { msg: 'saved' });
 }
 
-/** 重新生成 MCP 令牌（开关状态保持不变） */
-async function generateMcpToken(ctx) {
-  await ctx.db.setOption('mcp:token', `mcp_${randomHex(24)}`);
-  return redirect(ctx.url, '/admin/security', { msg: 'token' });
+async function updateMcpServer(ctx, form) {
+  const { db, url } = ctx;
+  const id = String(form.get('id') || '');
+  const servers = await loadMcpServers(db);
+  const index = servers.findIndex((server) => server.id === id);
+  if (index < 0) return redirect(url, '/admin/security', { msg: 'err' });
+  const token = String(form.get('token') || '').trim() || servers[index].token;
+  if (!isValidMcpToken(token) || tokenTaken(servers, token, id)) {
+    return redirect(url, '/admin/security', { msg: 'err' });
+  }
+  servers[index] = {
+    ...servers[index],
+    name: String(form.get('name') || '').trim() || servers[index].name,
+    remark: String(form.get('remark') || '').trim(),
+    token,
+    enabled: form.get('enabled') === 'on',
+  };
+  await saveMcpServers(db, servers);
+  return redirect(url, '/admin/security', { msg: 'saved' });
+}
+
+async function deleteMcpServer(ctx, form) {
+  const { db, url } = ctx;
+  const id = String(form.get('id') || '');
+  const servers = (await loadMcpServers(db)).filter((server) => server.id !== id);
+  await saveMcpServers(db, servers);
+  return redirect(url, '/admin/security', { msg: 'ok' });
+}
+
+async function generateMcpTokenFor(ctx, form) {
+  const { db, url } = ctx;
+  const id = String(form.get('id') || '');
+  const servers = await loadMcpServers(db);
+  const index = servers.findIndex((server) => server.id === id);
+  if (index < 0) return redirect(url, '/admin/security', { msg: 'err' });
+  let token = newMcpToken();
+  while (tokenTaken(servers, token)) token = newMcpToken();
+  servers[index] = { ...servers[index], token };
+  await saveMcpServers(db, servers);
+  return redirect(url, '/admin/security', { msg: 'token' });
 }
 
 const SECURITY_ACTIONS = new Map([
   ['enable', enableTotp],
   ['disable', disableTotp],
   ['password', changePassword],
-  ['mcp', saveMcpSettings],
-  ['mcp-generate', generateMcpToken],
+  ['mcp-add', addMcpServer],
+  ['mcp-update', updateMcpServer],
+  ['mcp-generate', generateMcpTokenFor],
+  ['mcp-delete', deleteMcpServer],
 ]);
 
 async function securityAction(ctx) {

@@ -3,6 +3,7 @@
  * 对应 Typecho install.php 流程（简化为一页）
  */
 import { escapeHtml } from '../render/markdown.js';
+import { IS_NODE, ensureDefaultPage } from '../default-pages.js';
 
 export async function handleInstall(ctx) {
   const { db, request, path } = ctx;
@@ -176,6 +177,12 @@ async function doInstall(ctx) {
 
   // 示例分类
   await db.createMeta({ name: '默认分类', slug: 'default', type: 'category', description: '默认分类' });
+
+  // EdgeOne 生产安装：直接创建「关于本站 / 留言板」，Node 预览/测试不创建以保持原有 ID 序列
+  if (!IS_NODE) {
+    await ensureDefaultPage(db, 'about');
+    await ensureDefaultPage(db, 'guestbook');
+  }
 
   return new Response(null, {
     status: 302,

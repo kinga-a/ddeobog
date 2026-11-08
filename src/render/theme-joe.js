@@ -60,7 +60,7 @@ export const JOE_DEFAULTS = {
   JAside_Timelife_Status: 'on',
   JAside_Flatterer: 'on',
   JCommentStatus: 'on',
-  JGuestbook_Wall: 'off',
+  JGuestbook_Wall: 'on',
   JIndex_Hot: 'off',
   JIndex_Carousel_Status: 'off',
   JIndex_Carousel: '',
@@ -366,7 +366,6 @@ async function headerBlock(ctx) {
   const isArchive = path === '/archive' || path === '/archive/';
   const isAbout = path === '/about' || path === '/about/';
   const isGuestbook = path === '/guestbook' || path === '/guestbook/';
-  const hasGuestbook = pages.some((p) => p.slug === 'guestbook');
 
   // 搜索下拉的初始内容。与 5i.ink 一致：面板里的条目是服务端渲染的热门文章，
   // 主题 CSS 期望 .result .item > .sort(排名徽标) + .text(标题) + .views(阅读量)，
@@ -393,7 +392,7 @@ async function headerBlock(ctx) {
       <nav class="joe_header__above-nav">
         <a class="item${isIndex ? ' active' : ''}" href="/" title="首页">首页</a>
         <a class="item${isArchive ? ' active' : ''}" href="/archive/" title="归档">归档</a>
-        ${hasGuestbook ? `<a class="item${isGuestbook ? ' active' : ''}" href="/guestbook/" title="留言板">留言板</a>` : ''}
+        <a class="item${isGuestbook ? ' active' : ''}" href="/guestbook/" title="留言板">留言板</a>
         <a class="item${isAbout ? ' active' : ''}" href="/about/" title="关于本站">关于本站</a>
         ${navPages.map((p) => `<a class="item${path === p.permalink ? ' active' : ''}" href="${p.permalink}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a>`).join('')}
         ${morePages.length ? `<div class="joe_dropdown" trigger="hover" placement="60px" style="margin-right: 15px;">
