@@ -194,12 +194,11 @@ async function serveStatic(pathname, res, search = '') {
     const st = await stat(abs);
     if (!st.isFile()) return false;
     const ext = abs.slice(abs.lastIndexOf('.')).toLowerCase();
-    // 与线上一致：带 ?v= 的资源长缓存，其余不复用缓存
-    const immutable = /[?&]v=[^&]+/.test(search);
+    // 预览环境一律不缓存，否则改了也看不到
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Content-Length': st.size,
-      'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-store',
+      'Cache-Control': 'no-store, max-age=0',
     });
     res.end(await readFile(abs));
     return true;

@@ -737,11 +737,21 @@
 
 /* ---------- 文章页管理员编辑按钮：固定在右上角 ---------- */
 .joe_detail { position: relative; }
+/* 编辑按钮放在标题上方的分类行右侧，不再占用标题宽度 */
+.joe_detail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.joe_detail__head .joe_detail__category {
+  margin-bottom: 0;
+  min-width: 0;
+}
 .joe_detail__edit {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 2;
+  flex: none;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -760,15 +770,11 @@
   transform: translateY(-1px);
 }
 .joe_detail__edit i { font-size: 12px; }
-.joe_detail--admin .joe_detail__title { padding-right: 76px; }
 @media (max-width: 768px) {
   .joe_detail__edit {
-    top: 12px;
-    right: 12px;
     height: 28px;
     padding: 0 10px;
   }
-  .joe_detail--admin .joe_detail__title { padding-right: 64px; }
 }
 
 /* iOS Safari：根背景与夜间模式同步，避免底部安全区露白 */

@@ -480,10 +480,6 @@ html body .joe_load:hover {
   background: color-mix(in srgb, var(--theme) 6%, transparent);
 }
 
-html body .joe_detail__article > p {
-  text-wrap: pretty;
-}
-
 /* 键盘焦点可见 */
 html body a:focus-visible,
 html body button:focus-visible,

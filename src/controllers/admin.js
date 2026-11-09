@@ -173,6 +173,7 @@ function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = ''
   <title>登录 - ${esc(ctx.options.title)}</title>
   <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css">
   <meta name="color-scheme" content="light dark">
+  <script>(function(){try{var t=localStorage.getItem('admin-theme');var d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-admin-theme', t || (d?'dark':'light'));}catch(e){}})();</script>
 </head><body class="auth">
   <div class="card">
     <h1>${esc(ctx.options.title)}</h1>
@@ -285,6 +286,9 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
   <button class="burger" type="button" aria-label="切换导航" aria-expanded="false" aria-controls="admin-side">
     <i class="fa fa-bars" aria-hidden="true"></i>
   </button>
+  <button class="admin-theme-toggle" type="button" aria-label="切换深色模式" title="切换深色模式">
+    <i class="fa fa-moon-o" aria-hidden="true"></i>
+  </button>
   <div class="scrim"></div>
   <div class="layout">
     <nav class="side" id="admin-side">
@@ -323,6 +327,25 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       scrim.addEventListener('click',function(){setOpen(false);});
       document.addEventListener('keydown',function(e){if(e.key==='Escape')setOpen(false);});
       side.addEventListener('click',function(e){if(e.target.closest('a'))setOpen(false);});
+    }
+
+    var themeBtn=document.querySelector('.admin-theme-toggle');
+    var rootEl=document.documentElement;
+    function paintThemeBtn(){
+      if(!themeBtn) return;
+      var dark=rootEl.getAttribute('data-admin-theme')==='dark';
+      themeBtn.innerHTML='<i class="fa '+(dark?'fa-sun-o':'fa-moon-o')+'" aria-hidden="true"></i>';
+      themeBtn.setAttribute('aria-label', dark?'切换浅色模式':'切换深色模式');
+      themeBtn.setAttribute('title', dark?'切换浅色模式':'切换深色模式');
+    }
+    paintThemeBtn();
+    if(themeBtn){
+      themeBtn.addEventListener('click',function(){
+        var next=rootEl.getAttribute('data-admin-theme')==='dark'?'light':'dark';
+        rootEl.setAttribute('data-admin-theme',next);
+        try{localStorage.setItem('admin-theme',next);}catch(e){}
+        paintThemeBtn();
+      });
     }
 
     var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;

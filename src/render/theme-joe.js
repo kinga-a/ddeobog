@@ -1248,9 +1248,11 @@ export async function renderPost(ctx) {
     <div class="joe_main joe_post">
       <div class="joe_detail${ctx.user ? ' joe_detail--admin' : ''}" data-cid="${post.cid}">
         ${ctx.postPreview ? '<div class="joe_detail__preview-banner">管理员预览：这篇文章当前是「隐藏」状态，访客访问时会得到 404。</div>' : ''}
-        ${catHtml}
+        <div class="joe_detail__head">
+          ${catHtml}
+          ${ctx.user ? `<a class="joe_detail__edit" href="/admin/${post.type === 'page' ? 'page' : 'post'}?cid=${post.cid}" title="编辑这篇内容"><i class="fa fa-pencil" aria-hidden="true"></i> 编辑</a>` : ''}
+        </div>
         <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
-        ${ctx.user ? `<a class="joe_detail__edit" href="/admin/${post.type === 'page' ? 'page' : 'post'}?cid=${post.cid}" title="编辑这篇内容"><i class="fa fa-pencil" aria-hidden="true"></i> 编辑</a>` : ''}
         <div class="joe_detail__count">
           <div class="joe_detail__count-information">
             <img width="35" height="35" class="avatar lazyload" src="${LAZYLOAD}" data-src="${avatarUrl(author.mail, 35, avatarSource)}" alt="${escapeHtml(author.screenName)}"  decoding="async" / decoding="async">
