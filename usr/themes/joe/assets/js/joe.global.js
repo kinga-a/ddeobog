@@ -476,7 +476,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  /* 小屏幕伸缩侧边栏 */
+    /* 小屏幕伸缩侧边栏 */
   {
     $(".joe_header__above-slideicon").on("click", function () {
       /* 关闭搜索框 */

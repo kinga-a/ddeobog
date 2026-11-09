@@ -1308,6 +1308,9 @@ await test('附件：删除会连带清掉 Blob 对象与 meta', async () => {
 // 分页链接必须是路径式：路由只认 /page/N/ 与 /<归档>/N/，从不读 page 查询参数。
 // 曾长期生成 ?page=N，服务端照样按第 1 页渲染，点「下一页」原地不动。
 await test('分页链接是路径式，且真能翻到第 2 页', async () => {
+  // 首页默认是「查看更多」模式；这里先开启传统分页再验证导航
+  await call('POST', '/admin/settings', { form: { 'j_Pagination_Mode': 'on' } });
+
   const home1 = pageNav(1, 5, '/');
   assert.ok(home1.includes('href="/"'), '首页第 1 页应指向 /');
   assert.ok(home1.includes('href="/page/2/"'), `首页第 2 页应指向 /page/2/，实际: ${home1.match(/href="[^"]+"/g)}`);
@@ -1332,6 +1335,7 @@ await test('分页链接是路径式，且真能翻到第 2 页', async () => {
   assert.ok(home.includes('/page/2/'), '首页应出现 /page/2/ 链接');
   assert.ok(!home.includes('?page='), '首页不应出现 ?page= 查询串');
 
+  await call('POST', '/admin/settings', { form: { 'j_Pagination_Mode': 'off' } });
   const res = await call('GET', '/page/2/');
   assert.equal(res.status, 200, `/page/2/ 应返回 200，实际 ${res.status}`);
   assert.ok(

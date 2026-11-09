@@ -21,15 +21,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	/* 初始化首页列表功能 */
 	{
+		// 封面加载失败才显示占位图标（lazysizes 触发 lazyerror）
+		$(document).on("lazyerror error", ".joe_list__item .thumbnail img", function () {
+			$(this).closest(".thumbnail").addClass("is-fallback");
+		});
+
 		const getListMode = _ => {
 			if (_.mode === 'default') {
 				return `
                     <li class="joe_list__item wow default">
                         <div class="line"></div>
-                        <a href="${_.permalink}" class="thumbnail" title="${_.title}" target="_blank" rel="noopener noreferrer">
+                        <a href="${_.permalink}" class="thumbnail${_.image && _.image[0] ? '' : ' is-fallback'}" title="${_.title}" target="_blank" rel="noopener noreferrer">
                             <img width="100%" height="100%" class="lazyload" src="${_.lazyload}" data-src="${_.image[0]}" alt="${_.title}" />
                             <time datetime="${_.time}">${_.time}</time>
-                            <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M903.93 107.306H115.787c-51.213 0-93.204 42.505-93.204 93.72V825.29c0 51.724 41.99 93.717 93.717 93.717h788.144c51.72 0 93.717-41.993 93.717-93.717V201.025c-.512-51.214-43.017-93.719-94.23-93.719zm-788.144 64.527h788.657c16.385 0 29.704 13.316 29.704 29.704v390.229L760.54 402.285c-12.805-13.828-30.217-21.508-48.14-19.971-17.924 1.02-34.821 10.754-46.602 26.114l-172.582 239.16-87.06-85.52c-12.29-11.783-27.654-17.924-44.039-17.924-16.39.508-31.755 7.676-43.53 20.48L86.595 821.705V202.05c-1.025-17.416 12.804-30.73 29.191-30.217zm788.145 683.674H141.906l222.255-245.82 87.06 86.037c12.8 12.807 30.212 18.95 47.115 17.417 17.41-1.538 33.797-11.266 45.063-26.118l172.584-238.647 216.111 236.088 2.051-1.54V825.8c.509 16.39-13.315 29.706-30.214 29.706zm0 0"/><path d="M318.072 509.827c79.89 0 144.417-65.037 144.417-144.416 0-79.378-64.527-144.925-144.417-144.925-79.891 0-144.416 64.527-144.416 144.412 0 79.892 64.525 144.93 144.416 144.93zm0-225.327c44.553 0 80.912 36.362 80.912 80.91 0 44.557-35.847 81.43-80.912 81.43-45.068 0-80.916-36.36-80.916-80.915 0-44.556 36.872-81.425 80.916-81.425zm0 0"/></svg>
+                            <svg class="thumb-fallback" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M903.93 107.306H115.787c-51.213 0-93.204 42.505-93.204 93.72V825.29c0 51.724 41.99 93.717 93.717 93.717h788.144c51.72 0 93.717-41.993 93.717-93.717V201.025c-.512-51.214-43.017-93.719-94.23-93.719zm-788.144 64.527h788.657c16.385 0 29.704 13.316 29.704 29.704v390.229L760.54 402.285c-12.805-13.828-30.217-21.508-48.14-19.971-17.924 1.02-34.821 10.754-46.602 26.114l-172.582 239.16-87.06-85.52c-12.29-11.783-27.654-17.924-44.039-17.924-16.39.508-31.755 7.676-43.53 20.48L86.595 821.705V202.05c-1.025-17.416 12.804-30.73 29.191-30.217zm788.145 683.674H141.906l222.255-245.82 87.06 86.037c12.8 12.807 30.212 18.95 47.115 17.417 17.41-1.538 33.797-11.266 45.063-26.118l172.584-238.647 216.111 236.088 2.051-1.54V825.8c.509 16.39-13.315 29.706-30.214 29.706zm0 0"/><path d="M318.072 509.827c79.89 0 144.417-65.037 144.417-144.416 0-79.378-64.527-144.925-144.417-144.925-79.891 0-144.416 64.527-144.416 144.412 0 79.892 64.525 144.93 144.416 144.93zm0-225.327c44.553 0 80.912 36.362 80.912 80.91 0 44.557-35.847 81.43-80.912 81.43-45.068 0-80.916-36.36-80.916-80.915 0-44.556 36.872-81.425 80.916-81.425zm0 0"/></svg>
                         </a>
                         <div class="information">
                             <a href="${_.permalink}" class="title" title="${_.title}" target="_blank" rel="noopener noreferrer">
@@ -72,10 +77,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </div>
                             </div>
                         </div>
-                        <a href="${_.permalink}" class="thumbnail" title="${_.title}" target="_blank" rel="noopener noreferrer">
+                        <a href="${_.permalink}" class="thumbnail${_.image && _.image[0] ? '' : ' is-fallback'}" title="${_.title}" target="_blank" rel="noopener noreferrer">
                             <img width="100%" height="100%" class="lazyload" src="${_.lazyload}" data-src="${_.image[0]}" alt="${_.title}" />
                             <time datetime="${_.time}">${_.time}</time>
-                            <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M903.93 107.306H115.787c-51.213 0-93.204 42.505-93.204 93.72V825.29c0 51.724 41.99 93.717 93.717 93.717h788.144c51.72 0 93.717-41.993 93.717-93.717V201.025c-.512-51.214-43.017-93.719-94.23-93.719zm-788.144 64.527h788.657c16.385 0 29.704 13.316 29.704 29.704v390.229L760.54 402.285c-12.805-13.828-30.217-21.508-48.14-19.971-17.924 1.02-34.821 10.754-46.602 26.114l-172.582 239.16-87.06-85.52c-12.29-11.783-27.654-17.924-44.039-17.924-16.39.508-31.755 7.676-43.53 20.48L86.595 821.705V202.05c-1.025-17.416 12.804-30.73 29.191-30.217zm788.145 683.674H141.906l222.255-245.82 87.06 86.037c12.8 12.807 30.212 18.95 47.115 17.417 17.41-1.538 33.797-11.266 45.063-26.118l172.584-238.647 216.111 236.088 2.051-1.54V825.8c.509 16.39-13.315 29.706-30.214 29.706zm0 0"/><path d="M318.072 509.827c79.89 0 144.417-65.037 144.417-144.416 0-79.378-64.527-144.925-144.417-144.925-79.891 0-144.416 64.527-144.416 144.412 0 79.892 64.525 144.93 144.416 144.93zm0-225.327c44.553 0 80.912 36.362 80.912 80.91 0 44.557-35.847 81.43-80.912 81.43-45.068 0-80.916-36.36-80.916-80.915 0-44.556 36.872-81.425 80.916-81.425zm0 0"/></svg>
+                            <svg class="thumb-fallback" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M903.93 107.306H115.787c-51.213 0-93.204 42.505-93.204 93.72V825.29c0 51.724 41.99 93.717 93.717 93.717h788.144c51.72 0 93.717-41.993 93.717-93.717V201.025c-.512-51.214-43.017-93.719-94.23-93.719zm-788.144 64.527h788.657c16.385 0 29.704 13.316 29.704 29.704v390.229L760.54 402.285c-12.805-13.828-30.217-21.508-48.14-19.971-17.924 1.02-34.821 10.754-46.602 26.114l-172.582 239.16-87.06-85.52c-12.29-11.783-27.654-17.924-44.039-17.924-16.39.508-31.755 7.676-43.53 20.48L86.595 821.705V202.05c-1.025-17.416 12.804-30.73 29.191-30.217zm788.145 683.674H141.906l222.255-245.82 87.06 86.037c12.8 12.807 30.212 18.95 47.115 17.417 17.41-1.538 33.797-11.266 45.063-26.118l172.584-238.647 216.111 236.088 2.051-1.54V825.8c.509 16.39-13.315 29.706-30.214 29.706zm0 0"/><path d="M318.072 509.827c79.89 0 144.417-65.037 144.417-144.416 0-79.378-64.527-144.925-144.417-144.925-79.891 0-144.416 64.527-144.416 144.412 0 79.892 64.525 144.93 144.416 144.93zm0-225.327c44.553 0 80.912 36.362 80.912 80.91 0 44.557-35.847 81.43-80.912 81.43-45.068 0-80.916-36.36-80.916-80.915 0-44.556 36.872-81.425 80.916-81.425zm0 0"/></svg>
                         </a>
                         <div class="information" style="margin-bottom: 0;">
                             <a class="abstract" href="${_.permalink}" title="文章摘要" target="_blank" rel="noopener noreferrer">${_.abstract}</a>
@@ -92,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </a>
                             <a class="abstract" href="${_.permalink}" title="文章摘要" target="_blank" rel="noopener noreferrer">${_.abstract}</a>
                         </div>
-                        <a href="${_.permalink}" class="thumbnail" title="${_.title}" target="_blank" rel="noopener noreferrer">
+                        <a href="${_.permalink}" class="thumbnail${_.image && _.image[0] ? '' : ' is-fallback'}" title="${_.title}" target="_blank" rel="noopener noreferrer">
                             ${_.image
 								.map((item, index) => {
 									if (index < 3) {
@@ -141,26 +146,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
 			}
 		};
-		// 初始页码必须跟随 URL：Typecho 的分页是路径式的（/page/2/），服务端已
-		// 渲染好当前页，而下面的 initDom() 会清空列表并用这里的数据重画。
-		// 写死 1 会让 JS 把 /page/2/ 的内容又刷回第一页。
+		// 模式：'on' = 传统分页（服务端渲染 + 1/2/3 导航）；否则 = 查看更多（点击追加）
+		const TRADITIONAL = (window.Joe && window.Joe.PAGINATION_MODE) === 'on';
 		const currentPage = (() => {
 			const matched = window.location.pathname.match(/\/page\/(\d+)\/?$/);
 			return matched ? parseInt(matched[1], 10) : 1;
 		})();
+		const TOTAL = Math.max(1, parseInt(window.Joe.TOTAL_PAGES || 1, 10));
 		let queryData = { page: currentPage, pageSize: window.Joe.PAGE_SIZE, type: 'created' };
+
 		const initDom = () => {
 			$('.joe_index__list .joe_list').html('');
-			$('.joe_load').show();
 			let activeItem = $('.joe_index__title-title .item[data-type="' + queryData.type + '"]');
 			let activeLine = $('.joe_index__title-title .line');
 			activeItem.addClass('active').siblings().removeClass('active');
 			activeLine.css({ left: activeItem.position().left, width: activeItem.width() });
 		};
+
 		const pushDom = () => {
-			return new Promise((reslove, reject) => {
+			return new Promise((resolve) => {
 				$('.joe_load').attr('loading', true);
-				$('.joe_load').html('loading...');
 				$('.joe_index__list .joe_list__loading').show();
 				$.ajax({
 					url: Joe.BASE_API,
@@ -168,39 +173,65 @@ document.addEventListener('DOMContentLoaded', () => {
 					dataType: 'json',
 					data: { routeType: 'publish_list', page: queryData.page, pageSize: queryData.pageSize, type: queryData.type },
 					success(res) {
-						if (res.data.length === 0) {
-							$('.joe_load').removeAttr('loading');
-							$('.joe_load').html('查看更多');
-							$('.joe_load').hide();
-							$('.joe_index__list .joe_list__loading').hide();
-							return Qmsg.warning('没有更多内容了');
-						}
-						res.data.forEach(_ => $('.joe_index__list .joe_list').append(getListMode(_)));
-						$('.joe_load').removeAttr('loading');
-						$('.joe_load').html('查看更多');
+						$('.joe_load').removeAttr('loading').hide();
 						$('.joe_index__list .joe_list__loading').hide();
-						reslove(res.data.length > 0 ? res.data.length - 1 : 0);
+						if (!res.data || res.data.length === 0) { resolve(false); return; }
+						res.data.forEach(_ => $('.joe_index__list .joe_list').append(getListMode(_)));
+						resolve(true);
+					},
+					error() {
+						$('.joe_load').removeAttr('loading').hide();
+						$('.joe_index__list .joe_list__loading').hide();
+						resolve(false);
 					}
 				});
 			});
 		};
-		initDom();
-		pushDom();
-		$('.joe_index__title-title .item').on('click', async function () {
-			if ($(this).attr('data-type') === queryData.type) return;
-			queryData = { page: 1, pageSize: window.Joe.PAGE_SIZE, type: $(this).attr('data-type') };
-			initDom();
-			pushDom();
-		});
-		$('.joe_load').on('click', async function () {
-			if ($(this).attr('loading')) return;
-			queryData.page++;
-			let length = await pushDom();
-			length = $('.joe_index__list .joe_list .joe_list__item').length - length;
-			const queryElement = `.joe_index__list .joe_list .joe_list__item:nth-child(${length})`;
-			const offset = $(queryElement).offset().top - $('.joe_header').height();
-			window.scrollTo({ top: offset - 15, behavior: 'smooth' });
-		});
+
+		if (TRADITIONAL) {
+			// 传统分页：服务端已渲染当前页与 1/2/3 导航，只绑定排序切换
+			$('.joe_load').hide();
+			$('.joe_index__title-title .item').on('click', async function () {
+				const type = $(this).attr('data-type');
+				if (type === queryData.type) return;
+				queryData = { page: 1, pageSize: window.Joe.PAGE_SIZE, type };
+				initDom();
+				await pushDom();
+				// 排序是前端行为，与服务端分页链接不一致，先隐藏导航
+				$('.joe_pagination').hide();
+			});
+		} else {
+			const setLoadState = () => {
+				if (queryData.page >= TOTAL) { $('.joe_load').hide(); return; }
+				$('.joe_load').text('查看更多').removeAttr('disabled').show();
+			};
+
+			const loadNext = async () => {
+				if ($('.joe_load').attr('loading')) return;
+				if (queryData.page >= TOTAL) { setLoadState(); return; }
+				queryData.page++;
+				const ok = await pushDom();
+				if (!ok) { queryData.page--; setLoadState(); return; }
+				setLoadState();
+			};
+
+			// 首屏直接使用服务端渲染结果，不再清空后重复请求接口
+			setLoadState();
+
+			$('.joe_index__title-title .item').on('click', async function () {
+				const type = $(this).attr('data-type');
+				if (type === queryData.type) return;
+				queryData = { page: 1, pageSize: window.Joe.PAGE_SIZE, type };
+				initDom();
+				await pushDom();
+				setLoadState();
+			});
+
+			$('.joe_load').on('click', function () {
+				if ($(this).attr('disabled')) return;
+				loadNext();
+			});
+		}
 	}
 
 	/* 分类 / 标签展开收起：点按钮切换，点别处收起 */

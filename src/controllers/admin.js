@@ -1192,6 +1192,7 @@ async function settingsPage(ctx) {
     </div>
     <div class="row">
       <div class="item"><label>每页文章数</label><input type="number" name="pageSize" value="${o.pageSize || 10}" min="1" max="50"></div>
+      <div class="item"><label>传统分页</label>${onOffSelect('j_Pagination_Mode', theme.Pagination_Mode || 'off')}<p class="hint">开启：显示 1/2/3 分页，点击翻页；关闭：显示「查看更多」，点击追加下一页，全部加载后按钮消失。</p></div>
       <div class="item"><label>评论默认状态</label><select name="commentStatus">
         <option value="approved" ${o.commentStatus !== 'waiting' ? 'selected' : ''}>直接发布</option>
         <option value="waiting" ${o.commentStatus === 'waiting' ? 'selected' : ''}>先审核后发布</option>
@@ -1235,20 +1236,30 @@ async function settingsPage(ctx) {
     <div class="row">
       <div class="item"><label>页脚自定义内容</label><input type="text" name="j_JFooter_Custom" value="${esc(theme.JFooter_Custom || '')}"></div>
     </div>
-    <h2 style="font-size:16px;margin:20px 0 14px">首页模块</h2>
-    <div class="row">
-      <div class="item"><label>首页轮播</label>${onOffSelect('j_JIndex_Carousel_Status', theme.JIndex_Carousel_Status)}</div>
-      <div class="item"><label>首页广告</label>${onOffSelect('j_JIndex_Ad_Status', theme.JIndex_Ad_Status)}</div>
-    </div>
-    <div class="item">
-      <label>轮播图数据</label>
-      <textarea name="j_JIndex_Carousel" rows="7" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d9d9d9;border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.7" placeholder="https://example.com/1.jpg || https://baidu.com || 百度一下">${esc(theme.JIndex_Carousel || '')}</textarea>
-      <p class="hint">用于显示首页轮播图，请务必填写正确的格式<br>格式：图片地址 || 跳转链接 || 标题（中间使用两个竖杠分隔）<br>其他：一行一个，一行代表一个轮播图<br>例如：<br>https://puui.qpic.cn/media_img/lena/PICykqaoi_580_1680/0 || https://baidu.com || 百度一下<br>https://puui.qpic.cn/tv/0/1223447268_1580580/0 || https://v.qq.com || 腾讯视频</p>
-    </div>
-    <div class="item">
-      <label>广告位数据</label>
-      <textarea name="j_JIndex_Ad" rows="6" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d9d9d9;border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.7" placeholder="https://example.com/ad.jpg || https://baidu.com">${esc(theme.JIndex_Ad || '')}</textarea>
-      <p class="hint">请务必填写正确的格式<br>格式：广告图片 || 广告链接（中间使用两个竖杠分隔）<br>其他：一行一个，最多 8 个；桌面一排最多 4 个，手机一排 2 个<br>例如：<br>https://puui.qpic.cn/media_img/lena/PICykqaoi_580_1680/0 || https://baidu.com<br>https://puui.qpic.cn/tv/0/1223447268_1580580/0 || https://v.qq.com</p>
+    <h2 class="section-title">首页模块</h2>
+    <div class="home-module-grid">
+      <section class="home-module">
+        <div class="home-module__head">
+          <strong>首页轮播</strong>
+          ${onOffSelect('j_JIndex_Carousel_Status', theme.JIndex_Carousel_Status)}
+        </div>
+        <div class="item">
+          <label>轮播图数据</label>
+          <textarea name="j_JIndex_Carousel" rows="9" class="code-area" placeholder="https://example.com/1.jpg || https://baidu.com || 百度一下">${esc(theme.JIndex_Carousel || '')}</textarea>
+          <p class="hint">用于显示首页轮播图，请务必填写正确的格式<br>格式：图片地址 || 跳转链接 || 标题（中间使用两个竖杠分隔）<br>其他：一行一个，一行代表一个轮播图<br>例如：<br>https://puui.qpic.cn/media_img/lena/PICykqaoi_580_1680/0 || https://baidu.com || 百度一下<br>https://puui.qpic.cn/tv/0/1223447268_1580580/0 || https://v.qq.com || 腾讯视频</p>
+        </div>
+      </section>
+      <section class="home-module">
+        <div class="home-module__head">
+          <strong>首页广告</strong>
+          ${onOffSelect('j_JIndex_Ad_Status', theme.JIndex_Ad_Status)}
+        </div>
+        <div class="item">
+          <label>广告位数据</label>
+          <textarea name="j_JIndex_Ad" rows="7" class="code-area" placeholder="https://example.com/ad.jpg || https://baidu.com">${esc(theme.JIndex_Ad || '')}</textarea>
+          <p class="hint">请务必填写正确的格式<br>格式：广告图片 || 广告链接（中间使用两个竖杠分隔）<br>其他：一行一个，最多 8 个；桌面一排最多 4 个，手机一排 2 个<br>例如：<br>https://puui.qpic.cn/media_img/lena/PICykqaoi_580_1680/0 || https://baidu.com<br>https://puui.qpic.cn/tv/0/1223447268_1580580/0 || https://v.qq.com</p>
+        </div>
+      </section>
     </div>
     <button class="btn primary" type="submit">保存设置</button>
   </form>

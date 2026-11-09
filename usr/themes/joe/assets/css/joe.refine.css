@@ -522,3 +522,14 @@ html body .joe_header__mask {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+/* 封面占位图标：默认隐藏，只有封面缺失或加载失败（.is-fallback）时显示 */
+html body .joe_list__item .thumbnail .thumb-fallback {
+  display: none;
+}
+html body .joe_list__item .thumbnail.is-fallback .thumb-fallback {
+  display: block;
+}
+html body .joe_list__item .thumbnail.is-fallback img {
+  display: none;
+}
