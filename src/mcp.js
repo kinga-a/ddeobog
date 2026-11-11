@@ -689,6 +689,34 @@ export async function saveMcpServers(db, list) {
   await db.setOption('mcp:token', null);
 }
 
+/* ==================== 令牌哈希存储 ==================== */
+
+/** SHA-256 十六进制摘要（Web Crypto） */
+export async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 令牌入库字段：只存哈希 + 首尾各 4 位与长度（列表掩码展示用）。
+ * 明文令牌只在创建/重新生成的那一次响应里出现，KV 里不再有可直接使用的令牌，
+ * 数据库泄露时攻击者拿不到能调 API 的凭据。旧条目仍带 token 明文字段，
+ * 验证通过或在后台保存时会被懒升级为哈希字段（见 handleMcp 与后台 mcp 操作）。
+ */
+export async function mcpTokenFields(token) {
+  return {
+    tokenHash: await sha256Hex(token),
+    tokenHead: token.slice(0, 4),
+    tokenTail: token.slice(-4),
+    tokenLen: token.length,
+  };
+}
+
+/** 条目是否带可用凭据（哈希或旧版明文） */
+export function mcpServerHasCredential(server) {
+  return !!(server && (server.tokenHash || server.token));
+}
+
 /* ==================== JSON-RPC 分发 ==================== */
 
 async function dispatch(ctx, message) {
@@ -744,7 +772,7 @@ export async function handleMcp(ctx) {
   const { request, db } = ctx;
 
   // 未启用时直接 404，不暴露端点是否存在
-  const servers = (await loadMcpServers(db)).filter((s) => s && s.enabled !== false && s.token);
+  const servers = (await loadMcpServers(db)).filter((s) => s && s.enabled !== false && mcpServerHasCredential(s));
   if (!servers.length) return new Response('Not Found', { status: 404 });
 
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -756,7 +784,27 @@ export async function handleMcp(ctx) {
   const provided = authorization.startsWith('Bearer ')
     ? authorization.slice(7).trim()
     : (request.headers.get('X-MCP-Token') || '').trim();
-  const matched = servers.find((server) => safeEqual(provided, text(server.token)));
+  let matched = null;
+  if (provided) {
+    const providedHash = await sha256Hex(provided);
+    matched = servers.find((server) => server.tokenHash && safeEqual(providedHash, text(server.tokenHash))) || null;
+    if (!matched) {
+      matched = servers.find((server) => server.token && safeEqual(provided, text(server.token))) || null;
+      if (matched) {
+        // 旧版明文令牌验证通过：顺手升级为哈希存储（失败不影响本次鉴权）
+        try {
+          const list = await loadMcpServers(db);
+          const entry = list.find((s) => s && s.id === matched.id);
+          if (entry && entry.token) {
+            const fields = await mcpTokenFields(entry.token);
+            delete entry.token;
+            Object.assign(entry, fields);
+            await saveMcpServers(db, list);
+          }
+        } catch { /* 下次再升级 */ }
+      }
+    }
+  }
   if (!matched) {
     return jsonResponse({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unauthorized' } }, 401, {
       'WWW-Authenticate': 'Bearer',

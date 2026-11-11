@@ -10,7 +10,7 @@ import { escapeHtml as esc, plainExcerpt } from '../render/markdown.js';
 import { avatarUrl } from '../render/html.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
 import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
-import { mcpClientExample, loadMcpServers, saveMcpServers } from '../mcp.js';
+import { mcpClientExample, loadMcpServers, saveMcpServers, mcpTokenFields, sha256Hex } from '../mcp.js';
 import { exportBackup, importBackup, isBackupKey, backupFileName } from '../backup.js';
 import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypto.js';
 import {
@@ -1397,6 +1397,18 @@ async function securityPage(ctx) {
   const mcpEndpoint = `${url.protocol}//${url.host}`;
   const mcpEnabledCount = mcpServers.filter((server) => server.enabled !== false).length;
 
+  // 一次性新令牌展示：新增/重新生成时明文只暂存 KV（10 分钟、读后即删），
+  // 重定向 URL 只带随机 id——令牌不进地址栏，也不再明文存库。
+  let revealBanner = '';
+  const revealId = url.searchParams.get('reveal');
+  if (revealId) {
+    const stash = await db.kv.getJSON(`mcpreveal:${revealId}`);
+    await db.kv.delete(`mcpreveal:${revealId}`);
+    if (stash && stash.exp > Date.now() && stash.token) {
+      revealBanner = `<div class="msg ok">新令牌（只显示这一次，请立即复制保存）：<code data-token="${esc(stash.token)}">${esc(stash.token)}</code> <button type="button" class="btn sm" data-copy="${esc(stash.token)}">复制</button></div>`;
+    }
+  }
+
   /** 令牌掩码：前 8 位 + 圆点 + 后 4 位 */
   const maskToken = (token) => {
     if (!token) return '未设置令牌';
@@ -1406,8 +1418,14 @@ async function securityPage(ctx) {
 
   const serverCard = (server) => {
     const enabled = server.enabled !== false;
-    const token = server.token || '';
-    const masked = maskToken(token);
+    const token = server.token || ''; // 旧版明文令牌（升级为哈希后不再有此字段）
+    const hasHash = !!server.tokenHash;
+    const masked = token
+      ? maskToken(token)
+      : hasHash
+        ? `${server.tokenHead || ''}${'•'.repeat(12)}${server.tokenTail || ''}`
+        : '未设置令牌';
+    const tokenLen = token ? token.length : server.tokenLen || 0;
     return `<div class="mcp-card${enabled ? '' : ' is-off'}">
     <div class="mcp-card__top">
       <div class="mcp-card__name">
@@ -1425,7 +1443,7 @@ async function securityPage(ctx) {
     </div>
     <div class="mcp-card__foot">
       <span>${server.createdAt ? new Date(server.createdAt * 1000).toLocaleString('zh-CN') : '旧版令牌'}</span>
-      <span>${token ? `${token.length} 位` : '无令牌'}</span>
+      <span>${tokenLen ? `${tokenLen} 位` : '无令牌'}${hasHash ? ' · 已加密存储' : ''}</span>
     </div>
     <details class="mcp-edit">
       <summary>编辑配置</summary>
@@ -1435,7 +1453,7 @@ async function securityPage(ctx) {
         <div class="item"><label>名称</label><input type="text" name="name" value="${esc(server.name || '')}" maxlength="40"></div>
         <div class="item"><label>备注</label><input type="text" name="remark" value="${esc(server.remark || '')}" maxlength="80" placeholder="例如：给 Cursor 用"></div>
         <div class="item"><label>状态</label>${onOffSelect('enabled', server.enabled === false ? 'off' : 'on')}</div>
-        <div class="item"><label>访问令牌</label><input type="text" name="token" value="${esc(token)}" autocomplete="off"></div>
+        <div class="item"><label>访问令牌</label><input type="text" name="token" value="${esc(token)}" autocomplete="off" ${hasHash ? 'placeholder="已加密存储，留空表示不修改"' : ''}></div>
         <div class="form-actions form-actions--start"><button class="btn primary" type="submit">保存修改</button></div>
       </form>
       <div class="mcp-card__ops">
@@ -1460,6 +1478,7 @@ async function securityPage(ctx) {
   </div>`;
 
   const mcpSection = `<div class="card mcp-panel">
+    ${revealBanner}
     <div class="mcp-head">
       <div>
         <h2 class="card__title">MCP 服务</h2>
@@ -1559,27 +1578,38 @@ async function changePassword(ctx, form) {
 const MCP_TOKEN_MIN_LENGTH = 24;
 const isValidMcpToken = (token) => token.length >= MCP_TOKEN_MIN_LENGTH && new Set(token).size >= 8;
 const newMcpToken = () => `mcp_${randomHex(24)}`;
-const tokenTaken = (servers, token, exceptId = '') =>
-  servers.some((server) => server.id !== exceptId && server.token === token);
+const tokenTaken = async (servers, token, exceptId = '') => {
+  const hash = await sha256Hex(token);
+  return servers.some(
+    (server) => server.id !== exceptId && (server.token === token || server.tokenHash === hash)
+  );
+};
+
+/** 新令牌一次性展示：明文暂存 KV 10 分钟，URL 只带随机 id，页面读后即删 */
+async function stashMcpReveal(db, token) {
+  const id = randomHex(16);
+  await db.kv.putJSON(`mcpreveal:${id}`, { token, exp: Date.now() + 10 * 60 * 1000 });
+  return id;
+}
 
 async function addMcpServer(ctx, form) {
   const { db, url } = ctx;
   const servers = await loadMcpServers(db);
   let token = String(form.get('token') || '').trim();
   if (!token) token = newMcpToken();
-  if (!isValidMcpToken(token) || tokenTaken(servers, token)) {
+  if (!isValidMcpToken(token) || (await tokenTaken(servers, token))) {
     return redirect(url, '/admin/security', { msg: 'err' });
   }
   servers.push({
     id: `mcp_${randomHex(6)}`,
     name: String(form.get('name') || '').trim() || `MCP ${servers.length + 1}`,
     remark: String(form.get('remark') || '').trim(),
-    token,
+    ...(await mcpTokenFields(token)),
     enabled: form.get('enabled') === 'on',
     createdAt: Math.floor(Date.now() / 1000),
   });
   await saveMcpServers(db, servers);
-  return redirect(url, '/admin/security', { msg: 'saved' });
+  return redirect(url, '/admin/security', { msg: 'saved', reveal: await stashMcpReveal(db, token) });
 }
 
 async function updateMcpServer(ctx, form) {
@@ -1588,15 +1618,31 @@ async function updateMcpServer(ctx, form) {
   const servers = await loadMcpServers(db);
   const index = servers.findIndex((server) => server.id === id);
   if (index < 0) return redirect(url, '/admin/security', { msg: 'err' });
-  const token = String(form.get('token') || '').trim() || servers[index].token;
-  if (!isValidMcpToken(token) || tokenTaken(servers, token, id)) {
-    return redirect(url, '/admin/security', { msg: 'err' });
+  const current = servers[index];
+  const formToken = String(form.get('token') || '').trim();
+  let cred;
+  if (formToken) {
+    if (!isValidMcpToken(formToken) || (await tokenTaken(servers, formToken, id))) {
+      return redirect(url, '/admin/security', { msg: 'err' });
+    }
+    cred = await mcpTokenFields(formToken);
+  } else if (current.token) {
+    // 没改令牌：把旧版明文顺手升级为哈希存储
+    cred = await mcpTokenFields(current.token);
+  } else {
+    cred = {
+      tokenHash: current.tokenHash,
+      tokenHead: current.tokenHead,
+      tokenTail: current.tokenTail,
+      tokenLen: current.tokenLen,
+    };
   }
+  const { token: _legacyDrop, ...rest } = current;
   servers[index] = {
-    ...servers[index],
-    name: String(form.get('name') || '').trim() || servers[index].name,
+    ...rest,
+    name: String(form.get('name') || '').trim() || current.name,
     remark: String(form.get('remark') || '').trim(),
-    token,
+    ...cred,
     enabled: form.get('enabled') === 'on',
   };
   await saveMcpServers(db, servers);
@@ -1618,10 +1664,11 @@ async function generateMcpTokenFor(ctx, form) {
   const index = servers.findIndex((server) => server.id === id);
   if (index < 0) return redirect(url, '/admin/security', { msg: 'err' });
   let token = newMcpToken();
-  while (tokenTaken(servers, token)) token = newMcpToken();
-  servers[index] = { ...servers[index], token };
+  while (await tokenTaken(servers, token)) token = newMcpToken();
+  const { token: _legacyDrop, ...rest } = servers[index];
+  servers[index] = { ...rest, ...(await mcpTokenFields(token)) };
   await saveMcpServers(db, servers);
-  return redirect(url, '/admin/security', { msg: 'token' });
+  return redirect(url, '/admin/security', { msg: 'token', reveal: await stashMcpReveal(db, token) });
 }
 
 const SECURITY_ACTIONS = new Map([

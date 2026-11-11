@@ -970,12 +970,22 @@ await test('评论管理页', async () => {
   assert.ok((await res.text()).includes('张三'));
 });
 
-await test('后台 MCP 卡片：端点、掩码令牌、复制与显示控件', async () => {
+await test('后台 MCP 卡片：端点、掩码令牌、一次性新令牌展示', async () => {
   const created = await call('POST', '/admin/security', {
     form: { op: 'mcp-add', name: 'Cursor', remark: '编辑器', enabled: 'on', token: '' },
   });
   assert.equal(created.status, 302, '创建令牌后应重定向');
+  const location = created.headers.get('location') || '';
+  assert.ok(location.includes('reveal='), '重定向应携带一次性展示 id（令牌本身不进 URL）');
 
+  // 带 reveal 的页面：新令牌明文只出现这一次
+  const revealUrl = new URL(location);
+  const revealRes = await call('GET', revealUrl.pathname + revealUrl.search);
+  const revealHtml = await revealRes.text();
+  assert.ok(/data-copy="mcp_[0-9a-f]{48}"/.test(revealHtml), '一次性展示应提供完整新令牌供复制');
+  assert.ok(revealHtml.includes('只显示这一次'), '应提示令牌只显示一次');
+
+  // 普通页面：只有掩码与加密标记，完整令牌不得再出现（只存哈希）
   const res = await call('GET', '/admin/security');
   assert.equal(res.status, 200);
   const html = await res.text();
@@ -986,7 +996,8 @@ await test('后台 MCP 卡片：端点、掩码令牌、复制与显示控件', 
   assert.ok(!html.includes('mcp-card--new'), '新增令牌不应再占用令牌卡片位');
   assert.ok(html.includes('Cursor'), '应显示令牌名称');
   assert.ok(html.includes('••'), '令牌默认应掩码显示');
-  assert.ok(/data-copy="mcp_[0-9a-f]{48}"/.test(html), '应提供完整令牌供复制按钮使用');
+  assert.ok(html.includes('已加密存储'), '令牌应以哈希形式存储并标注');
+  assert.ok(!/data-copy="mcp_[0-9a-f]{48}"/.test(html), '普通页面不得再暴露完整令牌');
   assert.ok(html.includes('/mcp<'), '应展示 MCP 端点');
 });
 
