@@ -97,15 +97,17 @@ html body .joe_header__above-search .input {
     box-shadow .35s var(--rf-ease);
 }
 
-/* 两层光圈都画在搜索容器上，才能包住「输入框 + 搜索按钮」，右侧不会缺一块：
-   内圈=淡蓝阴影，外圈=主题色 outline（浏览器默认的聚焦轮廓同步补齐成圆角）。 */
+/* 搜索框聚焦不画蓝色光晕（站长 2026-11-11 要求，PC 与手机一致）：
+   早先这里给容器画了主题色 outline + 淡蓝阴影两层光圈，现全部去掉；
+   输入框聚焦时的主题色边框（主题全局规则）也一并压回透明，
+   展开的搜索条（searchout）同样不留浏览器默认轮廓。 */
 html body .joe_header__above-search:focus-within {
-  border-radius: 17px;
-  outline: 2px solid var(--theme);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 3px rgba(64, 158, 255, .18);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme) 18%, transparent);
+  outline: none;
+  box-shadow: none;
 }
+html body .joe_header__above-search .input:focus { border-color: transparent; }
+html body .joe_header__searchout .search input:focus,
+html body .joe_header__searchout .search input:focus-visible { outline: none; box-shadow: none; }
 
 /* 内部控件不再单独画轮廓，避免右侧出现断开的深蓝线 */
 html body .joe_header__above-search .input:focus,

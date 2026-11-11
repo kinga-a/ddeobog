@@ -80,3 +80,18 @@ test('移动端防溢出：后台网格可收缩、整页兜底；前台正文�
   assert.ok(layout.includes('.joe_detail__article pre { overflow-x: auto; }'), '无语言代码块应可横向滚动');
   assert.ok(layout.includes('.comment-list__item-contain { overflow-wrap: anywhere; }'), '评论长内容应可断行');
 });
+
+test('前台体验五项：加载动画、文章留白、抽屉胶囊、搜索无光晕', () => {
+  const layout = read('./usr/themes/joe/assets/css/joe.layout.css');
+  assert.ok(layout.includes('@keyframes joe-load-spin'), '查看更多应有加载转圈动画');
+  assert.ok(layout.includes('.joe-item-enter'), '新追加条目应有淡入动画类');
+  assert.ok(layout.includes('.joe_detail__related { margin-bottom: 22px; }'), '相关推荐下方应有留白');
+  assert.ok(layout.includes('.joe_post__pagination { margin: 2px 0 22px; }'), '上/下一篇与评论区之间应有留白');
+  assert.ok(layout.includes('.joe_header__slideout-menu .slides .link'), '抽屉分类/标签应有胶囊样式');
+  const index = read('./usr/themes/joe/assets/js/joe.index.js');
+  assert.ok(index.includes('joe-item-enter'), '列表脚本应给新条目打动画类');
+  assert.ok(index.includes('加载中…'), '加载时按钮应显示加载文案');
+  const refine = read('./usr/themes/joe/assets/css/joe.refine.css');
+  assert.ok(!refine.includes('.joe_header__above-search:focus-within {\n  border-radius: 17px;\n  outline: 2px solid var(--theme);'), '搜索容器不应再画主题色光圈');
+  assert.ok(refine.includes('.joe_header__searchout .search input:focus-visible { outline: none; box-shadow: none; }'), '展开搜索条聚焦也不应有轮廓光晕');
+});

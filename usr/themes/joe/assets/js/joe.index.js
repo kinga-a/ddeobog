@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 		const pushDom = () => {
 			return new Promise((resolve) => {
-				$('.joe_load').attr('loading', true);
+				$('.joe_load').attr('loading', true).text('加载中…');
 				$('.joe_index__list .joe_list__loading').show();
 				$.ajax({
 					url: Joe.BASE_API,
@@ -173,14 +173,21 @@ document.addEventListener('DOMContentLoaded', () => {
 					dataType: 'json',
 					data: { routeType: 'publish_list', page: queryData.page, pageSize: queryData.pageSize, type: queryData.type },
 					success(res) {
-						$('.joe_load').removeAttr('loading').hide();
+						$('.joe_load').removeAttr('loading').text('查看更多').hide();
 						$('.joe_index__list .joe_list__loading').hide();
 						if (!res.data || res.data.length === 0) { resolve(false); return; }
-						res.data.forEach(_ => $('.joe_index__list .joe_list').append(getListMode(_)));
+						// 新追加的条目逐个淡入上浮（类与关键帧在 joe.layout.css）
+						const $list = $('.joe_index__list .joe_list');
+						const prevCount = $list.children().length;
+						res.data.forEach(_ => $list.append(getListMode(_)));
+						$list.children().slice(prevCount).each(function (i) {
+							this.style.animationDelay = (Math.min(i, 8) * 60) + 'ms';
+							this.classList.add('joe-item-enter');
+						});
 						resolve(true);
 					},
 					error() {
-						$('.joe_load').removeAttr('loading').hide();
+						$('.joe_load').removeAttr('loading').text('查看更多').hide();
 						$('.joe_index__list .joe_list__loading').hide();
 						resolve(false);
 					}

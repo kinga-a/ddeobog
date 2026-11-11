@@ -1392,6 +1392,13 @@ await test('附件：删除会连带清掉 Blob 对象与 meta', async () => {
 
 // 分页链接必须是路径式：路由只认 /page/N/ 与 /<归档>/N/，从不读 page 查询参数。
 // 曾长期生成 ?page=N，服务端照样按第 1 页渲染，点「下一页」原地不动。
+await test('页脚：改为项目跳转文案，不再是 Typecho/Joe 署名行', async () => {
+  const home = await call('GET', '/').then((r) => r.text());
+  assert.ok(home.includes('https://github.com/kinga-a/ddeobog'), '页脚应链接到项目仓库');
+  assert.ok(home.includes('本站由'), '页脚应为新文案');
+  assert.ok(!home.includes('Powered by'), '旧署名行应已下线');
+});
+
 await test('分页链接是路径式，且真能翻到第 2 页', async () => {
   // 首页默认是「查看更多」模式；这里先开启传统分页再验证导航
   await call('POST', '/admin/settings', { form: { 'j_Pagination_Mode': 'on' } });

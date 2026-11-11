@@ -1064,3 +1064,69 @@ html body .joe_detail__article object { max-width: 100%; }
 
 html body .comment-list__item-contain { overflow-wrap: anywhere; }
 html body .joe_wall__text { overflow-wrap: anywhere; }
+
+/* ================================================================
+ * 首页「查看更多」动画交互（2026-11-11）：点击回弹、加载中转圈、
+ * 新追加的文章条目逐个淡入上浮（条目类由 joe.index.js 打标）。
+ * ================================================================ */
+html body .joe_load { transition: transform .15s ease, box-shadow .25s ease, opacity .25s ease; }
+html body .joe_load:hover { transform: translateY(-1px); }
+html body .joe_load:active { transform: scale(.97); }
+html body .joe_load[loading] { opacity: .78; pointer-events: none; }
+html body .joe_load[loading]::before {
+  content: "";
+  display: inline-block;
+  width: 12px; height: 12px;
+  margin-right: 8px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: joe-load-spin .7s linear infinite;
+}
+@keyframes joe-load-spin { to { transform: rotate(360deg); } }
+html body .joe_list .joe-item-enter { animation: joe-item-in .45s ease both; }
+@keyframes joe-item-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html body .joe_list .joe-item-enter,
+  html body .joe_load[loading]::before { animation: none; }
+}
+
+/* ================================================================
+ * 文章页留白（2026-11-11）：相关推荐与上一篇/下一篇、评论区原来
+ * 只有单边 15px 贴着排，整块补上下间距。
+ * ================================================================ */
+html body .joe_detail__related { margin-bottom: 22px; }
+html body .joe_post__pagination { margin: 2px 0 22px; }
+
+/* ================================================================
+ * 抽屉分类/标签胶囊排布（2026-11-11）：原来一行一个太占高，
+ * 改为可换行的胶囊标签，一排多个；手风琴展开逻辑（.slides 的
+ * display 由脚本控制）不动，仅去掉树形缩进的左边线。
+ * ================================================================ */
+html body .joe_header__slideout-menu .slides {
+  border-left: none;
+  padding: 8px 0 2px;
+}
+html body .joe_header__slideout-menu .slides li {
+  display: inline-block;
+  margin: 0 8px 8px 0;
+}
+html body .joe_header__slideout-menu .slides .link {
+  display: inline-block;
+  padding: 5px 13px;
+  border: 1px solid var(--classC);
+  border-radius: 999px;
+  background: var(--classD);
+  color: var(--routine);
+  font-size: 13px;
+  line-height: 1.55;
+}
+html body .joe_header__slideout-menu .slides .link.current {
+  color: var(--theme);
+  border-color: var(--theme);
+  font-size: 13px;
+}
