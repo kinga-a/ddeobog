@@ -12,7 +12,8 @@
  *   idx:posts                  文章索引（列表元数据，按 created 倒序）
  *   idx:metas                  分类/标签索引
  *   idx:cmts                   评论索引
- *   stat:views / stat:agree    浏览/点赞计数表（cid → n）
+ *   stat:views:<cid> / stat:agree:<cid>  单篇计数（v2）；stat:views / stat:agree 为旧全表（冻结兜底）
+ *   stat:total:<kind>          全站总计（首次由旧全表汇总初始化）
  *   seq:cid/mid/coid/uid       自增序列
  *   sess:<token>               登录会话
  */
@@ -530,8 +531,16 @@ export class Database {
       list = list.filter((e) => e.title.toLowerCase().includes(kw));
     }
     if (order === 'views' || order === 'agree') {
-      const stat = await this.kv.getJSON(`stat:${order === 'views' ? 'views' : 'agree'}`);
-      list = [...list].sort((a, b) => (stat?.[b.cid] || 0) - (stat?.[a.cid] || 0) || b.created - a.created);
+      const kind = order === 'views' ? 'views' : 'agree';
+      const [own, legacy] = await Promise.all([
+        this.kv.getBatch(list.map((e) => `stat:${kind}:${e.cid}`)),
+        this.#statLegacy(kind),
+      ]);
+      const value = (cid) => {
+        const v = own.get(`stat:${kind}:${cid}`);
+        return v !== null && v !== undefined ? Number(v) || 0 : Number(legacy[cid]) || 0;
+      };
+      list = [...list].sort((a, b) => value(b.cid) - value(a.cid) || b.created - a.created);
     } else if (order === 'commentsNum') {
       list = [...list].sort((a, b) => (b.commentsNum || 0) - (a.commentsNum || 0) || b.created - a.created);
     } else {
@@ -567,15 +576,22 @@ export class Database {
    */
   async getStatsBatch(cids) {
     if (!cids.length) return new Map();
-    const [viewsMap, agreeMap] = await Promise.all([
-      this.kv.getJSON('stat:views'),
-      this.kv.getJSON('stat:agree'),
+    // v2 按篇 key 批量读；还没有独立 key 的篇回落到冻结的旧全表（见 #statBase 的口径）
+    const [viewsOwn, agreeOwn, viewsLegacy, agreeLegacy] = await Promise.all([
+      this.kv.getBatch(cids.map((cid) => `stat:views:${cid}`)),
+      this.kv.getBatch(cids.map((cid) => `stat:agree:${cid}`)),
+      this.#statLegacy('views'),
+      this.#statLegacy('agree'),
     ]);
+    const pick = (own, legacy, kind, cid) => {
+      const v = own.get(`stat:${kind}:${cid}`);
+      return v !== null && v !== undefined ? Number(v) || 0 : Number(legacy[cid]) || 0;
+    };
     const result = new Map();
     for (const cid of cids) {
       result.set(cid, {
-        views: (viewsMap?.[cid] || 0),
-        agree: (agreeMap?.[cid] || 0),
+        views: pick(viewsOwn, viewsLegacy, 'views', cid),
+        agree: pick(agreeOwn, agreeLegacy, 'agree', cid),
       });
     }
     return result;
@@ -790,25 +806,52 @@ export class Database {
   }
 
   // ---------- 浏览/点赞 ----------
+  /**
+   * 计数存储 v2：每篇一个 key（stat:<kind>:<cid>），单次浏览只读写自己那一个数，
+   * 不再整表读-改-写（旧实现文章越多越重、并发浏览还会互相覆盖丢计数）。
+   * 旧全表 stat:<kind> 冻结为只读兜底：某篇还没有独立 key 时以旧表值为准，
+   * 第一次增减时把旧值带入独立 key。全站总计单独维护在 stat:total:<kind>，
+   * 首次需要时由旧表汇总初始化，之后只跟随增减。
+   */
+  async #statLegacy(kind) {
+    return (await this.kv.getJSON(`stat:${kind}`)) || {};
+  }
+  async #statBase(cid, kind) {
+    const own = await this.kv.getJSON(`stat:${kind}:${cid}`);
+    if (own !== null && own !== undefined) return Number(own) || 0;
+    const legacy = await this.#statLegacy(kind);
+    return Number(legacy[cid]) || 0;
+  }
+  async #ensureStatTotal(kind) {
+    const key = `stat:total:${kind}`;
+    const cur = await this.kv.getJSON(key);
+    if (cur !== null && cur !== undefined) return Number(cur) || 0;
+    const legacy = await this.#statLegacy(kind);
+    const sum = Object.values(legacy).reduce((s, v) => s + (Number(v) || 0), 0);
+    await this.kv.putJSON(key, sum);
+    return sum;
+  }
   /** 调整计数（delta 可为负，结果不小于 0） */
   async adjustStat(cid, kind, delta) {
-    const key = `stat:${kind}`;
-    const map = (await this.kv.getJSON(key)) || {};
-    map[cid] = Math.max(0, (map[cid] || 0) + delta);
-    await this.kv.putJSON(key, map);
-    return map[cid];
+    const base = await this.#statBase(cid, kind);
+    const next = Math.max(0, base + delta);
+    const applied = next - base;
+    await this.kv.putJSON(`stat:${kind}:${cid}`, next);
+    if (applied !== 0) {
+      const total = await this.#ensureStatTotal(kind);
+      await this.kv.putJSON(`stat:total:${kind}`, Math.max(0, total + applied));
+    }
+    return next;
   }
   async incrStat(cid, kind) {
     return await this.adjustStat(cid, kind, 1);
   }
   /** 全站统计总和（仪表盘用） */
   async sumStat(kind) {
-    const map = (await this.kv.getJSON(`stat:${kind}`)) || {};
-    return Object.values(map).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    return await this.#ensureStatTotal(kind);
   }
   async getStat(cid, kind) {
-    const map = (await this.kv.getJSON(`stat:${kind}`)) || {};
-    return map[cid] || 0;
+    return await this.#statBase(cid, kind);
   }
 
   // ---------- 会话 ----------
