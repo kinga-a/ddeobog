@@ -105,6 +105,7 @@ const ADMIN_POST_ROUTES = new Map([
   ['meta', saveMeta],
   ['meta-delete', deleteMeta],
   ['comment', commentAction],
+  ['comment-moderation', commentModerationAction],
   ['upload', uploadFile],
   ['upload-image', uploadImageJson],
   ['preview', previewMarkdownAction],
@@ -1183,6 +1184,13 @@ async function commentsPage(ctx) {
     .join('');
   const body = `${MSG(ctx)}
   <h2>评论管理（${list.total}）</h2>
+  <div class="card">
+    <form method="post" action="/admin/comment-moderation" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <strong style="font-size:15px">评论审核</strong>
+      <span class="hint" style="flex:1;min-width:220px">开启后，新评论要在这里审核通过才会在前台显示；关闭时评论提交即显示。与站点设置里的「评论默认状态」是同一开关。</span>
+      <span class="switch"><input type="hidden" name="moderation" value="off"><input type="checkbox" name="moderation" value="on" ${ctx.options.commentStatus === 'waiting' ? 'checked' : ''} onchange="this.form.submit()"><i class="switch__ui" aria-hidden="true"></i></span>
+    </form>
+  </div>
   <div class="card">${tabs}
     <table><thead><tr><th>ID</th><th>作者</th><th>内容</th><th>文章</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="7">暂无评论</td></tr>'}</tbody></table>
@@ -1199,6 +1207,16 @@ async function commentAction(ctx) {
   if (op === 'approve') await db.updateComment(coid, { status: 'approved' });
   else if (op === 'waiting') await db.updateComment(coid, { status: 'waiting' });
   else if (op === 'delete') await db.trashComment(coid, 'admin');
+  return redirect(url, '/admin/comments', { msg: 'ok' });
+}
+
+/** 评论管理页的「评论审核」开关：与站点设置的 commentStatus 是同一选项 */
+async function commentModerationAction(ctx) {
+  const { db, url } = ctx;
+  const form = await ctx.request.formData();
+  // 开关组件按浏览器顺序提交 [off] 或 [off, on]，取最后一个为准
+  const on = form.getAll('moderation').pop() === 'on';
+  await db.setOption('commentStatus', on ? 'waiting' : 'approved');
   return redirect(url, '/admin/comments', { msg: 'ok' });
 }
 

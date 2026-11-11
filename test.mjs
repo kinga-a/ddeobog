@@ -973,6 +973,44 @@ await test('评论管理页', async () => {
   assert.ok((await res.text()).includes('张三'));
 });
 
+await test('评论审核开关：评论管理页可开关，开启后访客评论先待审、通过才显示', async () => {
+  // 开关就挂在评论管理页上
+  const page = await call('GET', '/admin/comments').then((r) => r.text());
+  assert.ok(page.includes('action="/admin/comment-moderation"'), '评论管理页应有审核开关表单');
+  assert.ok(page.includes('name="moderation"'), '开关字段应为 moderation');
+
+  // 打开审核（开关保存接口与站点设置共用 commentStatus 选项）
+  await call('POST', '/admin/comment-moderation', { form: { moderation: 'on' } });
+  assert.equal(await globalThis.BLOG_KV.get('opt:commentStatus', 'json'), 'waiting', '开启后选项应为 waiting');
+
+  // 访客提交：应进入待审，并收到「审核通过后显示」的提示而非成功标记
+  const savedCookie = cookie;
+  cookie = '';
+  const submit = await call('POST', '/comment/1', {
+    form: { author: '李四', mail: 'li@test.com', text: '待审评论一条', parent: 0, _: 'x' },
+  });
+  assert.equal(submit.status, 200);
+  const submitHtml = await submit.text();
+  assert.ok(submitHtml.includes('审核通过后显示'), '待审时应提示评论者');
+  assert.ok(!submitHtml.includes('id="Joe"'), '待审时不应返回成功标记，否则前端刷新后评论像消失了一样');
+  const postAnon = await call('GET', '/archives/1/').then((r) => r.text());
+  assert.ok(!postAnon.includes('待审评论一条'), '待审评论不应在前台显示');
+  cookie = savedCookie;
+
+  // 后台待审列表里能看到，点通过后前台才显示
+  const waiting = await call('GET', '/admin/comments?status=waiting').then((r) => r.text());
+  assert.ok(waiting.includes('待审评论一条'), '待审列表应能看到该评论');
+  const idx = JSON.parse(globalThis.BLOG_KV.map.get('idx:cmts'));
+  const coid = idx.filter((c) => c.status === 'waiting').at(-1).coid;
+  await call('POST', '/admin/comment', { form: { coid: String(coid), op: 'approve' } });
+  const postAfter = await call('GET', '/archives/1/').then((r) => r.text());
+  assert.ok(postAfter.includes('待审评论一条'), '审核通过后评论应显示');
+
+  // 关掉审核恢复直发
+  await call('POST', '/admin/comment-moderation', { form: { moderation: 'off' } });
+  assert.equal(await globalThis.BLOG_KV.get('opt:commentStatus', 'json'), 'approved', '关闭后选项应为 approved');
+});
+
 await test('后台 MCP 卡片：端点、掩码令牌、一次性新令牌展示', async () => {
   const created = await call('POST', '/admin/security', {
     form: { op: 'mcp-add', name: 'Cursor', remark: '编辑器', enabled: 'on', token: '' },

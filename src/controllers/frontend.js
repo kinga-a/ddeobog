@@ -511,6 +511,10 @@ async function handleCommentPost(ctx) {
   const ip = request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() || '';
   const agent = request.headers.get('User-Agent') || '';
   const login = ctx.user;
+  // 审核开关（commentStatus=waiting）下普通访客的评论先待审；管理员与
+  // 文章作者本人直发，免得自己人也被卡进审核队列。
+  const privileged = !!login && (login.group === 'administrator' || login.uid === post.authorId);
+  const status = ctx.options.commentStatus === 'waiting' && !privileged ? 'waiting' : 'approved';
 
   await db.createComment({
     cid,
@@ -523,10 +527,18 @@ async function handleCommentPost(ctx) {
     agent,
     text,
     parent,
-    status: ctx.options.commentStatus === 'waiting' ? 'waiting' : 'approved',
+    status,
   });
 
   await runHooks('commentPost', { cid, author, text }, ctx);
+  if (status === 'waiting') {
+    // 待审评论不在前台出现，若按成功协议（含 Joe 标记）返回，前端会刷新
+    // 页面、评论者只会看到自己的评论「消失」。改走提示协议：不含 Joe
+    // 标记，前端会把 .container 里的文案弹给评论者看。
+    return new Response('<!DOCTYPE html><html><body><div class="container">评论已提交，审核通过后显示</div></body></html>', {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
   // Joe 前端约定：响应 HTML 含 "Joe" 即视为成功（刷新页面）
   return new Response('<!DOCTYPE html><html><body><div id="Joe">ok</div></body></html>', {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
