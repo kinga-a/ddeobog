@@ -2,7 +2,7 @@
  * 密码与随机工具 —— PBKDF2-SHA256（Web Crypto）
  * 存储格式: pbkdf2$<iterations>$<salt_b64>$<hash_b64>
  */
-const ITERATIONS = 100000;
+const ITERATIONS = 600000; // OWASP 对 PBKDF2-SHA256 的现行建议值；旧哈希在登录成功时自动升级（见 passwordNeedsUpgrade）
 
 export function randomHex(bytes = 16) {
   const arr = new Uint8Array(bytes);
@@ -33,6 +33,14 @@ export async function hashPassword(password) {
   const salt = randomHex(16);
   const hash = await pbkdf2(password, salt, ITERATIONS);
   return `pbkdf2$${ITERATIONS}$${salt}$${b64(hash)}`;
+}
+
+/** 存储串里的迭代数低于当前标准时返回 true（登录成功后用明文重哈希升级） */
+export function passwordNeedsUpgrade(stored) {
+  if (!stored || typeof stored !== 'string') return false;
+  const parts = stored.split('$');
+  if (parts[0] !== 'pbkdf2' || parts.length !== 4) return false;
+  return (parseInt(parts[1], 10) || 0) < ITERATIONS;
 }
 
 export async function verifyPassword(password, stored) {

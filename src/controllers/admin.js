@@ -3,7 +3,7 @@
  * 包含：登录（密码 + TOTP 两步验证）、仪表盘、文章/页面管理、
  *       分类/标签、评论管理、附件上传（Blob）、站点与主题设置、安全设置（TOTP）
  */
-import { verifyPassword, hashPassword, randomHex } from '../auth/password.js';
+import { verifyPassword, hashPassword, randomHex, passwordNeedsUpgrade } from '../auth/password.js';
 import { currentUser, sessionCookie, clearSessionCookie, sameOrigin } from '../auth/session.js';
 import { CONFIG } from '../config.js';
 import { escapeHtml as esc, plainExcerpt } from '../render/markdown.js';
@@ -237,6 +237,13 @@ async function startPasswordLogin(ctx, form) {
   }
   // 登录成功，清除失败计数
   await clearLoginFailures(db, throttle.key);
+  // 密码哈希迭代数升级：旧哈希（如 10 万次）验证通过后用本次明文重哈希到现行标准，
+  // 用户无感；升级失败不阻断登录。
+  if (passwordNeedsUpgrade(user.passwordHash)) {
+    try {
+      await db.updateUser(user.uid, { passwordHash: await hashPassword(password) });
+    } catch { /* 下次登录再试 */ }
+  }
   if (user.totpEnabled && user.totpSecret) {
     // 进入 TOTP 二次验证
     const { randomHex } = await import('../auth/password.js');
