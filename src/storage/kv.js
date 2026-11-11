@@ -8,21 +8,41 @@ import { CONFIG } from '../config.js';
 export class KV {
   constructor(binding) {
     this.binding = binding;
+    // 请求级读缓存：KV 实例随请求创建（main.js 每次 onRequest 都新建），
+    // 同一请求内同一 key 只真正读一次——首页渲染会反复读文章/评论/分类索引
+    // 与统计全表，没有这层缓存时每次都是整表重复读。写/删时同步更新缓存，
+    // 保证同请求内读到自己刚写的数据；缓存存 Promise 以合并并发重复读。
+    this._memo = new Map();
   }
   async get(key, type = 'text') {
-    return await this.binding.get(key, { type });
+    const memoKey = `${type}:${key}`;
+    const hit = this._memo.get(memoKey);
+    if (hit) return hit;
+    const p = Promise.resolve().then(() => this.binding.get(key, { type }));
+    this._memo.set(memoKey, p);
+    p.catch(() => {
+      if (this._memo.get(memoKey) === p) this._memo.delete(memoKey);
+    });
+    return p;
   }
   async getJSON(key) {
-    return await this.binding.get(key, { type: 'json' });
+    return await this.get(key, 'json');
   }
   async put(key, value) {
     await this.binding.put(key, value);
+    this._memo.set(`text:${key}`, Promise.resolve(value));
+    this._memo.delete(`json:${key}`);
   }
   async putJSON(key, obj) {
-    await this.binding.put(key, JSON.stringify(obj));
+    const text = JSON.stringify(obj);
+    await this.binding.put(key, text);
+    this._memo.set(`json:${key}`, Promise.resolve(obj));
+    this._memo.set(`text:${key}`, Promise.resolve(text));
   }
   async delete(key) {
     await this.binding.delete(key);
+    this._memo.delete(`text:${key}`);
+    this._memo.delete(`json:${key}`);
   }
 
   /** 批量获取多个 key（并行） */
