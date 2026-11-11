@@ -41,24 +41,25 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
       // user 由 main.js 统一解析好传进来，不用在这里重读一遍会话。
       // 索引条目已带写入时算好的封面与自定义摘要（cover/absCustom），
       // 不必再逐篇读全文；旧条目缺字段时 listContentsIndex 会按页回填。
+      // 顶置文章（后台「顶置文章IDs」，逗号分隔的 cid）分两条路：
+      // 默认排序（created）：由 db.listContentsIndex 在分页前按规范顺序
+      // 排好（置顶集合 + 其余原序），SSR 与接口共用同一口径——旧实现是
+      // 对单页切片重排/前置，不在本页的置顶文章永远顶不上来。
+      // 其他排序（热门/评论/点赞）：维持旧行为，第 1 页前置、后续页剔除，
+      // 保证同一篇文章在无限滚动列表里只出现一次。
+      const stickIds = parseStickIds(options);
+      const stickSet = new Set(stickIds);
+      const order = orderMap[type] || 'created';
       const { items } = await db.listContentsIndex({
         type: 'post',
         page,
         pageSize,
-        order: orderMap[type] || 'created',
+        order,
         allStatus: !!user,
+        stickIds: order === 'created' ? stickIds : [],
       });
-
-      // 顶置文章（后台「顶置文章IDs」，逗号分隔的 cid）。
-      // 首页列表不是服务端直出：joe.index.js 的 initDom() 会先清空 .joe_list，
-      // 再拿 publish_list 的数据重画，所以 renderIndex 里的排序会被整个覆盖，
-      // 置顶必须在这里实现才生效。
-      // 第 1 页把置顶文章按填写顺序前置；后续页把它们从结果里剔除，
-      // 保证同一篇文章在无限滚动列表里只出现一次。
-      const stickIds = parseStickIds(options);
-      const stickSet = new Set(stickIds);
       let list = items;
-      if (stickSet.size) {
+      if (stickSet.size && order !== 'created') {
         list = list.filter((p) => !stickSet.has(String(p.cid)));
         if (page === 1) {
           const sticks = [];

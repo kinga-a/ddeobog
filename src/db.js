@@ -574,6 +574,27 @@ export class Database {
     } else {
       list = [...list].sort((a, b) => b.created - a.created);
     }
+    // 首页置顶（q.stickIds，后台「顶置文章IDs」）：必须在分页切片之前
+    // 按规范顺序排好——置顶集合 + 其余原序——否则不在当前页的置顶文章
+    // 永远顶不上来（旧实现是在 renderIndex / 接口层对单页切片重排，
+    // 置顶文章沉在第 2 页时两种模式都不生效）。只对首页形态的查询
+    // （默认 created 排序、无分类/标签/关键词过滤）生效；置顶文章本身
+    // 须为已发布状态，隐藏/草稿不前置（留在原位，管理员仍可见）。
+    if (
+      Array.isArray(q.stickIds) && q.stickIds.length &&
+      order === 'created' && !categoryMid && !tagMid && !keywords
+    ) {
+      const want = new Set(q.stickIds.map(String));
+      const byCid = new Map();
+      for (const e of list) {
+        if (want.has(String(e.cid)) && e.status === 'publish') byCid.set(String(e.cid), e);
+      }
+      if (byCid.size) {
+        const sticks = q.stickIds.map((id) => byCid.get(String(id))).filter(Boolean);
+        const stickCids = new Set(sticks.map((e) => String(e.cid)));
+        list = [...sticks, ...list.filter((e) => !stickCids.has(String(e.cid)))];
+      }
+    }
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);

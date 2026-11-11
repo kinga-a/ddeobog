@@ -1477,6 +1477,28 @@ await test('置顶文章排最前且全列表不重复', async () => {
     else await BLOG_KV.put('opt:theme:joe', prev);
   }
 });
+await test('置顶文章：沉在第 2 页的文章也能顶到 SSR 首页第一位', async () => {
+  // 上一条用例只测了接口（接口一直是对的）；SSR 首页曾把置顶做在
+  // 「分页切片之后」，置顶文章不在第 1 页切片里就永远顶不上来，
+  // 传统与查看更多两种模式的首屏都是 SSR，所以都失效。这条补 SSR。
+  const liOrder = (html) => [...html.matchAll(/<li class="joe_list__item[^"]*">[\s\S]{0,300}?href="\/archives\/(\d+)\//g)].map((m) => m[1]);
+  const prev = await BLOG_KV.get('opt:theme:joe');
+  try {
+    const page2 = await call('GET', '/page/2/').then((r) => r.text());
+    const target = liOrder(page2)[0];
+    assert.ok(target, '第 2 页应有可置顶的文章');
+    await BLOG_KV.put('opt:theme:joe', JSON.stringify({ JStickPosts: String(target) }));
+    const home = await call('GET', '/').then((r) => r.text());
+    assert.equal(liOrder(home)[0], target, `置顶文章 ${target} 应在 SSR 首页第一位，实际第一位 ${liOrder(home)[0]}`);
+    assert.ok(home.includes('置顶'), '置顶文章应带「置顶」角标');
+    const page2After = await call('GET', '/page/2/').then((r) => r.text());
+    assert.ok(!liOrder(page2After).includes(target), '置顶文章不应在第 2 页重复出现');
+  } finally {
+    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
+    else await BLOG_KV.put('opt:theme:joe', prev);
+  }
+});
+
 // 搜索提交按钮：两处（顶栏胶囊 + 展开面板）都应为中文，且不再残留英文
 await test('搜索提交按钮为中文', async () => {
   const html = await (await call('GET', '/')).text();

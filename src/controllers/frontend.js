@@ -18,7 +18,7 @@ import { currentUser, parseCookies } from '../auth/session.js';
 import { verifyPassword, randomHex } from '../auth/password.js';
 import * as theme from '../render/theme-joe.js';
 import { plainExcerpt } from '../render/markdown.js';
-import { escapeHtml } from '../render/html.js';
+import { escapeHtml, parseStickIds } from '../render/html.js';
 import { sameOrigin } from '../auth/session.js';
 import { handleJoeApi } from './joe-api.js';
 import { runHooks } from '../plugins.js';
@@ -141,6 +141,8 @@ async function handleFrontendInner(ctx) {
   const list = await db.listContentsIndex({
     type: 'post', page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE,
     allStatus: !!ctx.user,
+    // 首页置顶在数据层分页前生效（见 db.listContentsIndex 的 stickIds 处理）
+    stickIds: parseStickIds(ctx.options),
   });
   const listWithStats = await db.enrichWithStats(list);
   Object.assign(ctx, { list: listWithStats, page, pageSize: ctx.options.pageSize || CONFIG.PAGE_SIZE });
