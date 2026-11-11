@@ -1072,16 +1072,23 @@ html body .joe_wall__text { overflow-wrap: anywhere; }
 html body .joe_load { transition: transform .15s ease, box-shadow .25s ease, opacity .25s ease; }
 html body .joe_load:hover { transform: translateY(-1px); }
 html body .joe_load:active { transform: scale(.97); }
-html body .joe_load[loading] { opacity: .78; pointer-events: none; }
+html body .joe_load[loading] {
+  opacity: .78;
+  pointer-events: none;
+  /* 胶囊尺寸不变（120×32）：加载内容压缩成单行，绝不换行溢出到胶囊外 */
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 13px;
+}
 html body .joe_load[loading]::before {
   content: "";
   display: inline-block;
-  width: 12px; height: 12px;
-  margin-right: 8px;
+  width: 10px; height: 10px;
+  margin-right: 6px;
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
-  vertical-align: -2px;
+  vertical-align: -1px;
   animation: joe-load-spin .7s linear infinite;
 }
 @keyframes joe-load-spin { to { transform: rotate(360deg); } }

@@ -94,4 +94,6 @@ test('前台体验五项：加载动画、文章留白、抽屉胶囊、搜索�
   const refine = read('./usr/themes/joe/assets/css/joe.refine.css');
   assert.ok(!refine.includes('.joe_header__above-search:focus-within {\n  border-radius: 17px;\n  outline: 2px solid var(--theme);'), '搜索容器不应再画主题色光圈');
   assert.ok(refine.includes('.joe_header__searchout .search input:focus-visible { outline: none; box-shadow: none; }'), '展开搜索条聚焦也不应有轮廓光晕');
+  assert.ok(refine.includes('.joe_header__above-search .input { border-color: var(--classA); }'), '搜索框应有看得清的中性灰边框');
+  assert.ok(layout.includes('white-space: nowrap'), '加载中文案应单行不溢出胶囊');
 });

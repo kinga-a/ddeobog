@@ -99,13 +99,16 @@ html body .joe_header__above-search .input {
 
 /* 搜索框聚焦不画蓝色光晕（站长 2026-11-11 要求，PC 与手机一致）：
    早先这里给容器画了主题色 outline + 淡蓝阴影两层光圈，现全部去掉；
-   输入框聚焦时的主题色边框（主题全局规则）也一并压回透明，
-   展开的搜索条（searchout）同样不留浏览器默认轮廓。 */
+   输入框聚焦时的主题色边框（主题全局规则）也一并压掉。
+   但边框不能隐形：静止与聚焦都给一条中性灰边（--classA），看得清轮廓、
+   又不是蓝色。展开的搜索条（searchout）同样处理。 */
 html body .joe_header__above-search:focus-within {
   outline: none;
   box-shadow: none;
 }
-html body .joe_header__above-search .input:focus { border-color: transparent; }
+html body .joe_header__above-search .input { border-color: var(--classA); }
+html body .joe_header__above-search .input:focus { border-color: var(--classA); }
+html body .joe_header__searchout .search input { border-color: var(--classA); }
 html body .joe_header__searchout .search input:focus,
 html body .joe_header__searchout .search input:focus-visible { outline: none; box-shadow: none; }
 

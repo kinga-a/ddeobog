@@ -602,8 +602,6 @@ function footerBlock(ctx) {
     <div class="joe_footer__above">
       <div class="joe_footer__above-item">
         <a href="/" title="${escapeHtml(options.title)}">${escapeHtml(options.title)}</a>
-        <em>|</em>
-        <span>本站由 <a href="https://github.com/kinga-a/ddeobog" target="_blank" rel="noopener noreferrer">TypechoEdge</a> 驱动 · 源码开源于 GitHub · 边缘部署于 EdgeOne</span>
       </div>
       <div class="joe_footer__above-item">
         ${options.joe.JICP ? `<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">${escapeHtml(options.joe.JICP)}</a>` : ''}
