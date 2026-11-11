@@ -14,7 +14,6 @@ edgeone-skill
 test*.mjs
 test*.sh
 tools
-dev-server.mjs
 build.mjs
 README.md
 CHANGELOG.md
