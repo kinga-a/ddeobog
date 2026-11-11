@@ -280,7 +280,6 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
     return `<a${cls} href="${href}"><i class="fa ${icon}" aria-hidden="true"></i>${label}</a>`;
   };
   const menu =
-    `<a class="btn primary side__new" href="/admin/post?type=post"><i class="fa fa-pencil" aria-hidden="true"></i>撰写文章</a>` +
     groups
       .map(([name, items]) => (name ? `<div class="side__group">${name}</div>` : '') + items.map(renderLink).join(''))
       .join('') +
