@@ -39,7 +39,9 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
       // 这个接口必须跟着一起改：joe.index.js 的 initDom() 会清空服务端渲染的
       // 列表、拿这里的数据重画，只改 renderIndex 的话隐藏文章会在 JS 跑起来后消失。
       // user 由 main.js 统一解析好传进来，不用在这里重读一遍会话。
-      const { items } = await db.listContents({
+      // 索引条目已带写入时算好的封面与自定义摘要（cover/absCustom），
+      // 不必再逐篇读全文；旧条目缺字段时 listContentsIndex 会按页回填。
+      const { items } = await db.listContentsIndex({
         type: 'post',
         page,
         pageSize,
@@ -83,7 +85,7 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
           cid: p.cid,
           title: escapeHtml(p.title),
           permalink: `/archives/${p.cid}/`,
-          abstract: escapeHtml(p.fields?.abstract || ''),
+          abstract: escapeHtml(p.absCustom ?? p.fields?.abstract ?? ''),
           created: fmt(p.created),
           views: stats.views || 0,
           commentsNum: p.commentsNum || 0,
@@ -100,7 +102,7 @@ export async function handleJoeApi({ db, request, url, user = null, options = {}
           // joe.index.js 的 initDom() 会清空服务端渲染的列表，改用 publish_list
           // 的数据重画，取的是 _.image[0]——空数组取出来就是 undefined，
           // data-src 变成 "undefined"，lazysizes 再把这串当地址写进 src，图彻底不显示。
-          image: [escapeHtml(thumbnail(p, `${options.themeAssetsBase || ASSETS_BASE}/assets`))],
+          image: [escapeHtml(p.cover || thumbnail(p, `${options.themeAssetsBase || ASSETS_BASE}/assets`))],
           lazyload: LAZYLOAD_PLACEHOLDER,
           time: fmt(p.created, 'YYYY-MM-DD'),
           mode: 'default',

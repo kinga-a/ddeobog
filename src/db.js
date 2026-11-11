@@ -33,6 +33,23 @@ function plainAbstract(text, len = 90) {
     .slice(0, len);
 }
 
+/**
+ * 索引用封面：fields.thumb > 正文第一图（Markdown 与 HTML 两种语法取更靠前者，
+ * data: 占位图跳过）> ''（空表示用主题默认图，默认图带部署路径前缀所以不在索引里定死）。
+ * 与 render/html.js 的 thumbnail() 同一套规则，改规则时两边一起改。
+ */
+function extractCover(row) {
+  if (row.fields?.thumb) return row.fields.thumb;
+  const text = row.text || '';
+  const first = [
+    text.match(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/),
+    text.match(/<img[^>]*\ssrc=["']([^"']+)["']/i),
+  ]
+    .filter((m) => m && !/^data:/i.test(m[1]))
+    .sort((a, b) => a.index - b.index)[0];
+  return first ? first[1] : '';
+}
+
 export class Database {
   constructor(kv, blob) {
     this.kv = kv;
@@ -206,6 +223,13 @@ export class Database {
       tags: row.tags,
       hasPassword: !!row.password,
       allowComment: !!row.allowComment,
+      // 列表展示所需的派生字段在写入时算好放进索引，列表页/API 就不必
+      // 为了封面、自定义摘要、附件信息再逐篇回读全文（render/html.js 的
+      // thumbnail() 是同一套取图规则：fields.thumb > 正文第一图）。
+      cover: extractCover(row),
+      absCustom: row.fields?.abstract || '',
+      attCt: row.type === 'attachment' ? row.fields?.contentType || '' : '',
+      attSize: row.type === 'attachment' ? row.fields?.size || 0 : 0,
     };
   }
 
@@ -516,12 +540,21 @@ export class Database {
     const total = list.length;
     const start = (page - 1) * pageSize;
     const items = list.slice(start, start + pageSize);
-    // 兼容历史索引：旧条目没有 abstract 时按需读取正文补齐（只补当前页）
-    const missing = items.filter((e) => !e.abstract);
+    // 兼容历史索引：旧条目缺派生字段时按需读正文补齐（只补当前页，不落盘，
+    // 条目下次被编辑重建时自然带上新字段）
+    const missing = items.filter(
+      (e) => !e.abstract || !('cover' in e) || (e.type === 'attachment' && !('attSize' in e))
+    );
     if (missing.length) {
       const rows = await Promise.all(missing.map((e) => this.getContent(e.cid)));
       rows.forEach((row, i) => {
-        missing[i].abstract = plainAbstract(row && row.text, 90);
+        if (!missing[i].abstract) missing[i].abstract = plainAbstract(row && row.text, 90);
+        if (!('cover' in missing[i])) missing[i].cover = row ? extractCover(row) : '';
+        if (!('absCustom' in missing[i])) missing[i].absCustom = row?.fields?.abstract || '';
+        if (missing[i].type === 'attachment' && !('attSize' in missing[i])) {
+          missing[i].attCt = row?.fields?.contentType || '';
+          missing[i].attSize = row?.fields?.size || 0;
+        }
       });
     }
     return { items, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };

@@ -742,7 +742,7 @@ async function dashboard(ctx) {
 async function postsList(ctx) {
   const { db, url } = ctx;
   const page = parseInt(url.searchParams.get('page') || '1', 10);
-  const list = await db.listContents({ type: 'post', page, pageSize: ADMIN_LIST_PAGE_SIZE, allStatus: true });
+  const list = await db.listContentsIndex({ type: 'post', page, pageSize: ADMIN_LIST_PAGE_SIZE, allStatus: true });
   const rows = list.items
     .map(
       (p) => `<tr>
@@ -778,7 +778,7 @@ async function postsList(ctx) {
 
 async function pagesList(ctx) {
   const { db } = ctx;
-  const list = await db.listContents({ type: 'page', pageSize: 100, allStatus: true });
+  const list = await db.listContentsIndex({ type: 'page', pageSize: 100, allStatus: true });
   const rows = list.items
     .map(
       (p) => `<tr>
@@ -1145,14 +1145,14 @@ async function commentAction(ctx) {
 
 async function uploadsPage(ctx) {
   const { db } = ctx;
-  const files = (await db.listContents({ type: 'attachment', pageSize: ADMIN_ATTACHMENT_PAGE_SIZE, allStatus: true })).items;
+  const files = (await db.listContentsIndex({ type: 'attachment', pageSize: ADMIN_ATTACHMENT_PAGE_SIZE, allStatus: true })).items;
   const rows = files
     .map(
       (f) => `<tr>
     <td data-label="ID">${f.cid}</td>
-    <td data-label="类型">${f.fields?.contentType || 'file'}</td>
+    <td data-label="类型">${f.attCt || f.fields?.contentType || 'file'}</td>
     <td data-label="文件名"><a href="/upload/${encodeURIComponent(f.slug)}" target="_blank">${esc(f.slug)}</a></td>
-    <td data-label="大小">${(f.fields?.size / 1024 || 0).toFixed(1)} KB</td>
+    <td data-label="大小">${(((f.attSize ?? f.fields?.size) || 0) / 1024).toFixed(1)} KB</td>
     <td data-label="时间">${new Date(f.created * 1000).toLocaleString('zh-CN')}</td>
     <td data-label="地址"><code>/upload/${esc(f.slug)}</code></td>
     <td>

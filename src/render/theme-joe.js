@@ -94,7 +94,9 @@ function assetsUrl(opts, path) {
  * 统一补成绝对地址，既修掉这个问题，也让子目录部署时不会失效。
  */
 function coverUrl(ctx, content) {
-  const url = thumbnail(content, assetsUrl(ctx.options, 'assets'));
+  // 索引条目带写入时算好的 cover（fields.thumb > 正文第一图），优先用它，
+  // 列表页不必为了封面回读全文；全文行没有 cover 字段，走 thumbnail() 现算。
+  const url = content.cover || thumbnail(content, assetsUrl(ctx.options, 'assets'));
   return url.startsWith('/') ? `${ctx.siteUrl}${url}` : url;
 }
 

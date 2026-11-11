@@ -588,7 +588,7 @@ const TOOLS = [
     async run(ctx, args) {
       const page = Math.max(1, numberOr(args.page, 1));
       const pageSize = clamp(numberOr(args.pageSize, 20), 1, 100);
-      const list = await ctx.db.listContents({ type: 'attachment', page, pageSize, allStatus: true });
+      const list = await ctx.db.listContentsIndex({ type: 'attachment', page, pageSize, allStatus: true });
       return {
         total: list.total,
         pages: list.pages,
@@ -599,8 +599,8 @@ const TOOLS = [
           name: f.title,
           slug: f.slug,
           url: `/upload/${encodeURIComponent(f.slug)}`,
-          contentType: f.fields?.contentType || '',
-          size: f.fields?.size || 0,
+          contentType: f.attCt || f.fields?.contentType || '',
+          size: f.attSize ?? f.fields?.size ?? 0,
           created: f.created,
         })),
       };
