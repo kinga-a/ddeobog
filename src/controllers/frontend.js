@@ -361,6 +361,47 @@ async function renderSingle(ctx, post) {
   return html(await theme.renderPost(ctx));
 }
 
+/** 密码文章失败限流：同一 IP 对同一篇文章连续失败 5 次后锁定 10 分钟 */
+const PWD_MAX_ATTEMPTS = 5;
+const PWD_LOCK_MS = 10 * 60 * 1000;
+
+function pwdThrottleKey(cid, request) {
+  const ip = (request.headers.get('cf-connecting-ip')
+    || request.headers.get('x-forwarded-for')
+    || request.headers.get('x-real-ip')
+    || 'unknown').split(',')[0].trim();
+  // 哈希后作为键，避免把原始 IP 写进 KV
+  let h = 5381;
+  const raw = `${cid}|${ip}`;
+  for (let i = 0; i < raw.length; i += 1) h = ((h * 33) ^ raw.charCodeAt(i)) >>> 0;
+  return `pwd_fail:${h.toString(16)}`;
+}
+
+async function checkPwdLocked(db, key) {
+  const rec = await db.kv.getJSON(key);
+  if (!rec) return { locked: false };
+  if (rec.until && rec.until > Date.now()) return { locked: true, until: rec.until };
+  // 窗口外的旧失败记录直接清掉，避免键无限累积
+  if (Date.now() - (rec.at || 0) > PWD_LOCK_MS) {
+    await db.kv.delete(key);
+    return { locked: false };
+  }
+  return { locked: (rec.count || 0) >= PWD_MAX_ATTEMPTS };
+}
+
+async function recordPwdFailure(db, key) {
+  const rec = (await db.kv.getJSON(key)) || { count: 0, at: 0, until: 0 };
+  if (Date.now() - (rec.at || 0) > PWD_LOCK_MS) {
+    rec.count = 0;
+    rec.until = 0;
+  }
+  rec.count = (rec.count || 0) + 1;
+  rec.at = Date.now();
+  if (rec.count >= PWD_MAX_ATTEMPTS) rec.until = Date.now() + PWD_LOCK_MS;
+  await db.kv.putJSON(key, rec);
+  return rec;
+}
+
 /**
  * POST /archives/[cid]/ —— 提交文章密码。
  * 密码只从请求体里读，成功后换成 HttpOnly cookie 再 302 回文章页。
@@ -371,6 +412,11 @@ async function handlePostUnlock(ctx, cid) {
   if (!post || post.type !== 'post' || post.status !== 'publish' || !post.password) return notFound(ctx);
   if (!sameOrigin(request)) return new Response('跨站请求被拒绝', { status: 403, headers: { 'Cache-Control': 'no-store' } });
 
+  const lockKey = pwdThrottleKey(post.cid, request);
+  if ((await checkPwdLocked(db, lockKey)).locked) {
+    return renderProtected(ctx, post, { locked: true, status: 429 });
+  }
+
   let pass = '';
   try {
     // 无 Content-Type 时 request.formData() 会同步抛错，包一层
@@ -380,6 +426,7 @@ async function handlePostUnlock(ctx, cid) {
   }
 
   if (pass && (await verifyPostPassword(pass, post.password))) {
+    await db.kv.delete(lockKey);
     const token = randomHex(24);
     await db.grantPostAccess(post.cid, token, Date.now() + CONFIG.POST_PWD_TTL * 1000);
     // 303 See Other：POST 之后回到 GET，刷新页面不会重复提交
@@ -392,19 +439,23 @@ async function handlePostUnlock(ctx, cid) {
       },
     });
   }
+  await recordPwdFailure(db, lockKey);
   return renderProtected(ctx, post, { wrong: true, status: 401 });
 }
 
 function renderProtected(ctx, post, opts = {}) {
-  ctx.contentBody = `<div class="joe_container"><div class="joe_main joe_post"><div class="joe_detail">
-    <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
-    ${opts.wrong ? '<p class="joe_detail__article-protected-error">密码不正确，请重新输入。</p>' : ''}
+  const body = opts.locked
+    ? '<p class="joe_detail__article-protected-error">尝试次数过多，请 10 分钟后再试。</p>'
+    : `${opts.wrong ? '<p class="joe_detail__article-protected-error">密码不正确，请重新输入。</p>' : ''}
     <form class="joe_detail__article-protected" method="post" action="/archives/${post.cid}/">
       <div class="contain">
         <input class="password" type="password" name="password" placeholder="请输入访问密码..." required autofocus />
         <button class="submit" type="submit">确定</button>
       </div>
-    </form>
+    </form>`;
+  ctx.contentBody = `<div class="joe_container joe_protected_page"><div class="joe_main joe_post"><div class="joe_detail">
+    <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
+    ${body}
   </div></div></div>`;
   return html(simpleLayout(ctx, `密码保护 - ${ctx.options.title}`), {
     ...(opts.status ? { status: opts.status } : {}),
@@ -417,7 +468,7 @@ function simpleLayout(ctx, title) {
   const a = (p) => `/usr/themes/joe/${p}`;
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <link href="${a('assets/css/joe.mode.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.normalize.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.global.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.post.min.css')}" rel="stylesheet">
+  <link href="${a('assets/css/joe.mode.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.normalize.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.global.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.post.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.refine.css')}" rel="stylesheet">
   </head><body><div id="Joe">${ctx.contentBody}</div></body></html>`;
 }
 

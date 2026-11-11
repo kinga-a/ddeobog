@@ -45,7 +45,7 @@ function runtimeParts(value) {
 
 /** Joe 主题配置默认值（后台可改，存于 option theme:joe） */
 export const JOE_DEFAULTS = {
-  JFavicon: '/usr/themes/joe/assets/img/link.png',
+  JFavicon: '/usr/themes/joe/assets/img/favicon.ico',
   JLogo: '/usr/themes/joe/assets/img/aside_author_image.jpg',
   JBirthDay: '',
   JDocumentTitle: '',
@@ -670,7 +670,7 @@ async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = ''
   <meta charset="utf-8" />
   <meta name="renderer" content="webkit" />
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, shrink-to-fit=no, viewport-fit=cover">
-  <link rel="shortcut icon" href="${escapeHtml(options.joe.JFavicon)}" />
+  <link rel="shortcut icon" href="${escapeHtml(options.joe.JFavicon || JOE_DEFAULTS.JFavicon)}" />
   <title>${title}</title>
   ${meta}
   ${ogTags(ctx)}
@@ -1241,8 +1241,10 @@ export async function renderIndex(ctx) {
 
 function indexItem(ctx, p, eager = false) {
   const a = (path) => assetsUrl(ctx.options, path);
-  // 优先用索引里的 abstract（v1.4.1 起）；旧索引回退正文摘要，再回退后台填写的摘要
-  const excerpt = p.abstract || (p.text ? plainExcerpt(p.text, 90) : (p.fields?.abstract || ''));
+  // 密码文章不输出正文摘要；其余优先后台自定义摘要，再回退索引摘要/正文摘要
+  const excerpt = p.hasPassword
+    ? '🔒 这篇文章受密码保护'
+    : (p.absCustom || p.abstract || (p.text ? plainExcerpt(p.text, 90) : ''));
   // 顶置角标：与 joe.index.js 前端渲染保持同构（同一段 class 与 display）。
   // .badge 的 CSS 里没有 display，而 span 默认 inline 会吃掉 height/line-height，
   // 所以 inline-block 是必须的，不能省。
@@ -1524,7 +1526,7 @@ export async function renderArchive(ctx) {
 /** 404 */
 export async function render404(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
-  ctx.contentBody = `<div class="joe_container">
+  ctx.contentBody = `<div class="joe_container joe_404_page">
     <div class="joe_main">
       <div class="joe_404">
         <h1>404</h1>

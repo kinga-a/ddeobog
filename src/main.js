@@ -13,6 +13,7 @@ import { escapeHtml } from './render/markdown.js';
 import { runHooks, runAction, hasAction, loadBuiltinPlugins } from './plugins.js';
 import { setOwoMap, JOE_DEFAULTS } from './render/theme-joe.js';
 import owoJson from './owo.js';
+import { createRequestLogger, createRequestId, requestMeta, safePath } from './logging.js';
 
 let pluginsLoaded = false;
 
@@ -20,34 +21,55 @@ export default async function onRequest(context) {
   const { request, env, waitUntil } = context;
   const url = new URL(request.url);
   const path = url.pathname;
+  const started = Date.now();
+  const requestId = createRequestId();
+  const logger = createRequestLogger(env);
+  const meta = requestMeta(request);
 
   try {
+    // 所有成功/重定向响应统一记录一行结构化日志（EdgeOne 函数日志可检索）
+    const done = (res) => {
+      logger.info({
+        requestId,
+        method: request.method,
+        path: safePath(path),
+        status: res.status,
+        ms: Date.now() - started,
+        ...meta,
+      });
+      return res;
+    };
     // 加载内置插件（进程生命周期内一次）
     if (!pluginsLoaded) {
       await loadBuiltinPlugins();
       pluginsLoaded = true;
     }
 
-    const db = await createDatabase(env);
+    const db = env?.__database || (await createDatabase(env));
 
     // ---- 安装向导（未安装时强制进入）----
     const installed = await db.isInstalled();
-    if (!installed && !path.startsWith('/install') && !path.startsWith('/usr/')) {
-      return Response.redirect(new URL('/install', url).href, 302);
+    if (!installed && !path.startsWith('/install') && !path.startsWith('/usr/') && path !== '/favicon.ico') {
+      return done(Response.redirect(new URL('/install', url).href, 302));
     }
     if (path.startsWith('/install')) {
-      return (await handleInstall({ db, request, url, path })) || new Response('Not Found', { status: 404 });
+      return done((await handleInstall({ db, request, url, path })) || new Response('Not Found', { status: 404 }));
     }
 
     // /usr/ 下的真实静态资源由平台的静态资源层先行响应，不会走到函数；
     // 能落到这里的都是不存在的文件（JS/CSS/图片路径写错等），直接 404，
     // 否则会继续往下走渲染逻辑并抛 500。
     if (path.startsWith('/usr/')) {
-      return new Response('Not Found', { status: 404 });
+      return done(new Response('Not Found', { status: 404 }));
     }
 
     // ---- 组装全局上下文 ----
     const optionsRaw = await db.getOptions();
+    const joe = { ...JOE_DEFAULTS, ...(optionsRaw['theme:joe'] || {}) };
+    // 旧默认 link.png 迁移到新 favicon；空值回退默认，避免标签页图标空白
+    if (!joe.JFavicon || joe.JFavicon === '/usr/themes/joe/assets/img/link.png') {
+      joe.JFavicon = JOE_DEFAULTS.JFavicon;
+    }
     const options = {
       title: optionsRaw.title || '我的博客',
       description: optionsRaw.description || '',
@@ -56,7 +78,7 @@ export default async function onRequest(context) {
       commentStatus: optionsRaw.commentStatus || 'approved',
       theme: optionsRaw.theme || CONFIG.DEFAULT_THEME,
       themeAssetsBase: '/usr/themes/joe',
-      joe: { ...JOE_DEFAULTS, ...(optionsRaw['theme:joe'] || {}) },
+      joe,
     };
 
     const auth = await currentUser(db, request);
@@ -89,25 +111,45 @@ export default async function onRequest(context) {
     // Owo 表情映射（评论渲染用）
     setOwoMap(owoJson);
 
+    // 根路径图标跟随站点设置里的 Favicon URL，而不是硬编码本地文件
+    if (path === '/favicon.ico') {
+      const fallback = JOE_DEFAULTS.JFavicon;
+      const configured = String(options.joe.JFavicon || '').trim();
+      let target;
+      try {
+        target = new URL(configured || fallback, url);
+      } catch {
+        target = new URL(fallback, url);
+      }
+      // 防止把 /favicon.ico 指回自身造成重定向循环
+      if (target.host === url.host && target.pathname === '/favicon.ico') {
+        target = new URL(fallback, url);
+      }
+      return done(new Response(null, {
+        status: 302,
+        headers: { Location: target.href, 'Cache-Control': 'public, max-age=300' },
+      }));
+    }
+
     // ---- MCP（Model Context Protocol）----
-    if (path === '/mcp' || path === '/mcp/') return await handleMcp(ctx);
+    if (path === '/mcp' || path === '/mcp/') return done(await handleMcp(ctx));
 
     // ---- 插件：自定义路由 ----
     const custom = await runHooks('route', null, ctx);
-    if (custom instanceof Response) return custom;
+    if (custom instanceof Response) return done(custom);
 
     // ---- 插件 action（/action/[name]，对应 Typecho Widget\Action）----
     const actionMatch = path.match(/^\/action\/([a-zA-Z0-9_-]+)\/?$/);
     if (actionMatch) {
       if (hasAction(actionMatch[1])) {
-        return await runAction(actionMatch[1], ctx);
+        return done(await runAction(actionMatch[1], ctx));
       }
-      return new Response('Action Not Found', { status: 404 });
+      return done(new Response('Action Not Found', { status: 404 }));
     }
 
     // ---- 后台 ----
     if (path === '/admin' || path.startsWith('/admin/')) {
-      return await handleAdmin(ctx);
+      return done(await handleAdmin(ctx));
     }
 
     // ---- 前台 ----
@@ -115,9 +157,18 @@ export default async function onRequest(context) {
 
     // ---- 插件：响应前 ----
     const finalRes = await runHooks('response', res, ctx);
-    return finalRes instanceof Response ? finalRes : res;
+    return done(finalRes instanceof Response ? finalRes : res);
   } catch (e) {
-    console.error('[TypechoEdge]', e);
+    logger.error({
+      requestId,
+      method: request.method,
+      path: safePath(path),
+      status: 500,
+      ms: Date.now() - started,
+      message: String(e?.message || e).slice(0, 300),
+      stack: String(e?.stack || '').slice(0, 800),
+      ...meta,
+    });
     return errorPage(e);
   }
 }

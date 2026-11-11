@@ -4,3 +4,6 @@ node_modules/
 STICKY_BADGE_TODO.md
 public/
 .dev-kv.json
+data/
+data/*.sqlite-shm
+data/*.sqlite-wal

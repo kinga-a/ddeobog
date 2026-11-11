@@ -58,6 +58,24 @@
   --t: 180ms;
 
   --side-w: 240px;
+
+  /* 控件与排版令牌（无障碍重构） */
+  --control-border: #8f8f9b; /* 对白底 3.2:1，满足 WCAG 1.4.11 */
+  --text-2xs: 12px;
+  --text-xs: 13px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --control-h-xs: 28px;
+  --control-h-sm: 32px;
+  --control-h-md: 36px;
+  --control-h-xl: 44px;
 }
 
 html[data-admin-theme='dark'] {
@@ -67,6 +85,7 @@ html[data-admin-theme='dark'] {
   --surface-3:  #222228;
   --line:       #26262d;
   --line-soft:  #1d1d23;
+  --control-border: #5b5b68;
 
   --ink:        #f4f4f6;
   --ink-2:      #d6d6dc;
@@ -106,6 +125,7 @@ html[data-admin-theme='dark'] {
     --surface-3:  #222228;
     --line:       #26262d;
     --line-soft:  #1d1d23;
+    --control-border: #5b5b68;
 
     --ink:        #f4f4f6;
     --ink-2:      #d6d6dc;
@@ -196,6 +216,7 @@ code {
   padding: 30px 40px 72px;
 }
 
+h1,
 h2 {
   font-size: 20px;
   font-weight: 680;
@@ -205,7 +226,9 @@ h2 {
 }
 
 /* 页面主标题：靛蓝短竖条锚点 */
+.main > h1,
 .main > h2 { position: relative; padding-left: 14px; margin-bottom: 22px; }
+.main > h1::before,
 .main > h2::before {
   content: "";
   position: absolute;
@@ -287,9 +310,9 @@ h2 {
 .brand__mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .brand__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side .brand small {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 450;
-  color: var(--ink-4);
+  color: var(--ink-3);
   letter-spacing: .02em;
   font-variant-numeric: tabular-nums;
 }
@@ -400,16 +423,16 @@ td:last-child { white-space: nowrap; }
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-height: 38px;
-  padding: 8px 16px;
+  min-height: var(--control-h-md);
+  padding: 7px 16px;
   line-height: 1.35;
   background: var(--surface);
   color: var(--ink-2);
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--r-md);
   box-shadow: var(--sh-1);
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: .01em;
   text-decoration: none;
@@ -444,13 +467,13 @@ td:last-child { white-space: nowrap; }
 .btn.danger { background: var(--surface); color: var(--danger); border-color: var(--line); }
 .btn.danger:hover { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
-.btn.sm { min-height: 30px; padding: 5px 11px; font-size: 12.5px; border-radius: 8px; }
+.btn.sm { min-height: var(--control-h-sm); padding: 5px 11px; font-size: var(--text-xs); border-radius: var(--r-sm); }
 .btn.sm:hover { transform: none; }
 .btn.mini {
-  min-height: 27px;
+  min-height: var(--control-h-xs);
   padding: 4px 9px;
-  font-size: 11.5px;
-  border-radius: 7px;
+  font-size: var(--text-2xs);
+  border-radius: var(--r-sm);
   background: var(--surface-2);
   color: var(--ink-2);
   border-color: var(--line);
@@ -480,7 +503,7 @@ input[type="file"], select, textarea {
   width: 100%;
   max-width: 520px;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--r-md);
   background: var(--surface);
   color: var(--ink);
@@ -490,7 +513,7 @@ input[type="file"], select, textarea {
   transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
 }
 
-input::placeholder, textarea::placeholder { color: var(--ink-4); }
+input::placeholder, textarea::placeholder { color: var(--ink-3); }
 input:hover, select:hover, textarea:hover { border-color: var(--ink-4); }
 
 input:focus, select:focus, textarea:focus,
@@ -564,7 +587,6 @@ input[type="checkbox"], input[type="radio"] {
   margin-top: 18px;
 }
 .form-actions .btn { flex: none; }
-.form-actions--start { margin-top: 0; }
 
 /* ---------- 仪表盘快捷操作 ---------- */
 .quickacts { display: flex; flex-wrap: wrap; gap: 10px 12px; }
@@ -687,7 +709,7 @@ input[type="checkbox"], input[type="radio"] {
   box-shadow: var(--sh-2);
   color: #f4f4f6;
 }
-.dash-hero__main h2 { margin: 0 0 6px; font-size: 23px; color: #f4f4f6; }
+.dash-hero__main h1 { margin: 0 0 6px; font-size: 23px; color: #f4f4f6; }
 .dash-hero__main p { margin: 0; color: rgba(244, 244, 246, .62); font-size: 13px; }
 .dash-hero__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .dash-hero__actions .btn {
@@ -968,6 +990,7 @@ input[type="checkbox"], input[type="radio"] {
   to   { transform: scaleX(1); }
 }
 
+.main > h1,
 .main > h2,
 .main > .msg,
 .main > .card,
@@ -1691,8 +1714,11 @@ body.auth {
   .sk-card { height: 88px; }
   .topbar { margin-bottom: 14px; }
 
+  h1,
   h2 { font-size: 18px; }
+  .main > h1,
   .main > h2 { padding-left: 12px; margin-bottom: 18px; }
+  .main > h1::before,
   .main > h2::before { height: 16px; }
 
   .card { padding: 18px 16px; border-radius: var(--r-md); overflow-x: visible; }
@@ -1701,9 +1727,12 @@ body.auth {
   .stat { padding: 14px 16px; }
   .stat .num { font-size: 23px; }
 
-  /* 触控目标 */
-  .btn { min-height: 40px; }
-  .btn.sm { min-height: 32px; }
+  /* 触控目标：移动端统一 44px（WCAG 2.5.5 建议值） */
+  .btn,
+  .btn.sm,
+  .btn.mini,
+  .side a,
+  .side__foot a { min-height: var(--control-h-xl); }
 
   /* 表格变卡片列表：标签在左、内容在右，操作按钮成行，不再横向拖动 */
   .card table { display: block; overflow: visible; white-space: normal; }
@@ -1712,7 +1741,7 @@ body.auth {
   .card table tr {
     display: block;
     margin: 0 0 10px;
-    padding: 10px 12px;
+    padding: 8px 12px;
     border: 1px solid var(--line-soft);
     border-radius: var(--r-md);
     background: var(--surface-2);
@@ -1721,29 +1750,32 @@ body.auth {
   .card table tr:last-child { margin-bottom: 0; }
   .card table td {
     display: block;
-    padding: 5px 0;
+    padding: 3px 0;
     border: 0;
     white-space: normal;
     overflow-wrap: anywhere;
   }
+  /* 移动端卡片不展示 ID 等次要列，降低单卡高度 */
   .card table td[data-label] { display: flex; align-items: flex-start; gap: 10px; }
+  .card table td[data-label="ID"] { display: none; }
+  .card table td[data-label="评论"] { display: none; }
   .card table td[data-label]::before {
     content: attr(data-label);
     flex: 0 0 68px;
-    color: var(--ink-4);
+    color: var(--ink-3);
     font-size: 12px;
     line-height: 1.7;
   }
   .card table td:last-child {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 4px;
-    padding-top: 9px;
+    gap: 8px;
+    margin-top: 2px;
+    padding-top: 7px;
     border-top: 1px dashed var(--line-soft);
   }
   .card table td:last-child::before { display: none; }
-  .card table td form { margin: 0 6px 0 0; }
+  .card table td form { margin: 0 8px 0 0; }
   .card table td form:last-child { margin-right: 0; }
 
   /* 分类/标签页同为卡片：改名/删除在卡内成行，不需要横向空间 */
@@ -1774,7 +1806,7 @@ body.auth {
   .metas .card table td[data-label]::before {
     content: attr(data-label);
     flex: 0 0 68px;
-    color: var(--ink-4);
+    color: var(--ink-3);
     font-size: 12px;
     line-height: 1.7;
   }
@@ -1842,7 +1874,7 @@ body.auth {
     transition-duration: .01ms !important;
   }
   .side { transition: none !important; }
-  .main > h2, .main > .msg, .main > .card, .main > .dash-hero,
+  .main > h1, .main > h2, .main > .msg, .main > .card, .main > .dash-hero,
   .main .dash-stats > .stat, .main .dash-grid > *, .dash-bar__track i { animation: none; }
   .layout { transition: none; }
   .stat:hover, .dash-card:hover, .btn:hover { transform: none; }
@@ -1864,10 +1896,10 @@ body.auth {
 /* ---------- 侧栏：新建按钮、分组标签、底部区 ---------- */
 .side__group {
   margin: 18px 10px 7px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: .09em;
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 .side__foot {
   margin-top: 16px;
@@ -1891,8 +1923,8 @@ body.auth {
   gap: 12px;
   margin-bottom: 22px;
 }
-.page-head h2 { position: relative; margin: 0; padding-left: 14px; }
-.page-head h2::before {
+.page-head h1 { position: relative; margin: 0; padding-left: 14px; }
+.page-head h1::before {
   content: "";
   position: absolute;
   left: 0;
@@ -1906,8 +1938,8 @@ body.auth {
 .main > .page-head { animation: admin-rise .45s var(--ease-out) both; }
 @media (max-width: 760px) {
   .page-head { margin-bottom: 18px; }
-  .page-head h2 { padding-left: 12px; }
-  .page-head h2::before { height: 16px; }
+  .page-head h1 { padding-left: 12px; }
+  .page-head h1::before { height: 16px; }
 }
 
 /* ---------- 折叠分区（原生 details，关闭时字段仍在表单内） ---------- */
@@ -1984,4 +2016,75 @@ details.card.fold > .fold__body { padding: 2px 26px 24px; }
 }
 @media (max-width: 760px) {
   .tabs-bar { padding: 14px 14px 2px; }
+}
+
+/* ---------- 无障碍：跳转链接与触屏目标 ---------- */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: var(--space-4);
+  z-index: 200;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  transition: top var(--t) var(--ease-out);
+}
+.skip-link:focus {
+  top: var(--space-4);
+}
+
+@media (pointer: coarse) {
+  .btn,
+  .btn.sm,
+  .btn.mini,
+  .side a,
+  .side__foot a {
+    min-height: var(--control-h-xl);
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* 防 iOS 聚焦缩放 */
+  }
+  input,
+  select {
+    min-height: var(--control-h-xl);
+  }
+  /* EasyMDE / CodeMirror 的可见内容也必须是 16px，否则 iOS 聚焦仍会放大 */
+  .EasyMDEContainer .CodeMirror,
+  .EasyMDEContainer .CodeMirror-code,
+  .EasyMDEContainer .CodeMirror pre.CodeMirror-line,
+  .EasyMDEContainer .CodeMirror textarea,
+  .EasyMDEContainer .editor-toolbar {
+    font-size: 16px !important;
+    line-height: 1.55;
+  }
+}
+
+/* ---------- 设置页长表单：保存按钮固定可见 ---------- */
+.settings-form { padding-bottom: 84px; }
+.settings-actions {
+  position: fixed;
+  right: 40px;
+  bottom: 24px;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--sh-2);
+}
+@media (max-width: 1080px) {
+  .settings-actions { right: 24px; }
+}
+@media (max-width: 760px) {
+  .settings-actions { left: 16px; right: 16px; bottom: 16px; }
+  .settings-actions .btn { flex: 1; }
 }

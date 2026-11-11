@@ -61,7 +61,7 @@ const MIME_BY_EXT = {
   json: 'application/json', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg',
 };
 
-const guessMime = (key) => {
+export const guessMime = (key) => {
   const m = /\.([a-z0-9]+)$/i.exec(String(key || ''));
   return (m && MIME_BY_EXT[m[1].toLowerCase()]) || 'application/octet-stream';
 };

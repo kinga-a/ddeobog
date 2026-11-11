@@ -10,6 +10,7 @@
 - **零服务器**：全部逻辑运行在 EdgeOne 边缘函数（Edge Functions），无需 PHP / MySQL
 - **KV 存储**：文章、页面、分类、标签、评论、用户账号、配置全部存放在 EdgeOne KV 命名空间
 - **Blob 存储**：上传的图片等附件存放在 EdgeOne Blob（无 SDK 环境自动降级 KV）
+- **SQLite 本地部署**：同一份代码可选 SQLite 单文件存储，用 `npm start` 或 Docker 脱离平台运行
 - **首次访问安装**：浏览器打开网站即引导创建管理员账号（存入 KV）
 - **TOTP 两步验证**：RFC 6238 标准动态口令（Google Authenticator 等），后台扫码绑定
 - **Typecho 路由兼容**：`/archives/[cid]/`、`/category/[slug]/`、`/tag/[slug]/`、`/author/[uid]/`、`/search/[kw]/`、`/feed/`、`/action/[name]`
@@ -25,6 +26,7 @@ typecho-edgeone/
 │   ├── db.js                # 数据层：Typecho 7 表 → KV 文档
 │   ├── storage/kv.js        # EdgeOne KV 封装
 │   ├── storage/blob.js      # EdgeOne Blob 封装（含 KV 降级）
+│   ├── storage/sqlite.js    # SQLite 后端（KV 表 + Blob 表，本地部署用）
 │   ├── auth/password.js     # PBKDF2-SHA256 密码哈希
 │   ├── auth/session.js      # Cookie + KV 会话
 │   ├── auth/totp.js         # TOTP（RFC 6238）+ SVG 二维码生成
@@ -34,8 +36,9 @@ typecho-edgeone/
 │   ├── plugins.js           # 插件系统
 │   └── plugins-builtin/     # 内置插件
 ├── usr/themes/joe/assets/   # Joe 主题静态资源（原版复制）
-├── edge-functions/          # 构建产物（边缘函数，平台自动路由）
-├── edge-functions/          # 构建产物（Edge Functions 入口）
+├── edge-functions/          # 构建产物（Edge Functions 入口，平台自动路由）
+├── server.mjs               # 本地 Node 服务器（SQLite + 静态资源 + 函数入口）
+├── Dockerfile               # 本地/容器镜像
 ├── build.mjs                # esbuild 打包脚本
 └── edgeone.json             # 构建配置
 ```
@@ -113,14 +116,47 @@ typecho-edgeone/
 
 **自定义插件**：在 `src/plugins-builtin/` 新建 `my-plugin.js` 导出 `register(api)`，并在 `src/plugins.js` 的 `loadBuiltinPlugins` 中注册，重新构建部署。
 
+## 本地部署（SQLite）
+
+不依赖 EdgeOne KV / Blob，全部数据落在单个 SQLite 文件：
+
+```bash
+npm install
+npm start        # http://127.0.0.1:5173
+```
+
+首次访问会进入 `/install` 创建管理员，之后数据写入 `data/blog.sqlite`。
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `PORT` | `5173` | 监听端口 |
+| `HOST` | `0.0.0.0` | 监听地址 |
+| `DB_PATH` | `data/blog.sqlite` | SQLite 文件路径（相对项目根或绝对路径） |
+| `MAX_BODY_BYTES` | `26214400`（25 MB） | 单个请求体上限 |
+
+要求 **Node.js >= 22.5**（`node:sqlite` 目前为实验特性，`npm start` 已内置 `--experimental-sqlite`）。
+
+Docker 部署：
+
+```bash
+docker compose up -d --build
+# 站点 http://localhost:8080，数据持久化到 ./data/blog.sqlite
+```
+
+实现说明：`src/storage/sqlite.js` 用 `kv` 表承载原有全部 KV 键，用 `blobs` 表承载附件二进制；`src/db.js`、控制器与主题渲染均未改动。因此同一份代码仍可按上面的步骤部署到 EdgeOne（使用平台 KV + Blob），本地则通过 `server.mjs` 注入 SQLite 存储。
+
+备份：停止服务后直接复制 `data/blog.sqlite`（退出时会自动合并 WAL），或使用后台的 JSON 备份/恢复功能。
+
 ## 本地开发
 
 ```bash
 npm install
-npm run build   # 生成 edge-functions/[[default]].js 与 functions/[[path]].js
+npm run build        # 生成 edge-functions/[[default]].js 与 functions/[[path]].js
+npm run test:sqlite  # SQLite 存储层测试
+npm test             # 全量测试（需要 playwright）
 ```
 
-KV / Blob 需在真实 EdgeOne 环境绑定后使用，本地可参照 [EdgeOne CLI](https://pages.edgeone.ai/zh/document/edgeone-cli) 调试。
+KV / Blob 需在真实 EdgeOne 环境绑定后使用，本地可参照 [EdgeOne CLI](https://pages.edgeone.ai/zh/document/edgeone-cli) 调试；纯本地运行用上面的 SQLite 方式即可。
 
 ## 已知差异
 

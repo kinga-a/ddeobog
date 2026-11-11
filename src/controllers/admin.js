@@ -31,8 +31,9 @@ const LOGIN_LOCK_MS = 15 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 /** 密码通过后进入 TOTP 二次验证的待办会话有效期 */
 const PENDING_TOTP_TTL_MS = 5 * 60 * 1000;
-/** 上传文件大小上限（平台请求体上限 1MB，本地按 5MB 兜底） */
-const MAX_UPLOAD_BYTES = 950 * 1024; // Edge Functions 请求体上限 1MB，留出 multipart 余量
+/** 上传文件大小上限（默认按平台请求体 1MB 留出 multipart 余量；本地可用 MAX_UPLOAD_BYTES 放宽） */
+const MAX_UPLOAD_BYTES =
+  Number(globalThis.process?.env?.MAX_UPLOAD_BYTES) || 950 * 1024;
 const ADMIN_LIST_PAGE_SIZE = 20;
 const ADMIN_COMMENT_PAGE_SIZE = 30;
 const ADMIN_ATTACHMENT_PAGE_SIZE = 200;
@@ -141,7 +142,11 @@ export async function handleAdmin(ctx) {
 
   // ---- 登录/登出 ----
   if (sub === 'login') {
-    if (request.method === 'POST') return doLogin(ctx);
+    if (request.method === 'POST') {
+      // 登录同样校验同源：防止第三方站点诱导用户以攻击者账号登录（login CSRF）
+      if (!sameOrigin(request)) return json({ ok: 0, msg: '非法来源' }, 403);
+      return doLogin(ctx);
+    }
     return loginPage(ctx);
   }
   if (sub === 'logout') {
@@ -175,6 +180,7 @@ function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = ''
   const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>登录 - ${esc(ctx.options.title)}</title>
   <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css?v=${CONFIG.VERSION}">
+  <link rel="icon" href="${esc(ctx.options.joe?.JFavicon || '/usr/themes/joe/assets/img/favicon.ico')}">
   <meta name="color-scheme" content="light dark">
   <script>(function(){try{var t=localStorage.getItem('admin-theme');var d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-admin-theme', t || (d?'dark':'light'));}catch(e){}})();</script>
 </head><body class="auth">
@@ -183,12 +189,12 @@ function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = ''
     ${error ? `<div class="err">${esc(error)}</div>` : ''}
     ${totp ? `<form method="post" action="/admin/login">
       <input type="hidden" name="pending" value="${esc(pendingToken)}">
-      <div class="item"><label>两步验证码（TOTP）</label>
-      <input type="text" name="totp" placeholder="6 位动态码" autocomplete="one-time-code" autofocus required pattern="\\d{6}"></div>
+      <div class="item"><label for="login-totp">两步验证码（TOTP）</label>
+      <input id="login-totp" type="text" name="totp" placeholder="6 位动态码" autocomplete="one-time-code" autofocus required pattern="\\d{6}"></div>
       <button type="submit" name="step" value="totp">验证</button>
     </form>` : `<form method="post" action="/admin/login">
-      <div class="item"><label>用户名</label><input type="text" name="name" value="${esc(name)}" required autofocus></div>
-      <div class="item"><label>密码</label><input type="password" name="password" required></div>
+      <div class="item"><label for="login-name">用户名</label><input id="login-name" type="text" name="name" value="${esc(name)}" required autofocus></div>
+      <div class="item"><label for="login-password">密码</label><input id="login-password" type="password" name="password" required></div>
       <button type="submit" name="step" value="password">登录</button>
     </form>`}
     <div class="tip">TypechoEdge on EdgeOne · 安全登录</div>
@@ -302,8 +308,10 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
   <title>${title} - ${esc(ctx.options.title)}</title>
   <link rel="stylesheet" href="/usr/themes/joe/assets/lib/font-awesome@4.7.0/font-awesome.min.css">
   <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css?v=${CONFIG.VERSION}">
+  <link rel="icon" href="${esc(ctx.options.joe?.JFavicon || '/usr/themes/joe/assets/img/favicon.ico')}">
   <meta name="color-scheme" content="light dark">
 </head><body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
   <button class="burger" type="button" aria-label="切换导航" aria-expanded="false" aria-controls="admin-side">
     <i class="fa fa-bars" aria-hidden="true"></i>
   </button>
@@ -322,7 +330,7 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       </div>
       ${menu}
     </nav>
-    <main class="main">
+    <main class="main" id="main">
       <div class="topbar">
         <nav class="crumbs" aria-label="面包屑">
           <a href="/admin">工作台</a>
@@ -332,6 +340,15 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       </div>
       ${body}
     </main>
+  </div>
+  <div class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="ui-modal-msg" hidden>
+    <div class="ui-modal__card">
+      <p class="ui-modal__msg" id="ui-modal-msg"></p>
+      <div class="ui-modal__actions">
+        <button type="button" class="btn" data-ui-cancel>取消</button>
+        <button type="button" class="btn danger" data-ui-ok>确定</button>
+      </div>
+    </div>
   </div>
   <script>
   (function(){
@@ -358,6 +375,7 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       themeBtn.innerHTML='<i class="fa '+(dark?'fa-sun-o':'fa-moon-o')+'" aria-hidden="true"></i>';
       themeBtn.setAttribute('aria-label', dark?'切换浅色模式':'切换深色模式');
       themeBtn.setAttribute('title', dark?'切换浅色模式':'切换深色模式');
+      themeBtn.setAttribute('aria-pressed', dark?'true':'false');
     }
     paintThemeBtn();
     if(themeBtn){
@@ -369,13 +387,49 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       });
     }
 
+    // 无障碍：把控件与同容器内相邻的 label 关联；没有 label 时用 placeholder 兜底
+    function linkLabels(root){
+      var scope=root||document,seq=0;
+      var fields=scope.querySelectorAll('input:not([type=hidden]),select,textarea');
+      for(var i=0;i<fields.length;i++){
+        var el=fields[i];
+        if(el.type==='submit'||el.type==='button'||el.type==='reset') continue;
+        if(el.labels&&el.labels.length) continue;
+        if(el.getAttribute('aria-label')||el.getAttribute('aria-labelledby')) continue;
+        var host=el.parentElement;
+        var lab=host&&host.tagName==='LABEL'?host:(host&&host.querySelector(':scope > label'));
+        if(!lab){
+          var item=el.closest('.item,.field');
+          if(item) lab=item.querySelector(':scope > label');
+        }
+        var id=el.id||('a11y-field-'+(++seq));
+        el.id=id;
+        if(lab){lab.htmlFor=id;continue;}
+        var ph=(el.getAttribute('placeholder')||'').replace(/（[^）]*）/g,'').trim();
+        if(ph) el.setAttribute('aria-label',ph);
+      }
+    }
+    linkLabels(document);
+
     var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var main=document.querySelector('.main');
     var layoutEl=document.querySelector('.layout');
 
+    // 未保存修改保护：编辑器/设置页有改动时，拦截 SPA 导航
+    var dirty=false;
+    if(main){
+      var markDirty=function(e){
+        var t=e.target;
+        if(t&&t.closest&&t.closest('form[action="/admin/post"],form[action="/admin/settings"]')) dirty=true;
+      };
+      main.addEventListener('input',markDirty);
+      main.addEventListener('change',markDirty);
+      main.addEventListener('submit',function(){dirty=false;});
+    }
+
     function enhance(){
       if(reduce||!main) return;
-      var items=main.querySelectorAll(':scope > h2, :scope > .msg, :scope > .card, :scope > .dash-hero, .dash-stats > .stat, .dash-grid > *');
+      var items=main.querySelectorAll(':scope > h1, :scope > h2, :scope > .msg, :scope > .card, :scope > .dash-hero, .dash-stats > .stat, .dash-grid > *');
       for(var i=0;i<items.length;i++) items[i].style.setProperty('--enter-delay',(i*45)+'ms');
       var bars=main.querySelectorAll('.dash-bar__track i');
       for(var b=0;b<bars.length;b++) bars[b].style.setProperty('--enter-delay',(150+b*70)+'ms');
@@ -428,6 +482,13 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
     }
 
     function navigate(href,push){
+      if(!dirty){ navigateNow(href,push); return; }
+      uiConfirm('有未保存的修改，离开将丢失。').then(function(ok){
+        if(ok){ dirty=false; navigateNow(href,push); }
+      });
+    }
+
+    function navigateNow(href,push){
       if(!main){ location.href=href; return; }
       var skeleton=document.createElement('div');
       skeleton.className='admin-skeleton';
@@ -447,6 +508,9 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
           if(!next) throw new Error('no main');
           clearTimeout(skTimer);
           main.innerHTML=next.innerHTML;
+          dirty=false;
+          // SPA 换页后重新关联表单标签
+          linkLabels(main);
           // 编辑器全屏会给 body/html 上 overflow:hidden 的滚动锁，SPA 换页把编辑器
           // 直接换掉时锁不会自己解开（列表页会滑不动），换页后统一清掉
           document.body.style.overflow='';
@@ -470,13 +534,33 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
     // （替代原生 confirm()，样式与后台统一；全站删除/恢复/清空等危险操作都走它）
     var uiModal=document.querySelector('.ui-modal');
     var uiConfirmResolve=null;
+    var modalLastFocus=null;
+    function modalBackground(){
+      return [
+        document.querySelector('.layout'),
+        document.querySelector('.burger'),
+        document.querySelector('.admin-theme-toggle'),
+        document.querySelector('.skip-link'),
+        document.querySelector('.scrim')
+      ];
+    }
+    function setModalInert(on){
+      var els=modalBackground();
+      for(var i=0;i<els.length;i++){
+        if(!els[i]) continue;
+        if(on) els[i].setAttribute('inert','');
+        else els[i].removeAttribute('inert');
+      }
+    }
     function uiConfirm(msg){
       return new Promise(function(resolve){
         uiConfirmResolve=resolve;
+        modalLastFocus=document.activeElement;
         uiModal.querySelector('.ui-modal__msg').textContent=msg;
         uiModal.hidden=false;
         requestAnimationFrame(function(){uiModal.classList.add('is-open');});
         document.body.classList.add('ui-modal-open');
+        setModalInert(true);
         uiModal.querySelector('[data-ui-cancel]').focus();
       });
     }
@@ -485,12 +569,23 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       uiModal.classList.remove('is-open');
       uiModal.hidden=true;
       document.body.classList.remove('ui-modal-open');
+      setModalInert(false);
+      if(modalLastFocus&&modalLastFocus.focus) modalLastFocus.focus();
       if(uiConfirmResolve){var done=uiConfirmResolve;uiConfirmResolve=null;done(ok);}
     }
     if(uiModal){
       uiModal.addEventListener('click',function(e){
         if(e.target===uiModal||e.target.closest('[data-ui-cancel]')) uiConfirmClose(false);
         else if(e.target.closest('[data-ui-ok]')) uiConfirmClose(true);
+      });
+      // 弹窗内 Tab 循环，避免焦点跑到背景
+      uiModal.addEventListener('keydown',function(e){
+        if(e.key!=='Tab') return;
+        var items=uiModal.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+        if(!items.length) return;
+        var first=items[0],last=items[items.length-1];
+        if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+        else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
       });
       document.addEventListener('keydown',function(e){
         if(e.key==='Escape'&&!uiModal.hidden) uiConfirmClose(false);
@@ -611,19 +706,10 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       if(a.closest('.side')) setOpen(false);
       navigate(href,true);
     });
-    window.addEventListener('popstate',function(){navigate(location.pathname+location.search,false);});
+    window.addEventListener('popstate',function(){navigateNow(location.pathname+location.search,false);});
     history.replaceState({admin:1},'');
   })();
   </script>
-  <div class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="ui-modal-msg" hidden>
-    <div class="ui-modal__card">
-      <p class="ui-modal__msg" id="ui-modal-msg"></p>
-      <div class="ui-modal__actions">
-        <button type="button" class="btn" data-ui-cancel>取消</button>
-        <button type="button" class="btn danger" data-ui-ok>确定</button>
-      </div>
-    </div>
-  </div>
 </body></html>`;
 }
 
@@ -767,7 +853,7 @@ async function dashboard(ctx) {
   const body = `${MSG(ctx)}
   <div class="dash-hero">
     <div class="dash-hero__main">
-      <h2>欢迎回来，${esc(user.screenName || user.name)}</h2>
+      <h1>欢迎回来，${esc(user.screenName || user.name)}</h1>
       <p>${esc(ctx.options.title)} · 已运行 ${runDays} 天 · 今天是 ${new Date().toLocaleDateString('zh-CN')}</p>
     </div>
     <div class="dash-hero__actions">
@@ -874,9 +960,9 @@ async function postsList(ctx) {
       ${list.page < list.pages ? `<a href="?page=${list.page + 1}">下一页</a>` : ''}</p>`
     : '';
   const body = `${MSG(ctx)}
-  <div class="page-head"><h2>管理文章（${list.total}）</h2><a class="btn primary" href="/admin/post?type=post"><i class="fa fa-pencil" aria-hidden="true"></i>撰写文章</a></div>
+  <div class="page-head"><h1>管理文章（${list.total}）</h1><a class="btn primary" href="/admin/post?type=post"><i class="fa fa-pencil" aria-hidden="true"></i>撰写文章</a></div>
   <div class="card">
-    <table><thead><tr><th>ID</th><th>标题</th><th>状态</th><th>评论</th><th>发布时间</th><th>操作</th></tr></thead>
+    <table><thead><tr><th scope="col">ID</th><th scope="col">标题</th><th scope="col">状态</th><th scope="col">评论</th><th scope="col">发布时间</th><th scope="col">操作</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="6">暂无文章</td></tr>'}</tbody></table>
     ${pager}
   </div>`;
@@ -904,9 +990,9 @@ async function pagesList(ctx) {
     )
     .join('');
   const body = `${MSG(ctx)}
-  <div class="page-head"><h2>管理页面（${list.total}）</h2><a class="btn primary" href="/admin/page"><i class="fa fa-plus" aria-hidden="true"></i>创建页面</a></div>
+  <div class="page-head"><h1>管理页面（${list.total}）</h1><a class="btn primary" href="/admin/page"><i class="fa fa-plus" aria-hidden="true"></i>创建页面</a></div>
   <div class="card">
-    <table><thead><tr><th>ID</th><th>标题</th><th>路径</th><th>状态</th><th>操作</th></tr></thead>
+    <table><thead><tr><th scope="col">ID</th><th scope="col">标题</th><th scope="col">路径</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="5">暂无页面</td></tr>'}</tbody></table>
   </div>`;
   return html(adminLayout(ctx, { title: '管理页面', active: 'pages', body }));
@@ -942,7 +1028,7 @@ async function postEditor(ctx, kind) {
   const catChecks = categoryChecks(cats, post?.categories || []);
 
   const body = `${MSG(ctx)}
-  <h2>${isNew ? (isPage ? '创建页面' : '撰写文章') : `编辑：${esc(post.title)}`}</h2>
+  <h1>${isNew ? (isPage ? '创建页面' : '撰写文章') : `编辑：${esc(post.title)}`}</h1>
   <div class="card">
   <form method="post" action="/admin/post">
     ${cid ? `<input type="hidden" name="cid" value="${cid}">` : ''}
@@ -952,7 +1038,7 @@ async function postEditor(ctx, kind) {
       ? `<div class="item"><label>缩略名（URL 路径）</label><input type="text" name="slug" value="${esc(post?.slug || '')}" placeholder="about" pattern="[a-zA-Z0-9_-]+"><div class="hint">访问路径 /缩略名/，留空自动生成</div></div>`
       : ''}
     <div class="item"><label>内容（支持 Markdown，<!--more--> 之前为摘要）</label>
-      <textarea name="text" id="joe-md-text" class="md-textarea" style="min-height:320px">${esc(post?.text || '')}</textarea></div>
+      <textarea name="text" id="joe-md-text" class="md-textarea" aria-label="内容（支持 Markdown）" style="min-height:320px">${esc(post?.text || '')}</textarea></div>
     <div class="row">
       <div class="item"><label>状态</label>
         <select name="status">
@@ -1083,7 +1169,7 @@ async function metasPage(ctx) {
   const { db } = ctx;
   const cats = await db.listMetas('category');
   const tags = await db.listMetas('tag');
-  const metaTable = (list, type) => `<table><thead><tr><th>名称</th><th>缩略名</th><th>文章数</th><th class="col-act">操作</th></tr></thead><tbody>
+  const metaTable = (list, type) => `<table><thead><tr><th scope="col">名称</th><th scope="col">缩略名</th><th scope="col">文章数</th><th class="col-act" scope="col">操作</th></tr></thead><tbody>
     ${list.map((m) => `<tr>
       <td class="cell-strong" data-label="名称">${esc(m.name)}</td><td data-label="缩略名"><code>${esc(m.slug)}</code></td><td data-label="文章数">${m.count}</td>
       <td>
@@ -1091,7 +1177,7 @@ async function metasPage(ctx) {
           <form method="post" action="/admin/meta">
             <input type="hidden" name="mid" value="${m.mid}">
             <input type="hidden" name="type" value="${type}">
-            <input class="meta-input" type="text" name="name" value="${esc(m.name)}" aria-label="改名">
+            <input class="meta-input" type="text" name="name" value="${esc(m.name)}" aria-label="${type === 'tag' ? '标签名称' : '分类名称'}">
             <button class="btn sm" type="submit">改名</button>
           </form>
           <form method="post" action="/admin/meta-delete" data-confirm="确定删除？文章将解除关联">
@@ -1104,7 +1190,7 @@ async function metasPage(ctx) {
   </tbody></table>`;
 
   const body = `${MSG(ctx)}
-  <h2>分类 / 标签</h2>
+  <h1>分类 / 标签</h1>
   <div class="metas">
     <section class="card">
       <div class="metas__head"><h2>新建</h2></div>
@@ -1183,16 +1269,16 @@ async function commentsPage(ctx) {
     )
     .join('');
   const body = `${MSG(ctx)}
-  <h2>评论管理（${list.total}）</h2>
+  <h1>评论管理（${list.total}）</h1>
   <div class="card">
     <form method="post" action="/admin/comment-moderation" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <strong style="font-size:15px">评论审核</strong>
       <span class="hint" style="flex:1;min-width:220px">开启后，新评论要在这里审核通过才会在前台显示；关闭时评论提交即显示。与站点设置里的「评论默认状态」是同一开关。</span>
-      <span class="switch"><input type="hidden" name="moderation" value="off"><input type="checkbox" name="moderation" value="on" ${ctx.options.commentStatus === 'waiting' ? 'checked' : ''} onchange="this.form.submit()"><i class="switch__ui" aria-hidden="true"></i></span>
+      <span class="switch"><input type="hidden" name="moderation" value="off"><input type="checkbox" name="moderation" value="on" aria-label="评论审核" ${ctx.options.commentStatus === 'waiting' ? 'checked' : ''} onchange="this.form.submit()"><i class="switch__ui" aria-hidden="true"></i></span>
     </form>
   </div>
   <div class="card">${tabs}
-    <table><thead><tr><th>ID</th><th>作者</th><th>内容</th><th>文章</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
+    <table><thead><tr><th scope="col">ID</th><th scope="col">作者</th><th scope="col">内容</th><th scope="col">文章</th><th scope="col">状态</th><th scope="col">时间</th><th scope="col">操作</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="7">暂无评论</td></tr>'}</tbody></table>
   </div>`;
   return html(adminLayout(ctx, { title: '评论管理', active: 'comments', body }));
@@ -1244,13 +1330,13 @@ async function uploadsPage(ctx) {
     )
     .join('');
   const body = `${MSG(ctx)}
-  <h2>附件管理（${files.length}）</h2>
+  <h1>附件管理（${files.length}）</h1>
   <div class="card">
     <form method="post" action="/admin/upload" enctype="multipart/form-data" data-compress-upload style="display:flex;gap:12px;align-items:flex-end;margin-bottom:18px">
       <div class="item" style="flex:1"><label>上传文件（存入 Blob 存储）</label><input type="file" name="file" required></div>
       <button class="btn primary" type="submit">上传</button>
     </form>
-    <table><thead><tr><th>ID</th><th>类型</th><th>文件名</th><th>大小</th><th>时间</th><th>引用地址</th><th>操作</th></tr></thead>
+    <table><thead><tr><th scope="col">ID</th><th scope="col">类型</th><th scope="col">文件名</th><th scope="col">大小</th><th scope="col">时间</th><th scope="col">引用地址</th><th scope="col">操作</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="7">暂无附件</td></tr>'}</tbody></table>
     <p class="hint">Markdown 中引用：\`![图片](/upload/xxx.png)\`</p>
   </div>`;
@@ -1312,17 +1398,17 @@ async function previewMarkdownAction(ctx) {
  * 开关（原为「开启/关闭」下拉）：隐藏域先落 off、复选框再落 on，
  * 保存端按 form.entries() 顺序合并，后出现的值胜出，语义与旧下拉完全一致。
  */
-function onOffSelect(name, value) {
-  return `<span class="switch"><input type="hidden" name="${name}" value="off"><input type="checkbox" name="${name}" value="on" ${value !== 'off' ? 'checked' : ''}><i class="switch__ui" aria-hidden="true"></i></span>`;
+function onOffSelect(name, value, label = '') {
+  return `<span class="switch"><input type="hidden" name="${name}" value="off"><input type="checkbox" name="${name}" value="on" ${label ? `aria-label="${esc(label)}"` : ''} ${value !== 'off' ? 'checked' : ''}><i class="switch__ui" aria-hidden="true"></i></span>`;
 }
 
 async function settingsPage(ctx) {
   const o = ctx.options;
   const theme = o.joe || JOE_DEFAULTS;
   const body = `${MSG(ctx)}
-  <h2>站点设置</h2>
+  <h1>站点设置</h1>
   <div class="card">
-  <form method="post" action="/admin/settings">
+  <form method="post" action="/admin/settings" class="settings-form" id="settings-form">
     <details class="fold fold--in" open>
       <summary class="fold__head">站点基础</summary>
       <div class="fold__body">
@@ -1390,7 +1476,7 @@ async function settingsPage(ctx) {
       <section class="home-module">
         <div class="home-module__head">
           <strong>首页轮播</strong>
-          ${onOffSelect('j_JIndex_Carousel_Status', theme.JIndex_Carousel_Status)}
+          ${onOffSelect('j_JIndex_Carousel_Status', theme.JIndex_Carousel_Status, '首页轮播')}
         </div>
         <div class="item">
           <label>轮播图数据</label>
@@ -1401,7 +1487,7 @@ async function settingsPage(ctx) {
       <section class="home-module">
         <div class="home-module__head">
           <strong>首页广告</strong>
-          ${onOffSelect('j_JIndex_Ad_Status', theme.JIndex_Ad_Status)}
+          ${onOffSelect('j_JIndex_Ad_Status', theme.JIndex_Ad_Status, '首页广告')}
         </div>
         <div class="item">
           <label>广告位数据</label>
@@ -1412,9 +1498,9 @@ async function settingsPage(ctx) {
     </div>
       </div>
     </details>
-    <button class="btn primary" type="submit">保存设置</button>
   </form>
-  </div>`;
+  </div>
+  <div class="settings-actions"><button class="btn primary" type="submit" form="settings-form">保存设置</button></div>`;
   return html(adminLayout(ctx, { title: '站点设置', active: 'settings', body }));
 }
 
@@ -1613,7 +1699,7 @@ async function securityPage(ctx) {
   </details>`;
 
   const body = `${MSG(ctx)}
-  <h2>安全设置</h2>
+  <h1>安全设置</h1>
   ${totpCard}
   <details class="card fold">
     <summary class="fold__head">修改密码</summary>
@@ -1882,7 +1968,7 @@ async function backupPage(ctx) {
     .join('');
 
   const body = `${flashNotice(ctx)}
-  <h2>备份恢复</h2>
+  <h1>备份恢复</h1>
 
   <div class="card">
     <h3 class="card__title">整体备份</h3>
@@ -2092,7 +2178,7 @@ async function trashPage(ctx) {
     .join('');
 
   const body = `${flashNotice(ctx)}
-  <h2>回收站</h2>
+  <h1>回收站</h1>
   <div class="card">
     <div class="mcp-head">
       <div>

@@ -1,0 +1,27 @@
+services:
+  blog:
+    build: .
+    image: typecho-edge-sqlite:local
+    container_name: typecho-edge-sqlite
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      HOST: 0.0.0.0
+      DB_PATH: /data/blog.sqlite
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(8080,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

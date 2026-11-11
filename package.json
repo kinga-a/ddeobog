@@ -6,8 +6,14 @@
   "description": "运行在腾讯 EdgeOne Makers 上的 Typecho 兼容博客",
   "scripts": {
     "build": "node build.mjs",
+    "start": "node --no-warnings --experimental-sqlite server.mjs",
+    "start:prod": "node --no-warnings --experimental-sqlite server.mjs --host 0.0.0.0 --port 8080",
     "test": "node test.mjs && node test-bundle.mjs && node test-security.mjs && node --test test-markdown.mjs && node --test test-md-toolbar.mjs && node --test test-theme-motto.mjs && node --test test-backup.mjs && node --test test-trash.mjs && node test-e2e.mjs && node tools/edge-runtime-check.mjs && node tools/edge-install-check.mjs",
+    "test:sqlite": "node --no-warnings --experimental-sqlite --test test-sqlite.mjs",
     "build:theme": "node tools/build-theme-assets.mjs"
+  },
+  "engines": {
+    "node": ">=22.5.0"
   },
   "dependencies": {
     "@edgeone/pages-blob": "^0.0.16",

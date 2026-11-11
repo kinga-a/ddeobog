@@ -1,0 +1,437 @@
+/* ============================================================
+   TypechoEdge 后台 UI 重构基线（评审交付）
+   ------------------------------------------------------------
+   说明：
+   1. 本文件是《后台组件规范》的可落地版本，不自动接入 admin.css；
+      合并时替换同名规则，避免两套尺寸并存。
+   2. 颜色/圆角/阴影沿用现有 admin.css 令牌，新增字号、间距、
+      控件高度与控件边界令牌。
+   3. 所有尺寸为推荐值；落地前需在 1366 / 1024 / 768 / 375
+      四档截图回归。
+   ============================================================ */
+
+:root {
+  /* 颜色（沿用现有语义） */
+  --paper: #f6f6f7;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --surface-3: #f0f0f2;
+  --line: #e3e3e8;
+  --line-soft: #ececf0;
+  --control-border: #8f8f9b; /* 对白底 3.2:1，满足 WCAG 1.4.11 */
+
+  --ink: #17171c;
+  --ink-2: #3f3f46;
+  --ink-3: #6d6d78;
+  --ink-4: #a7a7b3; /* 仅禁用/装饰 */
+
+  --accent: #5e6ad2;
+  --accent-ink: #4c58c4;
+  --accent-soft: #eef0fb;
+  --accent-line: #c9cff2;
+
+  --danger: #d92d20;
+  --danger-soft: #fdecea;
+  --ok: #177245;
+  --ok-soft: #e7f6ee;
+  --warn: #a15c00;
+  --warn-soft: #fdf3e0;
+
+  /* 字号 */
+  --text-2xs: 12px;
+  --text-xs: 13px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 28px;
+
+  /* 间距（4px 基准） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* 控件高度 */
+  --control-h-xs: 28px;
+  --control-h-sm: 32px;
+  --control-h-md: 36px;
+  --control-h-lg: 40px;
+  --control-h-xl: 44px;
+
+  /* 圆角 / 阴影 / 动效 */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --r-pill: 999px;
+
+  --sh-1: 0 1px 2px rgba(18, 18, 24, .04), 0 1px 3px rgba(18, 18, 24, .05);
+  --sh-2: 0 4px 12px -2px rgba(18, 18, 24, .07), 0 12px 32px -12px rgba(18, 18, 24, .14);
+  --sh-3: 0 24px 64px -16px rgba(18, 18, 24, .28);
+
+  --t-fast: 120ms;
+  --t: 180ms;
+  --t-slow: 260ms;
+  --ease: cubic-bezier(.22, .68, .32, 1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
+
+html[data-admin-theme='dark'] {
+  --paper: #0d0d10;
+  --surface: #151519;
+  --surface-2: #1a1a1f;
+  --surface-3: #222228;
+  --line: #26262d;
+  --line-soft: #1d1d23;
+  --control-border: #5b5b68;
+
+  --ink: #f4f4f6;
+  --ink-2: #d6d6dc;
+  --ink-3: #9c9ca8;
+  --ink-4: #62626e;
+
+  --accent: #8b96f9;
+  --accent-ink: #aab3fb;
+  --accent-soft: #1e2138;
+  --accent-line: #363c66;
+
+  --danger: #ff6b5e;
+  --danger-soft: #331714;
+  --ok: #3ecf8e;
+  --ok-soft: #12251c;
+  --warn: #f5b544;
+  --warn-soft: #2b2011;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-admin-theme='light']) {
+    --paper: #0d0d10;
+    --surface: #151519;
+    --surface-2: #1a1a1f;
+    --surface-3: #222228;
+    --line: #26262d;
+    --line-soft: #1d1d23;
+    --control-border: #5b5b68;
+    --ink: #f4f4f6;
+    --ink-2: #d6d6dc;
+    --ink-3: #9c9ca8;
+    --ink-4: #62626e;
+    --accent: #8b96f9;
+    --accent-ink: #aab3fb;
+    --accent-soft: #1e2138;
+    --accent-line: #363c66;
+    --danger: #ff6b5e;
+    --danger-soft: #331714;
+    --ok: #3ecf8e;
+    --ok-soft: #12251c;
+    --warn: #f5b544;
+    --warn-soft: #2b2011;
+  }
+}
+
+/* ---------- 可访问性工具类 ---------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: var(--space-4);
+  z-index: 200;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: var(--text-sm);
+  transition: top var(--t) var(--ease-out);
+}
+
+.skip-link:focus-visible {
+  top: var(--space-4);
+}
+
+/* ---------- Button ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-h-md);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease),
+    color var(--t) var(--ease), transform var(--t) var(--ease), box-shadow var(--t) var(--ease);
+}
+
+.btn:hover {
+  border-color: var(--ink-4);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-1);
+}
+
+.btn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn.primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.btn.primary:hover {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+}
+
+.btn.danger {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--danger);
+}
+
+.btn.danger:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.btn.danger-solid {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn.sm {
+  height: var(--control-h-sm);
+  padding: 0 var(--space-3);
+  border-radius: var(--r-sm);
+  font-size: var(--text-xs);
+}
+
+.btn.xs {
+  height: var(--control-h-xs);
+  padding: 0 10px;
+  border-radius: var(--r-xs);
+  font-size: var(--text-2xs);
+}
+
+/* ---------- 表单 ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field > label,
+.field__label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.field__help {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.field__error {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--danger);
+}
+
+input[type='text'],
+input[type='password'],
+input[type='email'],
+input[type='number'],
+input[type='url'],
+input[type='date'],
+input[type='search'],
+select,
+textarea {
+  min-height: var(--control-h-lg);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--control-border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+}
+
+textarea {
+  min-height: 120px;
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--ink-4);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+/* ---------- 表格 ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+table th {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--ink-3);
+  text-align: left;
+}
+
+table td,
+table th {
+  padding: 10px var(--space-3);
+}
+
+table td .actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* ---------- 侧栏 ---------- */
+
+.side__group {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--ink-3); /* 不再使用 --ink-4 */
+}
+
+/* ---------- 触摸与动效 ---------- */
+
+@media (pointer: coarse) {
+  .btn,
+  .btn.sm,
+  .btn.xs,
+  .side a,
+  .side__foot a {
+    min-height: var(--control-h-xl);
+  }
+
+  input,
+  select {
+    min-height: var(--control-h-xl);
+    font-size: 16px; /* 防止 iOS 聚焦缩放 */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn:hover,
+  .btn:active {
+    transition: background var(--t-fast) linear, border-color var(--t-fast) linear;
+    transform: none;
+  }
+}
+
+/* ---------- 移动端表格卡片化（示意） ---------- */
+
+@media (max-width: 760px) {
+  .table-wrap {
+    border: 0;
+    background: transparent;
+  }
+
+  table thead {
+    display: none;
+  }
+
+  table,
+  table tbody,
+  table tr,
+  table td {
+    display: block;
+    width: 100%;
+  }
+
+  table tr {
+    margin-bottom: var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    padding: var(--space-3);
+  }
+
+  table td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    border: 0;
+  }
+
+  table td::before {
+    content: attr(data-label);
+    color: var(--ink-3);
+    font-size: var(--text-2xs);
+  }
+
+  table td[data-hide-mobile] {
+    display: none;
+  }
+
+  table td .actions {
+    width: 100%;
+  }
+}

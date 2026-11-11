@@ -54,7 +54,7 @@ function installPage(ctx, error = '') {
 <body>
   <div class="card">
     <h1>欢迎使用 TypechoEdge</h1>
-    <div class="sub">运行在腾讯 EdgeOne 边缘函数上的 Typecho 兼容博客。<br>首次使用请创建管理员账号，数据将保存到 KV 存储与 Blob 存储。</div>
+    <div class="sub">运行在腾讯 EdgeOne 边缘函数上的 Typecho 兼容博客。<br>首次使用请创建管理员账号，${IS_NODE ? '数据将保存到本地 SQLite 文件' : '数据将保存到 KV 存储与 Blob 存储'}。</div>
     ${error ? `<div class="err">${escapeHtml(error)}</div>` : ''}
     <form method="post" action="/install">
       <div class="item">
@@ -67,7 +67,7 @@ function installPage(ctx, error = '') {
       </div>
       <div class="item">
         <label>管理员用户名</label>
-        <input type="text" name="name" placeholder="admin" required pattern="[A-Za-z0-9_@.\-]{3,32}">
+        <input type="text" name="name" placeholder="admin" required pattern="[A-Za-z0-9_@.\\-]{3,32}">
       </div>
       <div class="item">
         <label>邮箱</label>

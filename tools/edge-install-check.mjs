@@ -111,12 +111,26 @@ if (!home.body.includes('/guestbook/')) fail('首页导航缺少留言板链接'
 pass('导航始终显示留言板');
 
 // ---- 4. 删除页面后自动重建（这是 Node 端不会触发的分支）----
+// 登录后台，删除走真实管理接口，确保经过数据层的索引缓存失效逻辑。
+// 直接改 store 会绕过缓存失效，不能代表生产路径。
+const login = await req('/admin/login', {
+  method: 'POST',
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({ name: 'admin', password: 'password123' }),
+});
+if (login.res.status !== 302) fail(`admin login 期望 302，实际 ${login.res.status}`);
+const cookie = String(login.res.headers.get('set-cookie') || '').split(';')[0];
+
 const removePage = async (slug) => {
   const idx = JSON.parse(store.get('idx:posts'));
   const hit = idx.find((e) => e.slug === slug && e.type === 'page');
   if (!hit) fail(`索引中找不到 ${slug}`);
-  store.delete(`post:${hit.cid}`);
-  store.set('idx:posts', JSON.stringify(idx.filter((e) => e !== hit)));
+  const del = await req('/admin/delete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', Cookie: cookie },
+    body: new URLSearchParams({ cid: String(hit.cid) }),
+  });
+  if (del.res.status !== 302) fail(`删除 ${slug} 期望 302，实际 ${del.res.status}`);
 };
 await removePage('about');
 const about2 = await req('/about/');

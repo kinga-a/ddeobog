@@ -399,6 +399,8 @@ document.addEventListener("DOMContentLoaded", () => {
       let isSubmit = false;
       $(".joe_comment__respond-form").on("submit", function (e) {
         e.preventDefault();
+        const $form = $(this);
+        const $btn = $form.find(".foot .submit button");
         const action = $(".joe_comment__respond-form").attr("action") + "?time=" + +new Date();
         const type = $(".joe_comment__respond-form").attr("data-type");
         const parent = $(".joe_comment__respond-form").attr("data-coid");
@@ -416,7 +418,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (isSubmit) return;
         isSubmit = true;
-        $(".joe_comment__respond-form .foot .submit button").html("发送中...");
+        $btn.prop("disabled", true).html("发送中...");
         $.ajax({
           url: action,
           type: "POST",
@@ -432,14 +434,14 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!/Joe/.test(res)) {
               Qmsg.warning(str.textContent.trim() || "");
               isSubmit = false;
-              $(".joe_comment__respond-form .foot .submit button").html("发表评论");
+              $btn.prop("disabled", false).html("发送评论");
             } else {
               window.location.reload();
             }
           },
           error() {
             isSubmit = false;
-            $(".joe_comment__respond-form .foot .submit button").html("发表评论");
+            $btn.prop("disabled", false).html("发送评论");
             Qmsg.warning("发送失败！请刷新重试！");
           },
         });

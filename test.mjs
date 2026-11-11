@@ -1062,7 +1062,7 @@ await test('安全设置：MCP 状态开关按浏览器提交顺序保存（隐�
     const before = page.slice(Math.max(0, at - 400), at);
     const idMatch = [...before.matchAll(/name="id" value="([^"]+)"/g)].pop();
     const after = page.slice(at, at + 2000);
-    return { id: idMatch && idMatch[1], checked: /name="enabled" value="on" checked/.test(after) };
+    return { id: idMatch && idMatch[1], checked: /name="enabled"[^>]*value="on"[^>]*checked/.test(after) };
   };
   let res = await postSecurity([['op', 'mcp-add'], ['name', '开关哨兵'], ['remark', ''], ['enabled', 'off'], ['token', '']]);
   assert.equal(res.status, 302);
@@ -1315,11 +1315,11 @@ await test('站点设置：开关组件渲染、三段默认展开、保存语�
   let res = await postSettings([['j_JCommentStatus', 'off']]);
   assert.equal(res.status, 302);
   let page = await call('GET', '/admin/settings').then((r) => r.text());
-  assert.ok(!/name="j_JCommentStatus" value="on" checked/.test(page), '关：开关应呈未选中');
+  assert.ok(!/name="j_JCommentStatus"[^>]*value="on"[^>]*checked/.test(page), '关：开关应呈未选中');
   res = await postSettings([['j_JCommentStatus', 'off'], ['j_JCommentStatus', 'on']]);
   assert.equal(res.status, 302);
   page = await call('GET', '/admin/settings').then((r) => r.text());
-  assert.ok(/name="j_JCommentStatus" value="on" checked/.test(page), '开：开关应呈选中');
+  assert.ok(/name="j_JCommentStatus"[^>]*value="on"[^>]*checked/.test(page), '开：开关应呈选中');
 });
 
 await test('仪表盘：站点概览带 GitHub 仓库链接；危险操作走自定义确认弹窗', async () => {

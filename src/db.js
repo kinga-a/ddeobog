@@ -20,6 +20,16 @@
 import { KV } from './storage/kv.js';
 import { BlobStorage } from './storage/blob.js';
 
+/**
+ * 进程内查询缓存：
+ * - 索引（idx:posts / idx:metas / idx:cmts）在每次请求里都会被读取和 JSON.parse，
+ *   数据量上来后是列表/搜索/MCP 的主要 CPU 与 I/O 开销；
+ * - 写点会主动失效，另有 5 秒 TTL 兜底多实例/外部写入；
+ * - 返回浅拷贝，调用方可以安全地 filter/sort 而不污染缓存。
+ */
+const INDEX_CACHE = new Map();
+const INDEX_CACHE_TTL = 5000;
+
 /** 索引里存一份纯文本摘要，列表页不必再读正文；旧索引缺失时由列表查询回填 */
 function plainAbstract(text, len = 90) {
   return String(text || '')
@@ -167,6 +177,22 @@ export class Database {
   }
 
   // ---------- 索引维护 ----------
+  /** 读取索引并复用进程内缓存；返回浅拷贝，调用方可安全修改数组结构 */
+  async #loadCachedIndex(key) {
+    const now = Date.now();
+    const hit = INDEX_CACHE.get(key);
+    if (hit && now - hit.at < INDEX_CACHE_TTL) return [...hit.data];
+    const data = (await this.kv.getJSON(key)) || [];
+    INDEX_CACHE.set(key, { data, at: now });
+    return [...data];
+  }
+
+  /** 写入索引后立即失效，保证同进程内读到自己刚写的数据 */
+  async #putIndex(key, value) {
+    await this.kv.putJSON(key, value);
+    INDEX_CACHE.delete(key);
+  }
+
   /** 覆写索引中的一条记录（未命中则忽略），可选按 sortFn 重新排序 */
   async #replaceIndexEntry(key, match, entry, sortFn) {
     const idx = (await this.kv.getJSON(key)) || [];
@@ -174,7 +200,7 @@ export class Database {
     if (i < 0) return;
     idx[i] = typeof entry === 'function' ? entry(idx[i]) : entry;
     if (sortFn) idx.sort(sortFn);
-    await this.kv.putJSON(key, idx);
+    await this.#putIndex(key, idx);
   }
 
   /** 从索引中移除一条记录（未命中则忽略） */
@@ -183,15 +209,15 @@ export class Database {
     const i = idx.findIndex(match);
     if (i < 0) return;
     idx.splice(i, 1);
-    await this.kv.putJSON(key, idx);
+    await this.#putIndex(key, idx);
   }
 
   // ---------- contents ----------
   async #loadPostIndex() {
-    return (await this.kv.getJSON('idx:posts')) || [];
+    return await this.#loadCachedIndex('idx:posts');
   }
   async #savePostIndex(idx) {
-    await this.kv.putJSON('idx:posts', idx);
+    await this.#putIndex('idx:posts', idx);
   }
 
   async createContent(data) {
@@ -233,7 +259,8 @@ export class Database {
       cid: row.cid,
       title: row.title,
       slug: row.slug,
-      abstract: plainAbstract(row.text, 90),
+      // 密码文章的摘要属于受保护内容，不写入索引（列表/搜索/API/备份都不应看到）
+      abstract: row.password ? '' : plainAbstract(row.text, 90),
       created: row.created,
       modified: row.modified,
       type: row.type,
@@ -304,7 +331,7 @@ export class Database {
       if (c.cid === cid) await this.kv.delete(`cmt:${c.coid}`);
       else keep.push(c);
     }
-    await this.kv.putJSON('idx:cmts', keep);
+    await this.#putIndex('idx:cmts', keep);
     await this.#syncMetaCounts([], [], row.categories, row.tags);
     return true;
   }
@@ -423,7 +450,7 @@ export class Database {
           cidx.push({ coid: c.coid, cid: c.cid, created: c.created, status: c.status });
         }
       }
-      await this.kv.putJSON('idx:cmts', cidx);
+      await this.#putIndex('idx:cmts', cidx);
     }
 
     await this.#syncMetaCounts(row.categories || [], row.tags || []);
@@ -437,7 +464,7 @@ export class Database {
     const idx = await this.#loadCmtIndex();
     if (!idx.some((c) => c.coid === row.coid)) {
       idx.push({ coid: row.coid, cid: row.cid, created: row.created, status: row.status });
-      await this.kv.putJSON('idx:cmts', idx);
+      await this.#putIndex('idx:cmts', idx);
     }
     if (row.status === 'approved') await this.#bumpCommentsNum(row.cid, 1);
   }
@@ -451,7 +478,7 @@ export class Database {
     const midx = await this.#loadMetaIndex();
     if (!midx.some((m) => m.mid === meta.mid)) {
       midx.push({ mid: meta.mid, type: meta.type, slug: meta.slug });
-      await this.kv.putJSON('idx:metas', midx);
+      await this.#putIndex('idx:metas', midx);
     }
 
     const listName = meta.type === 'category' ? 'categories' : 'tags';
@@ -543,9 +570,10 @@ export class Database {
       allStatus = false,
     } = q;
     let idx = await this.#loadPostIndex();
-    let list = idx.filter(
-      (e) => e.type === type && (allStatus || e.status === status)
-    );
+    let list = idx
+      .filter((e) => e.type === type && (allStatus || e.status === status))
+      // 历史索引可能已写入密码文章的正文摘要，读取时统一脱敏
+      .map((e) => (e.hasPassword ? { ...e, abstract: '' } : e));
     if (categoryMid) list = list.filter((e) => e.categories.includes(categoryMid));
     if (tagMid) list = list.filter((e) => e.tags.includes(tagMid));
     if (authorId) list = list.filter((e) => e.authorId === authorId);
@@ -606,7 +634,9 @@ export class Database {
     if (missing.length) {
       const rows = await Promise.all(missing.map((e) => this.getContent(e.cid)));
       rows.forEach((row, i) => {
-        if (!missing[i].abstract) missing[i].abstract = plainAbstract(row && row.text, 90);
+        if (!missing[i].abstract && !missing[i].hasPassword) {
+          missing[i].abstract = plainAbstract(row && row.text, 90);
+        }
         if (!('cover' in missing[i])) missing[i].cover = row ? extractCover(row) : '';
         if (!('absCustom' in missing[i])) missing[i].absCustom = row?.fields?.abstract || '';
         if (missing[i].type === 'attachment' && !('attSize' in missing[i])) {
@@ -676,7 +706,7 @@ export class Database {
 
   // ---------- metas（分类/标签） ----------
   async #loadMetaIndex() {
-    return (await this.kv.getJSON('idx:metas')) || [];
+    return await this.#loadCachedIndex('idx:metas');
   }
   async listMetas(type) {
     const idx = (await this.#loadMetaIndex()).filter((m) => !type || m.type === type);
@@ -708,7 +738,7 @@ export class Database {
     await this.kv.putJSON(`meta:${mid}`, meta);
     const idx = await this.#loadMetaIndex();
     idx.push({ mid, type, slug: meta.slug });
-    await this.kv.putJSON('idx:metas', idx);
+    await this.#putIndex('idx:metas', idx);
     return meta;
   }
   async updateMeta(mid, patch) {
@@ -765,7 +795,7 @@ export class Database {
 
   // ---------- comments ----------
   async #loadCmtIndex() {
-    return (await this.kv.getJSON('idx:cmts')) || [];
+    return await this.#loadCachedIndex('idx:cmts');
   }
   async createComment({ cid, author, authorId = 0, ownerId = 0, mail, url, ip, agent, text, parent = 0, status = 'approved' }) {
     await this.#bumpSnap();
@@ -779,7 +809,7 @@ export class Database {
     await this.kv.putJSON(`cmt:${coid}`, row);
     const idx = await this.#loadCmtIndex();
     idx.push({ coid, cid, created: now, status });
-    await this.kv.putJSON('idx:cmts', idx);
+    await this.#putIndex('idx:cmts', idx);
     if (status === 'approved') await this.#bumpCommentsNum(cid, 1);
     return row;
   }
