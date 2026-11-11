@@ -169,9 +169,9 @@ export async function handleAdmin(ctx) {
 /* ==================== 登录 ==================== */
 
 function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = '' } = {}) {
-  const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>登录 - ${esc(ctx.options.title)}</title>
-  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css">
+  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css?v=${CONFIG.VERSION}">
   <meta name="color-scheme" content="light dark">
   <script>(function(){try{var t=localStorage.getItem('admin-theme');var d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-admin-theme', t || (d?'dark':'light'));}catch(e){}})();</script>
 </head><body class="auth">
@@ -277,10 +277,10 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       return `<a${cls} href="${href}"><i class="fa ${icon}" aria-hidden="true"></i>${label}</a>`;
     })
     .join('');
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>${title} - ${esc(ctx.options.title)}</title>
   <link rel="stylesheet" href="/usr/themes/joe/assets/lib/font-awesome@4.7.0/font-awesome.min.css">
-  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css">
+  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css?v=${CONFIG.VERSION}">
   <meta name="color-scheme" content="light dark">
 </head><body>
   <button class="burger" type="button" aria-label="切换导航" aria-expanded="false" aria-controls="admin-side">
