@@ -250,33 +250,45 @@ async function startPasswordLogin(ctx, form) {
 /* ==================== 布局 ==================== */
 
 function adminLayout(ctx, { title, active = '', body = '' }) {
-  const menus = [
-    ['', '仪表盘', 'fa-home'],
-    ['posts', '管理文章', 'fa-file-text'],
-    ['post?type=post', '撰写文章', 'fa-pencil'],
-    ['pages', '管理页面', 'fa-files-o'],
-    ['page', '创建页面', 'fa-plus'],
-    ['metas', '分类/标签', 'fa-folder'],
-    ['comments', '评论管理', 'fa-comments'],
-    ['uploads', '附件管理', 'fa-image'],
-['settings', '站点设置', 'fa-cog'],
-  ['backup', '备份恢复', 'fa-database'],
-  ['trash', '回收站', 'fa-trash'],
-  ['security', '安全设置', 'fa-shield'],
+  // 导航按「内容 / 系统」分组；撰写、创建不再各占一行菜单：
+  // 顶部有全宽的「撰写文章」主按钮，管理页标题旁也有对应的新建按钮。
+  const groups = [
+    ['', [['', '仪表盘', 'fa-home']]],
+    ['内容', [
+      ['posts', '文章', 'fa-file-text'],
+      ['pages', '页面', 'fa-files-o'],
+      ['metas', '分类 / 标签', 'fa-folder'],
+      ['comments', '评论', 'fa-comments'],
+      ['uploads', '附件', 'fa-image'],
+    ]],
+    ['系统', [
+      ['settings', '站点设置', 'fa-cog'],
+      ['backup', '备份恢复', 'fa-database'],
+      ['trash', '回收站', 'fa-trash'],
+      ['security', '安全设置', 'fa-shield'],
+    ]],
+  ];
+  const foot = [
     ['login', '查看站点', 'fa-external-link'],
     ['logout', '退出登录', 'fa-sign-out'],
   ];
+  // 编辑器传入的 active 是 post/page，高亮归到对应的管理页
+  const activeKey = active === 'post' ? 'posts' : active === 'page' ? 'pages' : active;
+  const renderLink = ([slug, label, icon]) => {
+    const href = slug === 'login' ? '/' : `/admin/${slug}`;
+    const cls = activeKey === slug ? ' class="active"' : '';
+    return `<a${cls} href="${href}"><i class="fa ${icon}" aria-hidden="true"></i>${label}</a>`;
+  };
+  const menu =
+    `<a class="btn primary side__new" href="/admin/post?type=post"><i class="fa fa-pencil" aria-hidden="true"></i>撰写文章</a>` +
+    groups
+      .map(([name, items]) => (name ? `<div class="side__group">${name}</div>` : '') + items.map(renderLink).join(''))
+      .join('') +
+    `<div class="side__foot">${foot.map(renderLink).join('')}</div>`;
   const joe = ctx.options.joe || {};
   const brandAvatar =
     joe.JAside_Author_Avatar ||
     avatarUrl(ctx.user?.mail || '', 44, joe.JAvatarSource || 'weavatar');
-  const menu = menus
-    .map(([slug, label, icon]) => {
-      const href = slug === 'login' ? '/' : `/admin/${slug}`;
-      const cls = active === slug ? ' class="active"' : '';
-      return `<a${cls} href="${href}"><i class="fa ${icon}" aria-hidden="true"></i>${label}</a>`;
-    })
-    .join('');
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>${title} - ${esc(ctx.options.title)}</title>
   <link rel="stylesheet" href="/usr/themes/joe/assets/lib/font-awesome@4.7.0/font-awesome.min.css">
@@ -756,7 +768,7 @@ async function postsList(ctx) {
       ${list.page < list.pages ? `<a href="?page=${list.page + 1}">下一页</a>` : ''}</p>`
     : '';
   const body = `${MSG(ctx)}
-  <h2>管理文章（${list.total}）</h2>
+  <div class="page-head"><h2>管理文章（${list.total}）</h2><a class="btn primary" href="/admin/post?type=post"><i class="fa fa-pencil" aria-hidden="true"></i>撰写文章</a></div>
   <div class="card">
     <table><thead><tr><th>ID</th><th>标题</th><th>状态</th><th>评论</th><th>发布时间</th><th>操作</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="6">暂无文章</td></tr>'}</tbody></table>
@@ -786,7 +798,7 @@ async function pagesList(ctx) {
     )
     .join('');
   const body = `${MSG(ctx)}
-  <h2>管理页面（${list.total}）</h2>
+  <div class="page-head"><h2>管理页面（${list.total}）</h2><a class="btn primary" href="/admin/page"><i class="fa fa-plus" aria-hidden="true"></i>创建页面</a></div>
   <div class="card">
     <table><thead><tr><th>ID</th><th>标题</th><th>路径</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="5">暂无页面</td></tr>'}</tbody></table>
@@ -1044,13 +1056,15 @@ async function metasPage(ctx) {
         </form>
       </div>
     </section>
-    <section class="card">
-      <div class="metas__head"><h2>分类</h2><span class="metas__count">${cats.length}</span></div>
-      <div class="metas__scroll">${metaTable(cats, 'category')}</div>
-    </section>
-    <section class="card">
-      <div class="metas__head"><h2>标签</h2><span class="metas__count">${tags.length}</span></div>
-      <div class="metas__scroll">${metaTable(tags, 'tag')}</div>
+    <section class="card tabs-card">
+      <input class="tabs-radio" type="radio" name="metas-tab" id="metas-tab-cat" checked>
+      <input class="tabs-radio" type="radio" name="metas-tab" id="metas-tab-tag">
+      <div class="tabs-bar">
+        <label class="tabs-tab" for="metas-tab-cat">分类<span class="metas__count">${cats.length}</span></label>
+        <label class="tabs-tab" for="metas-tab-tag">标签<span class="metas__count">${tags.length}</span></label>
+      </div>
+      <section class="tab-panel tab-panel--cat"><div class="metas__scroll">${metaTable(cats, 'category')}</div></section>
+      <section class="tab-panel tab-panel--tag"><div class="metas__scroll">${metaTable(tags, 'tag')}</div></section>
     </section>
   </div>`;
   return html(adminLayout(ctx, { title: '分类标签', active: 'metas', body }));
@@ -1208,6 +1222,9 @@ async function settingsPage(ctx) {
   <h2>站点设置</h2>
   <div class="card">
   <form method="post" action="/admin/settings">
+    <details class="fold fold--in" open>
+      <summary class="fold__head">站点基础</summary>
+      <div class="fold__body">
     <div class="row">
       <div class="item"><label>站点名称</label><input type="text" name="title" value="${esc(o.title || '')}"></div>
       <div class="item"><label>站点描述</label><input type="text" name="description" value="${esc(o.description || '')}"></div>
@@ -1221,7 +1238,11 @@ async function settingsPage(ctx) {
         <option value="waiting" ${o.commentStatus === 'waiting' ? 'selected' : ''}>先审核后发布</option>
       </select></div>
     </div>
-    <h2 style="font-size:16px;margin:10px 0 14px">Joe 主题设置</h2>
+      </div>
+    </details>
+    <details class="fold fold--in">
+      <summary class="fold__head">Joe 主题设置</summary>
+      <div class="fold__body">
     <div class="row">
       <div class="item"><label>Logo 图片 URL</label><input type="text" name="j_JLogo" value="${esc(theme.JLogo || '')}"></div>
       <div class="item"><label>Favicon URL</label><input type="text" name="j_JFavicon" value="${esc(theme.JFavicon || '')}"></div>
@@ -1259,7 +1280,11 @@ async function settingsPage(ctx) {
     <div class="row">
       <div class="item"><label>页脚自定义内容</label><input type="text" name="j_JFooter_Custom" value="${esc(theme.JFooter_Custom || '')}"></div>
     </div>
-    <h2 class="section-title">首页模块</h2>
+      </div>
+    </details>
+    <details class="fold fold--in">
+      <summary class="fold__head">首页模块</summary>
+      <div class="fold__body">
     <div class="home-module-grid">
       <section class="home-module">
         <div class="home-module__head">
@@ -1284,6 +1309,8 @@ async function settingsPage(ctx) {
         </div>
       </section>
     </div>
+      </div>
+    </details>
     <button class="btn primary" type="submit">保存设置</button>
   </form>
   </div>`;
@@ -1454,13 +1481,23 @@ async function securityPage(ctx) {
     </details>
   </div>`;
 
+  const totpCard = step === 'bind'
+    ? `<div class="card">
+    ${totpSection}
+  </div>`
+    : `<details class="card fold">
+    <summary class="fold__head">两步验证<span class="badge ${user.totpEnabled ? 'green' : 'yellow'}">${user.totpEnabled ? '已开启' : '未开启'}</span></summary>
+    <div class="fold__body">
+    ${totpSection}
+    </div>
+  </details>`;
+
   const body = `${MSG(ctx)}
   <h2>安全设置</h2>
-  <div class="card">
-    ${totpSection}
-  </div>
-  <div class="card">
-    <h2 class="card__title">修改密码</h2>
+  ${totpCard}
+  <details class="card fold">
+    <summary class="fold__head">修改密码</summary>
+    <div class="fold__body">
     <form method="post" action="/admin/security">
       <input type="hidden" name="op" value="password">
       <div class="pwd-grid">
@@ -1472,7 +1509,8 @@ async function securityPage(ctx) {
         <button class="btn primary" type="submit">修改密码</button>
       </div>
     </form>
-  </div>
+    </div>
+  </details>
   ${mcpSection}`;
   return html(adminLayout(ctx, { title: '安全设置', active: 'security', body }));
 }

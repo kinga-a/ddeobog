@@ -1719,3 +1719,135 @@ body.auth {
   .card { border: 1px solid #ccc; box-shadow: none; break-inside: avoid; }
   body { background: #fff; }
 }
+
+/* ============================================================
+   信息架构重组：分组导航 / 页头操作 / 折叠分区 / 标签页
+   ============================================================ */
+
+/* ---------- 侧栏：新建按钮、分组标签、底部区 ---------- */
+.side__new { width: 100%; margin: 0 0 16px; }
+.side__group {
+  margin: 18px 10px 7px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .09em;
+  color: var(--ink-4);
+}
+.side__foot {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+@media (max-width: 1080px) {
+  .side__group { display: none; }
+  .side__new { padding-left: 0; padding-right: 0; }
+  .side__foot { border-top: 0; margin-top: 10px; padding-top: 0; }
+}
+@media (max-width: 760px) {
+  .side__group { display: block; }
+  .side__new { padding-left: 16px; padding-right: 16px; }
+  .side__foot { border-top: 1px solid var(--line-soft); margin-top: 16px; padding-top: 12px; }
+}
+
+/* ---------- 管理页页头：标题 + 新建按钮同行 ---------- */
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.page-head h2 { position: relative; margin: 0; padding-left: 14px; }
+.page-head h2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3.5px;
+  height: 18px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+.main > .page-head { animation: admin-rise .45s var(--ease-out) both; }
+@media (max-width: 760px) {
+  .page-head { margin-bottom: 18px; }
+  .page-head h2 { padding-left: 12px; }
+  .page-head h2::before { height: 16px; }
+}
+
+/* ---------- 折叠分区（原生 details，关闭时字段仍在表单内） ---------- */
+.fold > summary { list-style: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.005em;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.fold__head::after {
+  content: "\f078";
+  font-family: FontAwesome;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-4);
+  margin-left: auto;
+  transition: transform .25s var(--ease-out);
+}
+.fold[open] > .fold__head::after { transform: rotate(180deg); }
+.fold__head .badge { margin-left: 2px; }
+
+/* 卡内折叠（设置页：一张卡、一个表单、三个分区） */
+.fold--in { padding: 18px 0; border-top: 1px solid var(--line-soft); }
+.fold--in:first-child { padding-top: 2px; border-top: 0; }
+.fold--in:last-of-type { padding-bottom: 4px; }
+.fold--in .fold__body { padding-top: 18px; }
+
+/* 整卡折叠（安全页：两步验证 / 修改密码） */
+details.card.fold { padding: 0; overflow: hidden; }
+details.card.fold > .fold__head { padding: 19px 26px; }
+details.card.fold > .fold__body { padding: 2px 26px 24px; }
+@media (max-width: 760px) {
+  details.card.fold > .fold__head { padding: 16px 18px; }
+  details.card.fold > .fold__body { padding: 2px 18px 20px; }
+}
+
+/* ---------- 分类 / 标签：分段标签页（纯 CSS，单选钮驱动） ---------- */
+.tabs-radio { position: absolute; opacity: 0; pointer-events: none; }
+.tabs-bar { display: flex; gap: 6px; padding: 16px 20px 4px; flex-wrap: wrap; }
+.tabs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 7px 15px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background var(--t) var(--ease), color var(--t) var(--ease);
+}
+.tabs-tab .metas__count { background: color-mix(in srgb, currentColor 12%, transparent); color: inherit; }
+.tab-panel { padding-top: 8px; }
+@supports selector(:has(*)) {
+  .tab-panel { display: none; }
+  .tabs-card:has(#metas-tab-cat:checked) .tab-panel--cat { display: block; }
+  .tabs-card:has(#metas-tab-tag:checked) .tab-panel--tag { display: block; }
+  .tabs-card:has(#metas-tab-cat:checked) .tabs-tab[for="metas-tab-cat"],
+  .tabs-card:has(#metas-tab-tag:checked) .tabs-tab[for="metas-tab-tag"] {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
+}
+@media (max-width: 760px) {
+  .tabs-bar { padding: 14px 14px 2px; }
+}
