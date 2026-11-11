@@ -1004,6 +1004,40 @@ await test('后台 MCP 卡片：端点、掩码令牌、一次性新令牌展示
   assert.ok(html.includes('/mcp<'), '应展示 MCP 端点');
 });
 
+await test('安全设置：MCP 状态开关按浏览器提交顺序保存（隐藏域 off 打头不误伤）', async () => {
+  // 开关的提交形态：隐藏域 off 在前，勾选时复选框 on 跟在后面；保存端须取最后一个值
+  const postSecurity = async (pairs) => {
+    const body = new URLSearchParams();
+    for (const [k, v] of pairs) body.append(k, v);
+    const req = new Request('https://blog.example.com/admin/security', {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    return onRequest({ request: req, env: {}, params: {}, waitUntil: () => {} });
+  };
+  const editFormOf = async (name) => {
+    // 以编辑表单里的名称输入为锚：往前取同一表单的 hidden id，往后看状态开关
+    const page = await call('GET', '/admin/security').then((r) => r.text());
+    const at = page.indexOf(`name="name" value="${name}"`);
+    assert.ok(at >= 0, `应能找到 ${name} 的编辑表单`);
+    const before = page.slice(Math.max(0, at - 400), at);
+    const idMatch = [...before.matchAll(/name="id" value="([^"]+)"/g)].pop();
+    const after = page.slice(at, at + 2000);
+    return { id: idMatch && idMatch[1], checked: /name="enabled" value="on" checked/.test(after) };
+  };
+  let res = await postSecurity([['op', 'mcp-add'], ['name', '开关哨兵'], ['remark', ''], ['enabled', 'off'], ['token', '']]);
+  assert.equal(res.status, 302);
+  let form = await editFormOf('开关哨兵');
+  assert.ok(!form.checked, '只提交 off 时应为禁用');
+  assert.ok(form.id, '应能取到该服务的 id');
+  res = await postSecurity([['op', 'mcp-update'], ['id', form.id], ['name', '开关哨兵'], ['remark', ''], ['enabled', 'off'], ['enabled', 'on'], ['token', '']]);
+  assert.equal(res.status, 302);
+  form = await editFormOf('开关哨兵');
+  assert.ok(form.checked, 'off 打头、on 在后时应为启用');
+  await postSecurity([['op', 'mcp-delete'], ['id', form.id]]);
+});
+
 // ---- 备份恢复 ----
 
 await test('备份页：统计、导出、导入与 WebDAV 表单齐全', async () => {

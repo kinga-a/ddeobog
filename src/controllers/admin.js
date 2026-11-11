@@ -1682,7 +1682,7 @@ async function addMcpServer(ctx, form) {
     name: String(form.get('name') || '').trim() || `MCP ${servers.length + 1}`,
     remark: String(form.get('remark') || '').trim(),
     ...(await mcpTokenFields(token)),
-    enabled: form.get('enabled') === 'on',
+    enabled: form.getAll('enabled').pop() === 'on',
     createdAt: Math.floor(Date.now() / 1000),
   });
   await saveMcpServers(db, servers);
@@ -1720,7 +1720,7 @@ async function updateMcpServer(ctx, form) {
     name: String(form.get('name') || '').trim() || current.name,
     remark: String(form.get('remark') || '').trim(),
     ...cred,
-    enabled: form.get('enabled') === 'on',
+    enabled: form.getAll('enabled').pop() === 'on',
   };
   await saveMcpServers(db, servers);
   return redirect(url, '/admin/security', { msg: 'saved' });
