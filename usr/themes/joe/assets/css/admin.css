@@ -514,7 +514,28 @@ select {
   background-size: 12px;
 }
 
-input[type="file"] { padding: 8px 10px; }
+input[type="file"] {
+  padding: 6px;
+  background: var(--surface-2);
+  border-style: dashed;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+  padding: 7px 14px;
+  margin-right: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+input[type="file"]:hover::file-selector-button,
+input[type="file"]:hover::-webkit-file-upload-button { border-color: var(--ink-4); background: var(--surface); box-shadow: var(--sh-1); }
 input[type="checkbox"], input[type="radio"] {
   width: 16px; height: 16px; margin: 0 6px 0 0;
   accent-color: var(--accent); vertical-align: -3px; cursor: pointer;
@@ -1103,6 +1124,67 @@ body .EasyMDEContainer .editor-preview-side table { width: 100%; margin: 0 0 14p
   }
   body .EasyMDEContainer .editor-statusbar { padding: 6px 8px; }
 }
+
+/* ---------- 开关 / 确认弹窗 / 仪表盘仓库链接 ---------- */
+/* 开关：复选框本体透明盖住整颗药丸（可点、可聚焦），药丸与滑块是纯装饰层 */
+.switch { position: relative; display: inline-flex; vertical-align: middle; }
+.switch input[type="checkbox"] {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  margin: 0; opacity: 0;
+  cursor: pointer;
+}
+.switch__ui {
+  flex: none;
+  width: 42px; height: 24px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  transition: background var(--t) var(--ease);
+}
+.switch__ui::after {
+  content: "";
+  position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--sh-1);
+  transition: transform var(--t) var(--ease);
+}
+.switch input:checked ~ .switch__ui { background: var(--accent); }
+.switch input:checked ~ .switch__ui::after { transform: translateX(18px); }
+.switch input:focus-visible ~ .switch__ui { box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--accent) 20%, transparent); }
+.switch:hover .switch__ui { filter: brightness(.97); }
+
+/* 确认弹窗（替代原生 confirm）：遮罩 + 卡片，打开时锁背景滚动 */
+body.ui-modal-open { overflow: hidden; }
+.ui-modal {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(9, 9, 11, .5);
+  opacity: 0;
+  transition: opacity var(--t) var(--ease);
+}
+.ui-modal[hidden] { display: none; }
+.ui-modal.is-open { opacity: 1; }
+.ui-modal__card {
+  width: 100%; max-width: 380px;
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+  transform: translateY(8px) scale(.98);
+  transition: transform var(--t) var(--ease);
+}
+.ui-modal.is-open .ui-modal__card { transform: none; }
+.ui-modal__msg { margin: 0 0 18px; font-size: 15px; line-height: 1.65; color: var(--ink); }
+.ui-modal__actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+.dash-repo { color: var(--accent); font-weight: 600; text-decoration: none; }
+.dash-repo:hover { text-decoration: underline; }
+.dash-repo i { font-size: 16px; margin-right: 2px; }
 
 /* ---------- MCP 令牌 ---------- */
 .mcp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }

@@ -450,6 +450,7 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
           // 直接换掉时锁不会自己解开（列表页会滑不动），换页后统一清掉
           document.body.style.overflow='';
           document.documentElement.style.overflow='';
+          uiConfirmClose(false);
           runScripts(next);
           document.title=doc.title;
           syncSide(doc);
@@ -462,6 +463,46 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
           clearTimeout(skTimer);
           layoutEl.classList.remove('is-loading');
         });
+    }
+
+    // 自定义确认弹窗：表单带 data-confirm 时先拦下提交，弹窗确认后才放行
+    // （替代原生 confirm()，样式与后台统一；全站删除/恢复/清空等危险操作都走它）
+    var uiModal=document.querySelector('.ui-modal');
+    var uiConfirmResolve=null;
+    function uiConfirm(msg){
+      return new Promise(function(resolve){
+        uiConfirmResolve=resolve;
+        uiModal.querySelector('.ui-modal__msg').textContent=msg;
+        uiModal.hidden=false;
+        requestAnimationFrame(function(){uiModal.classList.add('is-open');});
+        document.body.classList.add('ui-modal-open');
+        uiModal.querySelector('[data-ui-cancel]').focus();
+      });
+    }
+    function uiConfirmClose(ok){
+      if(!uiModal||uiModal.hidden) return;
+      uiModal.classList.remove('is-open');
+      uiModal.hidden=true;
+      document.body.classList.remove('ui-modal-open');
+      if(uiConfirmResolve){var done=uiConfirmResolve;uiConfirmResolve=null;done(ok);}
+    }
+    if(uiModal){
+      uiModal.addEventListener('click',function(e){
+        if(e.target===uiModal||e.target.closest('[data-ui-cancel]')) uiConfirmClose(false);
+        else if(e.target.closest('[data-ui-ok]')) uiConfirmClose(true);
+      });
+      document.addEventListener('keydown',function(e){
+        if(e.key==='Escape'&&!uiModal.hidden) uiConfirmClose(false);
+      });
+      document.addEventListener('submit',function(e){
+        var form=e.target;
+        var msg=form.getAttribute&&form.getAttribute('data-confirm');
+        if(!msg||form.dataset.confirmed) return;
+        e.preventDefault();
+        uiConfirm(msg).then(function(ok){
+          if(ok){form.dataset.confirmed='1';form.submit();}
+        });
+      });
     }
 
     // MCP 令牌：显示/隐藏 与 复制（事件委托，兼容 SPA 局部刷新）
@@ -572,7 +613,17 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
     window.addEventListener('popstate',function(){navigate(location.pathname+location.search,false);});
     history.replaceState({admin:1},'');
   })();
-  </script></body></html>`;
+  </script>
+  <div class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="ui-modal-msg" hidden>
+    <div class="ui-modal__card">
+      <p class="ui-modal__msg" id="ui-modal-msg"></p>
+      <div class="ui-modal__actions">
+        <button type="button" class="btn" data-ui-cancel>取消</button>
+        <button type="button" class="btn danger" data-ui-ok>确定</button>
+      </div>
+    </div>
+  </div>
+</body></html>`;
 }
 
 function json(data, status = 200) {
@@ -685,7 +736,7 @@ async function dashboard(ctx) {
       </div>
       <div class="dash-actions">
         <form method="post" action="/admin/comment"><input type="hidden" name="op" value="approve"><input type="hidden" name="coid" value="${c.coid}"><button class="btn mini" type="submit">通过</button></form>
-        <form method="post" action="/admin/comment" onsubmit="return confirm('删除这条评论？')"><input type="hidden" name="op" value="delete"><input type="hidden" name="coid" value="${c.coid}"><button class="btn mini danger" type="submit">删除</button></form>
+        <form method="post" action="/admin/comment" data-confirm="删除这条评论？"><input type="hidden" name="op" value="delete"><input type="hidden" name="coid" value="${c.coid}"><button class="btn mini danger" type="submit">删除</button></form>
       </div>
     </li>`
     )
@@ -709,6 +760,7 @@ async function dashboard(ctx) {
       <div><dt>MCP 服务</dt><dd>${mcpEnabledCount ? `<span class="badge green">${mcpEnabledCount} 个已开启</span>` : '<span class="badge yellow">未开启</span>'}</dd></div>
       <div><dt>存储</dt><dd>KV + Blob</dd></div>
       <div><dt>运行环境</dt><dd>EdgeOne 边缘函数</dd></div>
+      <div><dt>项目仓库</dt><dd><a class="dash-repo" href="https://github.com/kinga-a/ddeobog" target="_blank" rel="noopener"><i class="fa fa-github" aria-hidden="true"></i> kinga-a/ddeobog</a></dd></div>
     </dl>`;
 
   const body = `${MSG(ctx)}
@@ -807,7 +859,7 @@ async function postsList(ctx) {
     <td data-label="时间">${new Date(p.created * 1000).toLocaleString('zh-CN')}</td>
     <td>
       <a class="btn sm" href="/admin/post?cid=${p.cid}">编辑</a>
-      <form method="post" action="/admin/delete" style="display:inline" onsubmit="return confirm('确定删除该文章？')">
+      <form method="post" action="/admin/delete" style="display:inline" data-confirm="确定删除该文章？">
         <input type="hidden" name="cid" value="${p.cid}">
         <button class="btn sm danger" type="submit">删除</button>
       </form>
@@ -842,7 +894,7 @@ async function pagesList(ctx) {
     <td data-label="状态"><span class="badge ${p.status === 'publish' ? 'green' : ''}">${p.status === 'publish' ? '公开' : p.status}</span></td>
     <td>
       <a class="btn sm" href="/admin/page?cid=${p.cid}">编辑</a>
-      <form method="post" action="/admin/delete" style="display:inline" onsubmit="return confirm('确定删除该页面？')">
+      <form method="post" action="/admin/delete" style="display:inline" data-confirm="确定删除该页面？">
         <input type="hidden" name="cid" value="${p.cid}">
         <button class="btn sm danger" type="submit">删除</button>
       </form>
@@ -1041,7 +1093,7 @@ async function metasPage(ctx) {
             <input class="meta-input" type="text" name="name" value="${esc(m.name)}" aria-label="改名">
             <button class="btn sm" type="submit">改名</button>
           </form>
-          <form method="post" action="/admin/meta-delete" onsubmit="return confirm('确定删除？文章将解除关联')">
+          <form method="post" action="/admin/meta-delete" data-confirm="确定删除？文章将解除关联">
             <input type="hidden" name="mid" value="${m.mid}">
             <button class="btn sm danger" type="submit">删除</button>
           </form>
@@ -1124,7 +1176,7 @@ async function commentsPage(ctx) {
     <td data-label="时间">${new Date(c.created * 1000).toLocaleString('zh-CN')}</td>
     <td>
       ${c.status === 'waiting' ? `<form method="post" action="/admin/comment" style="display:inline"><input type="hidden" name="coid" value="${c.coid}"><input type="hidden" name="op" value="approve"><button class="btn sm" type="submit">通过</button></form>` : `<form method="post" action="/admin/comment" style="display:inline"><input type="hidden" name="coid" value="${c.coid}"><input type="hidden" name="op" value="waiting"><button class="btn sm" type="submit">转为待审</button></form>`}
-      <form method="post" action="/admin/comment" style="display:inline" onsubmit="return confirm('确定删除该评论？')"><input type="hidden" name="coid" value="${c.coid}"><input type="hidden" name="op" value="delete"><button class="btn sm danger" type="submit">删除</button></form>
+      <form method="post" action="/admin/comment" style="display:inline" data-confirm="确定删除该评论？"><input type="hidden" name="coid" value="${c.coid}"><input type="hidden" name="op" value="delete"><button class="btn sm danger" type="submit">删除</button></form>
     </td>
   </tr>`
     )
@@ -1165,7 +1217,7 @@ async function uploadsPage(ctx) {
     <td data-label="时间">${new Date(f.created * 1000).toLocaleString('zh-CN')}</td>
     <td data-label="地址"><code>/upload/${esc(f.slug)}</code></td>
     <td>
-      <form method="post" action="/admin/delete" onsubmit="return confirm('删除附件？')">
+      <form method="post" action="/admin/delete" data-confirm="删除附件？">
         <input type="hidden" name="cid" value="${f.cid}">
         <button class="btn sm danger" type="submit">删除</button>
       </form>
@@ -1238,8 +1290,12 @@ async function previewMarkdownAction(ctx) {
 /* ==================== 站点设置 ==================== */
 
 /** 开关型下拉（开启/关闭），统一后台设置项的输出结构 */
+/**
+ * 开关（原为「开启/关闭」下拉）：隐藏域先落 off、复选框再落 on，
+ * 保存端按 form.entries() 顺序合并，后出现的值胜出，语义与旧下拉完全一致。
+ */
 function onOffSelect(name, value) {
-  return `<select name="${name}"><option value="on" ${value !== 'off' ? 'selected' : ''}>开启</option><option value="off" ${value === 'off' ? 'selected' : ''}>关闭</option></select>`;
+  return `<span class="switch"><input type="hidden" name="${name}" value="off"><input type="checkbox" name="${name}" value="on" ${value !== 'off' ? 'checked' : ''}><i class="switch__ui" aria-hidden="true"></i></span>`;
 }
 
 async function settingsPage(ctx) {
@@ -1267,7 +1323,7 @@ async function settingsPage(ctx) {
     </div>
       </div>
     </details>
-    <details class="fold fold--in">
+    <details class="fold fold--in" open>
       <summary class="fold__head">Joe 主题设置</summary>
       <div class="fold__body">
     <div class="row">
@@ -1309,7 +1365,7 @@ async function settingsPage(ctx) {
     </div>
       </div>
     </details>
-    <details class="fold fold--in">
+    <details class="fold fold--in" open>
       <summary class="fold__head">首页模块</summary>
       <div class="fold__body">
     <div class="home-module-grid">
@@ -1478,8 +1534,8 @@ async function securityPage(ctx) {
         <div class="form-actions form-actions--start"><button class="btn primary" type="submit">保存修改</button></div>
       </form>
       <div class="mcp-card__ops">
-        <form method="post" action="/admin/security" onsubmit="return confirm('重新生成后旧令牌立即失效，确定继续？')"><input type="hidden" name="op" value="mcp-generate"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn sm" type="submit">重新生成</button></form>
-        <form method="post" action="/admin/security" onsubmit="return confirm('确定删除这个 MCP 令牌？')"><input type="hidden" name="op" value="mcp-delete"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn sm danger" type="submit">删除</button></form>
+        <form method="post" action="/admin/security" data-confirm="重新生成后旧令牌立即失效，确定继续？"><input type="hidden" name="op" value="mcp-generate"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn sm" type="submit">重新生成</button></form>
+        <form method="post" action="/admin/security" data-confirm="确定删除这个 MCP 令牌？"><input type="hidden" name="op" value="mcp-delete"><input type="hidden" name="id" value="${esc(server.id)}"><button class="btn sm danger" type="submit">删除</button></form>
       </div>
     </details>
   </div>`;
@@ -1795,11 +1851,11 @@ async function backupPage(ctx) {
       return (
         '<li><div class="meta"><div class="name">' + esc(f.name) + '</div><div class="sub">' + sub + '</div></div>' +
         '<div class="ops">' +
-        '<form method="post" action="/admin/backup" onsubmit="return confirm(\'恢复会用该备份改写现有数据，确定继续？\')">' +
+        '<form method="post" action="/admin/backup" data-confirm="恢复会用该备份改写现有数据，确定继续？">' +
         '<input type="hidden" name="op" value="webdav-restore"><input type="hidden" name="file" value="' + esc(f.name) + '">' +
         '<select name="mode"><option value="merge">合并</option><option value="replace">覆盖</option></select>' +
         '<button class="btn sm" type="submit">恢复</button></form>' +
-        '<form method="post" action="/admin/backup" onsubmit="return confirm(\'确定删除该备份？\')">' +
+        '<form method="post" action="/admin/backup" data-confirm="确定删除该备份？">' +
         '<input type="hidden" name="op" value="webdav-delete"><input type="hidden" name="file" value="' + esc(f.name) + '">' +
         '<button class="btn sm danger" type="submit">删除</button></form>' +
         '</div></li>'
@@ -2009,7 +2065,7 @@ async function trashPage(ctx) {
         '<form method="post" action="/admin/trash">' +
         '<input type="hidden" name="op" value="restore"><input type="hidden" name="key" value="' + esc(it.key) + '">' +
         '<button class="btn sm" type="submit">恢复</button></form>' +
-        '<form method="post" action="/admin/trash" onsubmit="return confirm(\'永久删除后不可恢复，确定？\')">' +
+        '<form method="post" action="/admin/trash" data-confirm="永久删除后不可恢复，确定？">' +
         '<input type="hidden" name="op" value="purge"><input type="hidden" name="key" value="' + esc(it.key) + '">' +
         '<button class="btn sm danger" type="submit">彻底删除</button></form>' +
         '</div></li>'
@@ -2030,7 +2086,7 @@ async function trashPage(ctx) {
     ${items.length ? `<ul class="backup-files">${rows}</ul>` : '<p class="hint">回收站是空的。</p>'}
     ${
       items.length
-        ? `<form method="post" action="/admin/trash" onsubmit="return confirm('确定清空回收站？该操作不可恢复，附件文件也会被删除。')" style="margin-top:16px">
+        ? `<form method="post" action="/admin/trash" data-confirm="确定清空回收站？该操作不可恢复，附件文件也会被删除。" style="margin-top:16px">
       <input type="hidden" name="op" value="empty">
       <button class="btn danger" type="submit">清空回收站</button>
     </form>`

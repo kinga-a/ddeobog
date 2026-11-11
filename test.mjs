@@ -1223,6 +1223,43 @@ await test('站点设置保存（含 Joe 主题配置）', async () => {
   assert.ok(home.includes('边缘君'), 'Joe 主题侧栏昵称生效');
 });
 
+await test('站点设置：开关组件渲染、三段默认展开、保存语义与旧下拉一致', async () => {
+  // 本区段不要调 loginAdmin()：它依赖下方才初始化的 _kv（见文件内注释），会话 cookie 沿用前面的登录
+  const html = await call('GET', '/admin/settings').then((r) => r.text());
+  assert.ok(html.includes('class="switch"'), '开关应渲染为切换组件');
+  assert.ok(!/<select name="j_JCommentStatus"/.test(html), '评论功能开关不应再是下拉（头像源等真下拉除外）');
+  assert.equal((html.match(/details class="fold fold--in" open/g) || []).length, 3, '站点基础/Joe 主题/首页模块应默认展开');
+  // 模拟浏览器提交开关：关 = 只有隐藏域 off；开 = off 后再跟 on（entries 顺序合并，后者胜出）
+  const postSettings = async (pairs) => {
+    const body = new URLSearchParams();
+    for (const [k, v] of pairs) body.append(k, v);
+    const req = new Request('https://blog.example.com/admin/settings', {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    return onRequest({ request: req, env: {}, params: {}, waitUntil: () => {} });
+  };
+  let res = await postSettings([['j_JCommentStatus', 'off']]);
+  assert.equal(res.status, 302);
+  let page = await call('GET', '/admin/settings').then((r) => r.text());
+  assert.ok(!/name="j_JCommentStatus" value="on" checked/.test(page), '关：开关应呈未选中');
+  res = await postSettings([['j_JCommentStatus', 'off'], ['j_JCommentStatus', 'on']]);
+  assert.equal(res.status, 302);
+  page = await call('GET', '/admin/settings').then((r) => r.text());
+  assert.ok(/name="j_JCommentStatus" value="on" checked/.test(page), '开：开关应呈选中');
+});
+
+await test('仪表盘：站点概览带 GitHub 仓库链接；危险操作走自定义确认弹窗', async () => {
+  const dash = await call('GET', '/admin').then((r) => r.text());
+  assert.ok(dash.includes('https://github.com/kinga-a/ddeobog'), '概览应有项目仓库地址');
+  assert.ok(dash.includes('fa-github'), '仓库链接应带 GitHub 图标');
+  assert.ok(dash.includes('ui-modal'), '页面应带自定义确认弹窗');
+  const posts = await call('GET', '/admin/posts').then((r) => r.text());
+  assert.ok(posts.includes('data-confirm="确定删除该文章？"'), '删除文章应声明 data-confirm');
+  assert.ok(!posts.includes('onsubmit="return confirm'), '不应再有原生 confirm 内联调用');
+});
+
 await test('站点设置：头像源排在顶置文章IDs之后，且换位置后仍能保存', async () => {
   // 注意别在这里调 loginAdmin()：它定义在下方，用到的 _kv 是后面才初始化的 const，
   // 现在调用会抛 TDZ；而它第一行就把 cookie 清空了，会连带弄挂后面所有用例。
