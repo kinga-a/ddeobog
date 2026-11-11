@@ -1188,6 +1188,9 @@ export async function renderIndex(ctx) {
   const a = (p) => assetsUrl(ctx.options, p);
   const { list, page } = ctx;
   const traditionalPaging = (ctx.options.joe.Pagination_Mode || 'off') === 'on';
+  // 「查看更多」模式下第 1 页不画数字导航（由加载按钮接管），但直接访问
+  // /page/2/ 这类深链时必须画出导航并标出当前页，否则访客无路可回上一页，
+  // 归档页也是无条件画导航的，这里与之保持一致。
 
   // 处理顶置文章：按「顶置文章IDs」前置，其余保持原顺序
   const items = applyStickOrder(list.items, parseStickIds(ctx.options));
@@ -1216,7 +1219,7 @@ export async function renderIndex(ctx) {
           <ul class="joe_list">${itemsHtml}</ul>
           <ul class="joe_list__loading" style="display:none"></ul>
         </div>
-        ${traditionalPaging ? pageNav(page, list.pages, '/') : ''}
+        ${traditionalPaging || page > 1 ? pageNav(page, list.pages, '/') : ''}
         <div class="joe_load" style="display:none">查看更多</div>
       </div>
     </div>
