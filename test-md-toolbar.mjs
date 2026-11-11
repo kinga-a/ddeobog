@@ -97,3 +97,14 @@ test('前台体验五项：加载动画、文章留白、抽屉胶囊、搜索�
   assert.ok(refine.includes('.joe_header__above-search .input { border-color: var(--classA); }'), '搜索框应有看得清的中性灰边框');
   assert.ok(layout.includes('white-space: nowrap'), '加载中文案应单行不溢出胶囊');
 });
+
+test('阅读进度条：JS 驱动（rAF+transform），不再用 scroll-driven CSS 动画', () => {
+  const refine = read('./usr/themes/joe/assets/css/joe.refine.css');
+  assert.ok(!refine.includes('animation-timeline: scroll'), 'scroll-driven 动画在移动端跟随不跟手，应已下线');
+  assert.ok(refine.includes('.joe_reading-progress'), '进度条元素应有样式');
+  assert.ok(refine.includes('will-change: transform'), '进度条应预告合成层');
+  const post = read('./usr/themes/joe/assets/js/joe.post_page.js');
+  assert.ok(post.includes("bar.className = 'joe_reading-progress'"), '文章页脚本应创建进度条元素');
+  assert.ok(post.includes("{ passive: true }"), '滚动监听应为 passive');
+  assert.ok(post.includes("bar.style.transform = 'scaleX(' + p + ')'"), '每帧只写 transform');
+});

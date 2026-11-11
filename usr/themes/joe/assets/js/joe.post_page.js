@@ -373,3 +373,38 @@ if (document.readyState === 'loading') {
 } else {
   joeTocInit();
 }
+
+/* 阅读进度条（2026-11-11）：替代原先 refine.css 的 scroll-driven 动画
+   （移动端 Safari 跟随不跟手、体感卡顿，老浏览器还整条不显示）。
+   做法：passive 滚动监听 + rAF 节流，每帧只写 transform: scaleX
+   （合成层，不触发布局/重绘）；可滚动高度只在初始化/resize/load 时
+   测量，不在滚动里读布局。 */
+function joeReadingProgressInit() {
+  if (!document.querySelector('.joe_detail')) return;
+  var bar = document.createElement('div');
+  bar.className = 'joe_reading-progress';
+  document.body.appendChild(bar);
+  var max = 1;
+  function measure() {
+    max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  }
+  function update() {
+    var p = Math.min(1, Math.max(0, window.scrollY / max));
+    bar.style.transform = 'scaleX(' + p + ')';
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function () {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () { ticking = false; update(); });
+  }, { passive: true });
+  window.addEventListener('resize', function () { measure(); update(); });
+  window.addEventListener('load', function () { measure(); update(); });
+  measure();
+  update();
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', joeReadingProgressInit);
+} else {
+  joeReadingProgressInit();
+}

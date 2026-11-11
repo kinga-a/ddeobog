@@ -1,6 +1,6 @@
 {
   "name": "typecho-edgeone",
-  "version": "1.6.10",
+  "version": "1.6.11",
   "private": true,
   "type": "module",
   "description": "运行在腾讯 EdgeOne Makers 上的 Typecho 兼容博客",
