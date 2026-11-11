@@ -168,6 +168,27 @@ ${imagePreconnect}
   // iOS Safari：让底部工具栏与安全区跟随夜间模式
   (function(){
     var root = document.documentElement;
+    var lastNight = null;
+    // iOS 26/27 Safari 的采样器只在「fixed 元素出现/消失、布局、滚动」时才重读
+    // 浏览器边框颜色：光改背景色、强制重排都触发不了，底部工具栏没有贴边元素，
+    // 只能退而读根背景，于是切换后一直停在旧色、刷新首帧才采对。办法与作者
+    // 另一个博客（edgeone-blog）真机验证过的方案相同：主题真正切换时插入一个
+    // 全屏、不透明、新主题色的 fixed 探针，停 350ms 后淡出移除，逼采样器重读
+    // 包括底边在内的整个视口。z-index 990：盖住内容与遮罩（880），让位于本就
+    // 采样正常的吸顶头（1000）与侧栏（1020）。
+    function probeChrome(color) {
+      if (!document.body) return;
+      var oldProbe = document.getElementById("joe-chrome-probe");
+      if (oldProbe) oldProbe.remove();
+      var el = document.createElement("div");
+      el.id = "joe-chrome-probe";
+      el.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:" + color + ";opacity:1;z-index:990;pointer-events:none;transition:opacity .25s ease;";
+      document.body.appendChild(el);
+      setTimeout(function () {
+        el.style.opacity = "0";
+        setTimeout(function () { el.remove(); }, 260);
+      }, 350);
+    }
     function sync(){
       var night = root.getAttribute("data-night") === "night";
       var color = night ? "#232323" : "#ffffff";
@@ -189,6 +210,10 @@ ${imagePreconnect}
         body.style.backgroundColor = color;
         void body.offsetHeight;
       }
+      // 只有主题真的变了才打探针：sync 还会被侧栏遮罩的开关调用，那种重采样
+      // 靠遮罩自身的出现/消失就能触发，不需要再闪一层。
+      if (lastNight !== null && night !== lastNight) probeChrome(color);
+      lastNight = night;
     }
     sync();
     if (window.MutationObserver) {
