@@ -32,3 +32,9 @@
   Cache-Control: public, max-age=31536000, immutable
 /usr/themes/joe/assets/*.eot
   Cache-Control: public, max-age=31536000, immutable
+
+# 后台样式例外：admin.css 文件名不带 hash 且经常调整，
+# 不能吃一年强缓存，否则改版后老访客一直拿到旧样式（HTML 已更新、CSS 被锁死）。
+# 用 5 分钟短缓存：改动最迟 5 分钟内对所有访客生效。
+/usr/themes/joe/assets/css/admin.css
+  Cache-Control: public, max-age=300

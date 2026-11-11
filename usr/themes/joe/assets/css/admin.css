@@ -387,6 +387,8 @@ tbody tr:last-child td { border-bottom: 0; }
 /* 表格操作列：按钮并排、间距一致 */
 td form { display: inline-flex; margin: 0 6px 0 0; }
 td form:last-child { margin-right: 0; }
+td a.btn { margin-right: 6px; }
+td a.btn:last-child { margin-right: 0; }
 td:last-child { white-space: nowrap; }
 .cell-strong { color: var(--ink); font-weight: 600; }
 
