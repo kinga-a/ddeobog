@@ -1135,6 +1135,7 @@ body .EasyMDEContainer .editor-preview-side table { width: 100%; margin: 0 0 14p
   cursor: pointer;
 }
 .switch__ui {
+  pointer-events: none;
   flex: none;
   width: 42px; height: 24px;
   border-radius: 999px;

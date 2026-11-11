@@ -59,3 +59,11 @@ test('后台样式：EasyMDE 适配存在，旧工具条样式已清', () => {
   assert.ok(css.includes('.editor-preview-side'), '应有预览区适配');
   assert.ok(!css.includes('.md-bar'), '旧工具条样式不应残留');
 });
+
+test('后台样式：开关的装饰层不得拦截点击', () => {
+  const css = read('./usr/themes/joe/assets/css/admin.css');
+  // 药丸/滑块是纯装饰层且盖在透明复选框之上，不放行点击的话开关点了没反应
+  assert.ok(/\.switch__ui \{[^}]*pointer-events: none/.test(css), '.switch__ui 必须有 pointer-events: none');
+  assert.ok(css.includes('.ui-modal'), '应有自定义确认弹窗样式');
+  assert.ok(css.includes('::file-selector-button'), '文件选择按钮应有美化');
+});
