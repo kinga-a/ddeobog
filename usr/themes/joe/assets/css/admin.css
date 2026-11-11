@@ -1013,7 +1013,7 @@ input.meta-input {
   line-height: 1.75;
 }
 /* 编辑区跟随后台令牌（深色模式自动成立），圆角/边框与卡片语言对齐 */
-.EasyMDEContainer .CodeMirror {
+body .EasyMDEContainer .CodeMirror {
   background: var(--surface);
   color: var(--ink);
   border-color: var(--line);
@@ -1022,41 +1022,77 @@ input.meta-input {
   font-size: 14px;
   line-height: 1.75;
 }
-.EasyMDEContainer .editor-toolbar {
+body .EasyMDEContainer .editor-toolbar {
   background: var(--surface-2);
   border-color: var(--line);
   border-radius: var(--r-md) var(--r-md) 0 0;
   opacity: 1;
 }
-.EasyMDEContainer .editor-toolbar button { color: var(--ink-2); }
-.EasyMDEContainer .editor-toolbar button:hover,
-.EasyMDEContainer .editor-toolbar button.active { background: var(--surface); border-color: var(--line); color: var(--ink); }
-.EasyMDEContainer .editor-toolbar i.separator { border-left-color: var(--line); border-right: 0; }
-.EasyMDEContainer .editor-statusbar { color: var(--ink-4); }
-.EasyMDEContainer .CodeMirror-cursor { border-left-color: var(--ink); }
-.EasyMDEContainer .CodeMirror-selected { background: var(--accent-soft); }
+body .EasyMDEContainer .editor-toolbar button { color: var(--ink-2); }
+body .EasyMDEContainer .editor-toolbar button:hover,
+body .EasyMDEContainer .editor-toolbar button.active { background: var(--surface); border-color: var(--line); color: var(--ink); }
+body .EasyMDEContainer .editor-toolbar i.separator { border-left-color: var(--line); border-right: 0; }
+body .EasyMDEContainer .editor-statusbar { color: var(--ink-4); }
+body .EasyMDEContainer .CodeMirror-cursor { border-left-color: var(--ink); }
+body .EasyMDEContainer .CodeMirror-selected { background: var(--accent-soft); }
 /* 预览区：按文章正文的排版近似呈现（内容由站点自己的渲染器生成） */
-.EasyMDEContainer .editor-preview,
-.EasyMDEContainer .editor-preview-side {
+body .EasyMDEContainer .editor-preview,
+body .EasyMDEContainer .editor-preview-side {
   background: var(--surface);
   color: var(--ink);
   font-size: 15px;
   line-height: 1.85;
   padding: 16px 20px;
 }
-.EasyMDEContainer .editor-preview img,
-.EasyMDEContainer .editor-preview-side img { max-width: 100%; height: auto; border-radius: var(--r-md); }
-.EasyMDEContainer .editor-preview pre,
-.EasyMDEContainer .editor-preview-side pre { background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 12px 14px; overflow-x: auto; }
-.EasyMDEContainer .editor-preview code,
-.EasyMDEContainer .editor-preview-side code { font-family: Consolas, Menlo, "SF Mono", ui-monospace, monospace; font-size: 13px; }
-.EasyMDEContainer .editor-preview blockquote,
-.EasyMDEContainer .editor-preview-side blockquote { margin: 0 0 12px; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--ink-3); }
-.EasyMDEContainer .editor-preview table,
-.EasyMDEContainer .editor-preview-side table { width: 100%; margin: 0 0 14px; font-size: 14px; }
+body .EasyMDEContainer .editor-preview img,
+body .EasyMDEContainer .editor-preview-side img { max-width: 100%; height: auto; border-radius: var(--r-md); }
+body .EasyMDEContainer .editor-preview pre,
+body .EasyMDEContainer .editor-preview-side pre { background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 12px 14px; overflow-x: auto; }
+body .EasyMDEContainer .editor-preview code,
+body .EasyMDEContainer .editor-preview-side code { font-family: Consolas, Menlo, "SF Mono", ui-monospace, monospace; font-size: 13px; }
+body .EasyMDEContainer .editor-preview blockquote,
+body .EasyMDEContainer .editor-preview-side blockquote { margin: 0 0 12px; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--ink-3); }
+body .EasyMDEContainer .editor-preview table,
+body .EasyMDEContainer .editor-preview-side table { width: 100%; margin: 0 0 14px; font-size: 14px; }
 /* 触屏防 iOS 聚焦缩放：编辑区字号不低于 16px */
 @media (pointer: coarse) {
   .EasyMDEContainer .CodeMirror { font-size: 16px; }
+}
+
+
+/* 手机：工具栏单行横滑 + 大按钮；分屏改为上下布局（预览占下半屏） */
+@media (max-width: 760px) {
+  body .EasyMDEContainer .editor-toolbar {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 8px;
+    scrollbar-width: none;
+  }
+  body .EasyMDEContainer .editor-toolbar::-webkit-scrollbar { display: none; }
+  body .EasyMDEContainer .editor-toolbar button {
+    flex: 0 0 auto;
+    min-width: 38px;
+    height: 38px;
+    font-size: 15px;
+  }
+  body .EasyMDEContainer .editor-toolbar i.separator { flex: 0 0 auto; align-self: center; height: 20px; }
+  body .EasyMDEContainer .editor-toolbar.fullscreen { height: 50px; z-index: 130; }
+  body .EasyMDEContainer .CodeMirror-fullscreen { z-index: 120; }
+  body .EasyMDEContainer .editor-toolbar.fullscreen ~ .editor-preview-side { z-index: 125; }
+  body .EasyMDEContainer .CodeMirror-sided { width: 100% !important; }
+  body .EasyMDEContainer .editor-preview-side {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 52%;
+    border-top: 2px solid var(--line);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .14);
+  }
+  body .EasyMDEContainer .editor-statusbar { padding: 6px 8px; }
 }
 
 /* ---------- MCP 令牌 ---------- */
