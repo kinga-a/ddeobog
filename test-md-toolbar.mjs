@@ -43,6 +43,7 @@ test('初始化脚本：工具栏含分屏与摘要分隔，且关掉会拉 CDN 
   assert.ok(src.includes('<!--more-->'), '应保留插入摘要分隔的动作');
   assert.ok(src.includes('spellChecker: false'), '拼写检查要拉 CDN 词典，必须关');
   assert.ok(src.includes('autoDownloadFontAwesome: false'), '图标库后台自带，必须关自动下载');
+  assert.ok(src.includes('sideBySideFullscreen: false'), '分屏不得联动全屏：全屏的滚动锁会在 SPA 离开编辑页后残留，冻住整个后台');
   assert.ok(src.includes('easymde@2.18.0/easymde.min.js'), '应从 vendored 路径加载库');
 });
 

@@ -22,6 +22,7 @@
       element: ta,
       autoDownloadFontAwesome: false, // 后台已自带 Font Awesome 4.7，不必再去 CDN 拉
       spellChecker: false, // 拼写检查要从 CDN 拉词典，关掉
+      sideBySideFullscreen: false, // 分屏只在页面内左右/上下分，不进全屏：全屏会给 body 上滚动锁，离开编辑页（SPA 换页）后锁不解，整个后台都滑不动
       forceSync: true,
       minHeight: '320px',
       placeholder: '在这里写正文，点上面的「分屏预览」可以左边写、右边看效果…',

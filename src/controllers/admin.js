@@ -446,6 +446,10 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
           if(!next) throw new Error('no main');
           clearTimeout(skTimer);
           main.innerHTML=next.innerHTML;
+          // 编辑器全屏会给 body/html 上 overflow:hidden 的滚动锁，SPA 换页把编辑器
+          // 直接换掉时锁不会自己解开（列表页会滑不动），换页后统一清掉
+          document.body.style.overflow='';
+          document.documentElement.style.overflow='';
           runScripts(next);
           document.title=doc.title;
           syncSide(doc);

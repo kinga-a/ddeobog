@@ -1081,8 +1081,17 @@ body .EasyMDEContainer .editor-preview-side table { width: 100%; margin: 0 0 14p
   body .EasyMDEContainer .editor-toolbar.fullscreen { height: 50px; z-index: 130; }
   body .EasyMDEContainer .CodeMirror-fullscreen { z-index: 120; }
   body .EasyMDEContainer .editor-toolbar.fullscreen ~ .editor-preview-side { z-index: 125; }
-  body .EasyMDEContainer .CodeMirror-sided { width: 100% !important; }
-  body .EasyMDEContainer .editor-preview-side {
+  /* 分屏是页面内的弹性布局：手机上下堆叠，预览占下半块，页面照常滚动 */
+  body .EasyMDEContainer.sided--no-fullscreen:has(.editor-preview-active-side) { flex-direction: column; }
+  body .EasyMDEContainer .CodeMirror-sided { width: 100% !important; flex: none; }
+  body .EasyMDEContainer.sided--no-fullscreen .editor-preview-active-side {
+    width: 100%;
+    flex: 0 0 auto;
+    height: 46vh;
+    border-top: 2px solid var(--line);
+  }
+  /* 全屏里的分屏预览是固定定位：改成底部抽屉，避免右半屏窄条 */
+  body .EasyMDEContainer:not(.sided--no-fullscreen) .editor-preview-side {
     top: auto;
     bottom: 0;
     left: 0;

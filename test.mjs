@@ -1616,6 +1616,8 @@ await test('编辑器：撰写页接入 EasyMDE，旧工具条下线', async () 
   assert.ok(html.includes('name="text"'), 'textarea 仍须保留原 name，否则保存会丢正文');
   assert.ok(!html.includes('joe-md-bar'), '旧工具条容器不应再出现');
   assert.ok(!html.includes('joe.admin-md'), '旧工具条脚本不应再引入');
+  // 全屏编辑会给 body/html 上滚动锁，SPA 换页的清理代码必须在（否则离开编辑页后整站滑不动）
+  assert.ok(html.includes("document.documentElement.style.overflow=''"), 'SPA 换页应清理编辑器遗留的滚动锁');
 });
 
 await test('编辑器：页面编辑器同样接入 EasyMDE', async () => {
