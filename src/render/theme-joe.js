@@ -636,6 +636,34 @@ function footerBlock(ctx) {
 }
 
 /** HTML 文档骨架 */
+/**
+ * 社交分享卡片（Open Graph / Twitter Card）+ canonical。
+ * 文章页用文章标题/摘要/封面，其余页面用站点标题/描述/Logo；
+ * 分享到微信、钉钉、Twitter 等平台时能带出标题摘要图，而不是只有一个裸链接。
+ */
+function ogTags(ctx) {
+  const { options } = ctx;
+  const post = ctx.post;
+  const pathname = (ctx.url && ctx.url.pathname) || '/';
+  const pageUrl = `${ctx.siteUrl}${pathname}`;
+  const title = post ? post.title : options.title;
+  const desc = post
+    ? post.fields?.description || plainExcerpt(post.text, 120)
+    : options.description || '';
+  let image = '';
+  if (post) image = coverUrl(ctx, post);
+  else if (options.joe.JLogo) image = options.joe.JLogo.startsWith('/') ? `${ctx.siteUrl}${options.joe.JLogo}` : options.joe.JLogo;
+  const esc = escapeHtml;
+  return `<link rel="canonical" href="${esc(pageUrl)}" />
+  <meta property="og:type" content="${post ? 'article' : 'website'}" />
+  <meta property="og:site_name" content="${esc(options.title)}" />
+  <meta property="og:title" content="${esc(title)}" />
+  ${desc ? `<meta property="og:description" content="${esc(desc)}" />` : ''}
+  <meta property="og:url" content="${esc(pageUrl)}" />
+  ${image ? `<meta property="og:image" content="${esc(image)}" />` : ''}
+  <meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}" />`;
+}
+
 async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = '' }) {
   const { options } = ctx;
   return `<!DOCTYPE html>
@@ -647,6 +675,7 @@ async function layout(ctx, { title, meta = '', css = [], js = [], bodyClass = ''
   <link rel="shortcut icon" href="${escapeHtml(options.joe.JFavicon)}" />
   <title>${title}</title>
   ${meta}
+  ${ogTags(ctx)}
   ${cssLinks(ctx, css)}
   ${headBlock(ctx)}
   ${scripts(ctx, js)}

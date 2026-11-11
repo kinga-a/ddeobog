@@ -46,6 +46,10 @@ export async function handleFrontend(ctx) {
   if (path === '/feed' || path === '/feed/' || path === '/feed/atom' || path === '/feed/rss')
     return handleFeed(ctx);
 
+  // ---- SEO：站点地图与 robots ----
+  if (path === '/sitemap.xml') return handleSitemap(ctx);
+  if (path === '/robots.txt') return handleRobots(ctx);
+
   // ---- 归档页（导航「归档」）----
   if (path === '/archive' || path === '/archive/') return html(await theme.renderArchivePage(ctx));
 
@@ -518,5 +522,44 @@ ${items
 </feed>`;
   return new Response(feed, {
     headers: { 'Content-Type': 'application/atom+xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
+  });
+}
+
+/* ==================== SEO：sitemap.xml / robots.txt ==================== */
+
+async function handleSitemap(ctx) {
+  const { db } = ctx;
+  const site = ctx.siteUrl;
+  const [posts, pages, cats, tags] = await Promise.all([
+    db.listContentsIndex({ type: 'post', pageSize: 100000 }),
+    db.listContentsIndex({ type: 'page', pageSize: 100000 }),
+    db.listMetas('category'),
+    db.listMetas('tag'),
+  ]);
+  const url = (loc, modified, freq, pri) =>
+    `  <url><loc>${escapeHtml(loc)}</loc>${modified ? `<lastmod>${new Date(modified * 1000).toISOString()}</lastmod>` : ''}<changefreq>${freq}</changefreq><priority>${pri}</priority></url>`;
+  const body = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${url(`${site}/`, null, 'daily', '1.0')}
+${posts.items.map((p) => url(`${site}/archives/${p.cid}/`, p.modified, 'weekly', '0.8')).join('\n')}
+${pages.items.map((p) => url(`${site}/${encodeURIComponent(p.slug)}/`, p.modified, 'monthly', '0.6')).join('\n')}
+${cats.filter((m) => m.count > 0).map((m) => url(`${site}/category/${encodeURIComponent(m.slug)}/`, null, 'weekly', '0.5')).join('\n')}
+${tags.filter((m) => m.count > 0).map((m) => url(`${site}/tag/${encodeURIComponent(m.slug)}/`, null, 'weekly', '0.5')).join('\n')}
+</urlset>`;
+  return new Response(body, {
+    headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+  });
+}
+
+function handleRobots(ctx) {
+  const body = `User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /install
+
+Sitemap: ${ctx.siteUrl}/sitemap.xml
+`;
+  return new Response(body, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' },
   });
 }
