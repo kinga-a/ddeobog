@@ -67,3 +67,16 @@ test('后台样式：开关的装饰层不得拦截点击', () => {
   assert.ok(css.includes('.ui-modal'), '应有自定义确认弹窗样式');
   assert.ok(css.includes('::file-selector-button'), '文件选择按钮应有美化');
 });
+
+test('移动端防溢出：后台网格可收缩、整页兜底；前台正文长内容可断行', () => {
+  const admin = read('./usr/themes/joe/assets/css/admin.css');
+  // 1fr 等于 minmax(auto, 1fr)，列宽会被不可断的长内容撑爆，手机单列必须写 minmax(0, 1fr)
+  assert.ok(admin.includes('.home-module-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }'), '手机首页模块网格应可收缩');
+  assert.ok(admin.includes('overflow-x: clip'), '后台整页应有横向溢出兜底');
+  assert.ok(/\.hint \{[^}]*overflow-wrap: anywhere/.test(admin), '提示文本里的长链接应可断行');
+  const layout = read('./usr/themes/joe/assets/css/joe.layout.css');
+  assert.ok(layout.includes('overflow-x: clip'), '前台整页应有横向溢出兜底');
+  assert.ok(layout.includes('.joe_detail__article a:not([class]) { overflow-wrap: anywhere; }'), '正文长链接应可断行');
+  assert.ok(layout.includes('.joe_detail__article pre { overflow-x: auto; }'), '无语言代码块应可横向滚动');
+  assert.ok(layout.includes('.comment-list__item-contain { overflow-wrap: anywhere; }'), '评论长内容应可断行');
+});

@@ -1045,3 +1045,22 @@ html[data-night='night'] .joe_wall__pin { background: rgba(255, 255, 255, 0.16);
   text-align: center;
   opacity: 0.7;
 }
+
+/* ================================================================
+ * 长内容防溢出（2026-11-11）：手机上文章/评论里的长链接、无语言代码块、
+ * 宽表格会把整页撑出屏幕。逐项给正文容器加断行与滚动规则，再用
+ * overflow-x: clip 给整页兜底（clip 不创建滚动容器，不破坏吸顶头）。
+ * ================================================================ */
+html, body { overflow-x: clip; }
+
+html body .joe_detail__article { overflow-wrap: break-word; }
+html body .joe_detail__article a:not([class]) { overflow-wrap: anywhere; }
+html body .joe_detail__article pre { overflow-x: auto; }
+html body .joe_detail__article table td,
+html body .joe_detail__article table th { overflow-wrap: break-word; }
+html body .joe_detail__article iframe,
+html body .joe_detail__article embed,
+html body .joe_detail__article object { max-width: 100%; }
+
+html body .comment-list__item-contain { overflow-wrap: anywhere; }
+html body .joe_wall__text { overflow-wrap: anywhere; }

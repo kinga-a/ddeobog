@@ -141,6 +141,8 @@ html[data-admin-theme='dark'] {
 /* ---------- 基础 ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+/* 兜底：任何子元素意外撑宽时，页面本身不得横向溢出（clip 不像 hidden 那样破坏 sticky） */
+html, body { overflow-x: clip; }
 
 body {
   margin: 0;
@@ -549,6 +551,7 @@ input[type="checkbox"], input[type="radio"] {
   font-size: 12px;
   line-height: 1.55;
   color: var(--ink-3);
+  overflow-wrap: anywhere; /* 提示里的示例长链接必须能断行，否则会把卡片撑出屏幕 */
 }
 .hint a { text-decoration: underline; text-underline-offset: 2px; }
 
@@ -1804,7 +1807,7 @@ body.auth {
   .form-actions { margin-top: 16px; }
   .form-actions .btn { width: 100%; }
 
-  .home-module-grid { grid-template-columns: 1fr; gap: 14px; }
+  .home-module-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .home-module { padding: 14px; }
 
   .auth .card { padding: 30px 22px 24px; }
