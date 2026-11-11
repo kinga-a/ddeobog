@@ -511,6 +511,46 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       }
     });
 
+    // 附件上传前在浏览器端压缩图片：服务器有 950KB 上限，手机原图动辄几 MB 会被直接拒绝；
+    // 先压到最长边 1920px 的 WebP（质量 0.85）再传，既能过限、也省存储与读者流量。
+    // 只处理 JPEG/PNG/WebP 且 ≥200KB 的图，压完反而更大、或浏览器不支持时原样上传。
+    async function compressImageFile(file){
+      if(!file||!/^image\\/(jpeg|png|webp)$/.test(file.type)||file.size<200*1024) return file;
+      try{
+        var bmp=await createImageBitmap(file);
+        var scale=Math.min(1,1920/Math.max(bmp.width,bmp.height));
+        var canvas=document.createElement('canvas');
+        canvas.width=Math.max(1,Math.round(bmp.width*scale));
+        canvas.height=Math.max(1,Math.round(bmp.height*scale));
+        canvas.getContext('2d').drawImage(bmp,0,0,canvas.width,canvas.height);
+        var blob=await new Promise(function(r){canvas.toBlob(r,'image/webp',0.85);});
+        if(!blob||blob.size>=file.size) return file;
+        return new File([blob],file.name.replace(/\\.[^.]+$/,'')+'.webp',{type:'image/webp'});
+      }catch(err){ return file; }
+    }
+    document.addEventListener('submit',function(e){
+      var form=e.target.closest?e.target.closest('form[data-compress-upload]'):null;
+      if(!form||form.dataset.compressing) return;
+      var input=form.querySelector('input[type="file"][name="file"]');
+      if(!input||!input.files||!input.files.length) return;
+      e.preventDefault();
+      form.dataset.compressing='1';
+      var btn=form.querySelector('button[type="submit"]');
+      var oldText=btn?btn.textContent:'';
+      if(btn){btn.disabled=true;btn.textContent='处理中…';}
+      compressImageFile(input.files[0]).then(function(file){
+        var fd=new FormData();
+        fd.append('file',file);
+        return fetch(form.action,{method:'POST',body:fd,credentials:'same-origin'});
+      }).then(function(res){
+        window.location.href=res.url||'/admin/uploads';
+      }).catch(function(){
+        delete form.dataset.compressing;
+        if(btn){btn.disabled=false;btn.textContent=oldText;}
+        form.submit();
+      });
+    });
+
     document.addEventListener('click',function(e){
       if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;
       var a=e.target.closest('a');
@@ -1174,7 +1214,7 @@ async function uploadsPage(ctx) {
   const body = `${MSG(ctx)}
   <h2>附件管理（${files.length}）</h2>
   <div class="card">
-    <form method="post" action="/admin/upload" enctype="multipart/form-data" style="display:flex;gap:12px;align-items:flex-end;margin-bottom:18px">
+    <form method="post" action="/admin/upload" enctype="multipart/form-data" data-compress-upload style="display:flex;gap:12px;align-items:flex-end;margin-bottom:18px">
       <div class="item" style="flex:1"><label>上传文件（存入 Blob 存储）</label><input type="file" name="file" required></div>
       <button class="btn primary" type="submit">上传</button>
     </form>
