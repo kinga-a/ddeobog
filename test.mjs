@@ -1606,54 +1606,51 @@ await test('密码文章：旧的明文密码仍能解开（存量兼容）', as
 });
 
 
-// ================= 后台 Markdown 工具条 =================
-await test('工具条：撰写页渲染出工具条容器和全部动作按钮', async () => {
+// ================= 后台 Markdown 编辑器（EasyMDE） =================
+await test('编辑器：撰写页接入 EasyMDE，旧工具条下线', async () => {
   await loginAdmin();
   const html = await call('GET', '/admin/post').then((r) => r.text());
-  assert.ok(html.includes('id="joe-md-bar"'), '工具条容器应存在');
-  assert.ok(html.includes('class="md-bar__sep"'), '应有分组分隔线');
-  assert.ok(html.includes('role="toolbar"'), '应有 toolbar 语义');
-  // data-md 的取值要和 joe.admin-md.js 里的 ACTS 对得上
-  const acts = [...html.matchAll(/data-md="([a-z0-9]+)"/g)].map((m) => m[1]);
-  for (const a of ['h1', 'h2', 'h3', 'bold', 'italic', 'strike', 'code', 'quote',
-    'codeblock', 'ul', 'ol', 'hr', 'link', 'image', 'table', 'more', 'undo', 'redo']) {
-    assert.ok(acts.includes(a), `缺少按钮 ${a}`);
-  }
-});
-
-await test('工具条：按钮与输入框配对，且引入行为脚本', async () => {
-  await loginAdmin();
-  const html = await call('GET', '/admin/post').then((r) => r.text());
-  assert.ok(html.includes('id="joe-md-text"'), 'textarea 应有约定的 id');
+  assert.ok(html.includes('easymde@2.18.0/easymde.min.css'), '应引入 EasyMDE 样式');
+  assert.ok(html.includes('joe.admin-editor.min.js'), '应引入编辑器初始化脚本');
+  assert.ok(html.includes('id="joe-md-text"'), 'textarea 应保留约定 id');
   assert.ok(html.includes('name="text"'), 'textarea 仍须保留原 name，否则保存会丢正文');
-  assert.ok(html.includes('joe.admin-md.min.js'), '应引入工具条行为脚本');
+  assert.ok(!html.includes('joe-md-bar'), '旧工具条容器不应再出现');
+  assert.ok(!html.includes('joe.admin-md'), '旧工具条脚本不应再引入');
 });
 
-await test('工具条：不提供渲染器不支持的语法按钮', async () => {
-  await loginAdmin();
-  const html = await call('GET', '/admin/post').then((r) => r.text());
-  // markdown.js 不认任务列表，给了按钮用户只会得到字面量 "[ ]"
-  assert.ok(!/data-md="task"/.test(html), '不应有任务列表按钮');
-  const acts = [...html.matchAll(/data-md="([a-z0-9]+)"/g)].map((m) => m[1]);
-  const dup = acts.filter((a, i) => acts.indexOf(a) !== i);
-  assert.equal(dup.length, 0, `动作不应重复: ${dup.join(',')}`);
-});
-
-await test('工具条：页面编辑器同样带工具条', async () => {
+await test('编辑器：页面编辑器同样接入 EasyMDE', async () => {
   await loginAdmin();
   const html = await call('GET', '/admin/page').then((r) => r.text());
-  assert.ok(html.includes('id="joe-md-bar"'), '页面编辑器也应可用');
+  assert.ok(html.includes('joe.admin-editor.min.js'), '页面编辑器也应可用');
 });
 
-await test('工具条：按钮均为 type=button，不会误触发表单提交', async () => {
+await test('编辑器预览接口：用站点渲染器把 Markdown 渲染成 HTML', async () => {
   await loginAdmin();
-  const html = await call('GET', '/admin/post').then((r) => r.text());
-  const btns = [...html.matchAll(/<button[^>]*data-md="[^"]*"[^>]*>/g)].map((m) => m[0]);
-  assert.equal(btns.length, 18, `应为 18 个按钮，实际 ${btns.length}`);
-  for (const b of btns) {
-    assert.ok(b.includes('type="button"'), `按钮缺少 type=button: ${b}`);
-  }
+  const res = await call('POST', '/admin/preview', { form: { text: '# 标题\n\n**加粗**与`代码`' } });
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.ok(html.includes('<h1'), '标题应被渲染');
+  assert.ok(html.includes('<strong>加粗</strong>'), '加粗应被渲染');
 });
+
+await test('编辑器图片上传接口：存入附件并返回可访问地址', async () => {
+  await loginAdmin();
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64');
+  const fd = new FormData();
+  fd.append('file', new Blob([png], { type: 'image/png' }), 'shot.png');
+  const req = new Request('https://blog.example.com/admin/upload-image', {
+    method: 'POST',
+    headers: { Cookie: cookie },
+    body: fd,
+  });
+  const res = await onRequest({ request: req, env: {}, params: {}, waitUntil: () => {} });
+  assert.equal(res.status, 200, '上传应成功');
+  const data = await res.json();
+  assert.ok(data.url && data.url.startsWith('/upload/'), `应返回 /upload/ 地址，实际 ${JSON.stringify(data)}`);
+  const got = await call('GET', data.url);
+  assert.equal(got.status, 200, '返回的地址应能取到文件');
+});
+
 
 
 // ================= 缓存策略：HTML 一律 no-store =================

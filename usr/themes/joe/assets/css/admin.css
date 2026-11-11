@@ -1006,46 +1006,57 @@ input.meta-input {
 .metas .col-act { width: 1%; white-space: nowrap; text-align: right; }
 .metas .empty-cell { padding: 30px 20px; text-align: center; color: var(--ink-4); }
 
-/* ---------- Markdown 工具条 ---------- */
-.md-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 3px;
-  margin-bottom: 8px;
-  padding: 5px 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-md);
-}
-.md-bar__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  height: 32px;
-  padding: 0 7px;
-  background: transparent;
-  color: var(--ink-2);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transition: background var(--t) var(--ease), color var(--t) var(--ease),
-              border-color var(--t) var(--ease), transform var(--t) var(--ease);
-}
-.md-bar__btn:hover { background: var(--surface); border-color: var(--line); color: var(--ink); box-shadow: var(--sh-1); }
-.md-bar__btn:active { transform: translateY(1px); }
-.md-bar__btn i { font-size: 13px; }
-.md-bar__sep { flex: 0 0 auto; width: 1px; height: 18px; margin: 0 3px; background: var(--line); }
-.md-bar__hint { margin-left: auto; padding-right: 4px; font-size: 12px; color: var(--ink-4); white-space: nowrap; }
+/* ---------- Markdown 编辑器（EasyMDE） ---------- */
 .md-textarea {
   font-family: Consolas, Menlo, "SF Mono", ui-monospace, monospace;
   font-size: 13.5px;
   line-height: 1.75;
+}
+/* 编辑区跟随后台令牌（深色模式自动成立），圆角/边框与卡片语言对齐 */
+.EasyMDEContainer .CodeMirror {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  font-family: Consolas, Menlo, "SF Mono", ui-monospace, monospace;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.EasyMDEContainer .editor-toolbar {
+  background: var(--surface-2);
+  border-color: var(--line);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  opacity: 1;
+}
+.EasyMDEContainer .editor-toolbar button { color: var(--ink-2); }
+.EasyMDEContainer .editor-toolbar button:hover,
+.EasyMDEContainer .editor-toolbar button.active { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.EasyMDEContainer .editor-toolbar i.separator { border-left-color: var(--line); border-right: 0; }
+.EasyMDEContainer .editor-statusbar { color: var(--ink-4); }
+.EasyMDEContainer .CodeMirror-cursor { border-left-color: var(--ink); }
+.EasyMDEContainer .CodeMirror-selected { background: var(--accent-soft); }
+/* 预览区：按文章正文的排版近似呈现（内容由站点自己的渲染器生成） */
+.EasyMDEContainer .editor-preview,
+.EasyMDEContainer .editor-preview-side {
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.85;
+  padding: 16px 20px;
+}
+.EasyMDEContainer .editor-preview img,
+.EasyMDEContainer .editor-preview-side img { max-width: 100%; height: auto; border-radius: var(--r-md); }
+.EasyMDEContainer .editor-preview pre,
+.EasyMDEContainer .editor-preview-side pre { background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 12px 14px; overflow-x: auto; }
+.EasyMDEContainer .editor-preview code,
+.EasyMDEContainer .editor-preview-side code { font-family: Consolas, Menlo, "SF Mono", ui-monospace, monospace; font-size: 13px; }
+.EasyMDEContainer .editor-preview blockquote,
+.EasyMDEContainer .editor-preview-side blockquote { margin: 0 0 12px; padding: 4px 14px; border-left: 3px solid var(--line); color: var(--ink-3); }
+.EasyMDEContainer .editor-preview table,
+.EasyMDEContainer .editor-preview-side table { width: 100%; margin: 0 0 14px; font-size: 14px; }
+/* 触屏防 iOS 聚焦缩放：编辑区字号不低于 16px */
+@media (pointer: coarse) {
+  .EasyMDEContainer .CodeMirror { font-size: 16px; }
 }
 
 /* ---------- MCP 令牌 ---------- */
@@ -1517,10 +1528,6 @@ body.auth {
   td form { margin-right: 4px; }
 }
 
-@media (max-width: 640px) {
-  .md-bar__hint { display: none; }
-}
-
 /* ---------- 手机：抽屉侧栏 / 表格卡片化 / 触控尺寸 ---------- */
 @media (max-width: 760px) {
   .layout { flex-direction: column; }
@@ -1658,8 +1665,6 @@ body.auth {
   /* 上传表单纵排 */
   .card form[enctype] { flex-direction: column; align-items: stretch !important; }
 
-  .md-bar { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
-  .md-bar::-webkit-scrollbar { display: none; }
 
   .row .item { min-width: 100%; }
   input, select, textarea { max-width: none; }

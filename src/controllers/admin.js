@@ -6,7 +6,7 @@
 import { verifyPassword, hashPassword, randomHex, passwordNeedsUpgrade } from '../auth/password.js';
 import { currentUser, sessionCookie, clearSessionCookie, sameOrigin } from '../auth/session.js';
 import { CONFIG } from '../config.js';
-import { escapeHtml as esc, plainExcerpt } from '../render/markdown.js';
+import { escapeHtml as esc, plainExcerpt, renderMarkdown } from '../render/markdown.js';
 import { avatarUrl } from '../render/html.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
 import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
@@ -106,6 +106,8 @@ const ADMIN_POST_ROUTES = new Map([
   ['meta-delete', deleteMeta],
   ['comment', commentAction],
   ['upload', uploadFile],
+  ['upload-image', uploadImageJson],
+  ['preview', previewMarkdownAction],
   ['settings', saveSettings],
   ['backup', backupAction],
   ['trash', trashAction],
@@ -528,6 +530,7 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
         return new File([blob],file.name.replace(/\\.[^.]+$/,'')+'.webp',{type:'image/webp'});
       }catch(err){ return file; }
     }
+    window.compressImageFile=compressImageFile;
     document.addEventListener('submit',function(e){
       var form=e.target.closest?e.target.closest('form[data-compress-upload]'):null;
       if(!form||form.dataset.compressing) return;
@@ -852,51 +855,6 @@ async function pagesList(ctx) {
   return html(adminLayout(ctx, { title: '管理页面', active: 'pages', body }));
 }
 
-/**
- * Markdown 工具条按钮表。data-md 的取值必须和
- * usr/themes/joe/assets/js/joe.admin-md.js 里的 ACTS 一一对应。
- *
- * 按钮由服务端渲染而不是前端拼，测试才能对着 HTML 断言具体动作。
- * 能放哪些动作以 src/render/markdown.js 实际支持什么为准：那里不支持的
- * 语法不放按钮，否则用户会得到一段原样显示的字符（比如任务列表
- * `- [ ]` 会渲染成 `<li>[ ] xxx</li>`）。'|' 是分组分隔线。
- */
-const MD_ACTIONS = [
-  ['h1', 'H1', '', '一级标题'],
-  ['h2', 'H2', '', '二级标题'],
-  ['h3', 'H3', '', '三级标题'],
-  '|',
-  ['bold', '', 'fa-bold', '加粗 · Ctrl+B'],
-  ['italic', '', 'fa-italic', '斜体 · Ctrl+I'],
-  ['strike', '', 'fa-strikethrough', '删除线'],
-  ['code', '', 'fa-code', '行内代码'],
-  '|',
-  ['quote', '', 'fa-quote-left', '引用'],
-  ['codeblock', '', 'fa-file-code-o', '代码块'],
-  ['ul', '', 'fa-list-ul', '无序列表'],
-  ['ol', '', 'fa-list-ol', '有序列表'],
-  ['hr', '', 'fa-minus', '分隔线'],
-  '|',
-  ['link', '', 'fa-link', '链接 · Ctrl+K'],
-  ['image', '', 'fa-picture-o', '图片'],
-  ['table', '', 'fa-table', '表格'],
-  ['more', '', 'fa-scissors', '插入摘要分隔 <!--more-->'],
-  '|',
-  ['undo', '', 'fa-undo', '撤销 · Ctrl+Z'],
-  ['redo', '', 'fa-repeat', '重做 · Ctrl+Shift+Z'],
-];
-
-const mdToolbar = () => {
-  const inner = MD_ACTIONS.map((row) => {
-    if (row === '|') return '<span class="md-bar__sep" aria-hidden="true"></span>';
-    const [act, label, icon, title] = row;
-    const face = icon
-      ? `<i class="fa ${icon}" aria-hidden="true"></i>`
-      : `<span>${esc(label)}</span>`;
-    return `<button type="button" class="md-bar__btn" data-md="${act}" title="${esc(title)}" aria-label="${esc(title)}">${face}</button>`;
-  }).join('');
-  return `<div class="md-bar" id="joe-md-bar" role="toolbar" aria-label="Markdown 快捷插入">${inner}<span class="md-bar__hint">支持 Markdown</span></div>`;
-};
 
 /** 标签输入框初始值：按文章 tags 的顺序取名称（缺失的 meta 渲染为空） */
 async function postTagNames(db, post) {
@@ -937,7 +895,6 @@ async function postEditor(ctx, kind) {
       ? `<div class="item"><label>缩略名（URL 路径）</label><input type="text" name="slug" value="${esc(post?.slug || '')}" placeholder="about" pattern="[a-zA-Z0-9_-]+"><div class="hint">访问路径 /缩略名/，留空自动生成</div></div>`
       : ''}
     <div class="item"><label>内容（支持 Markdown，<!--more--> 之前为摘要）</label>
-      ${mdToolbar()}
       <textarea name="text" id="joe-md-text" class="md-textarea" style="min-height:320px">${esc(post?.text || '')}</textarea></div>
     <div class="row">
       <div class="item"><label>状态</label>
@@ -966,7 +923,8 @@ async function postEditor(ctx, kind) {
     <a class="btn" href="/admin/${isPage ? 'pages' : 'posts'}">返回列表</a>
   </form>
   </div>
-  <script src="/usr/themes/joe/assets/js/joe.admin-md.min.js" defer></script>`;
+  <link rel="stylesheet" href="/usr/themes/joe/assets/lib/easymde@2.18.0/easymde.min.css">
+  <script src="/usr/themes/joe/assets/js/joe.admin-editor.min.js?v=${CONFIG.VERSION}" defer></script>`;
   return html(adminLayout(ctx, { title: isNew ? '撰写' : '编辑', active: isPage ? 'page' : 'post', body }));
 }
 
@@ -1225,25 +1183,20 @@ async function uploadsPage(ctx) {
   return html(adminLayout(ctx, { title: '附件管理', active: 'uploads', body }));
 }
 
-async function uploadFile(ctx) {
-  const { db, url } = ctx;
-  const form = await ctx.request.formData();
-  const file = form.get('file');
-  if (!file || typeof file === 'string') {
-    return redirect(url, '/admin/uploads', { msg: 'err' });
-  }
+/** 上传落盘共用逻辑：校验（拒 SVG/HTML、大小上限）→ 存 Blob → 建附件记录。成功返回 { name }，失败返回 null */
+async function storeUploadedFile(ctx, file) {
+  const { db } = ctx;
+  if (!file || typeof file === 'string') return null;
   const originalName = String(file.name || '');
   if (/\.(svg|html?|xhtml)$/i.test(originalName) || /svg|html|xhtml/i.test(file.type || '')) {
     // SVG/HTML 可在本站源下执行脚本，直接拒绝
-    return redirect(url, '/admin/uploads', { msg: 'err' });
+    return null;
   }
   const name = `${Date.now().toString(36)}-${originalName.replace(/[^\w.\-]+/g, '_')}`;
   const buf = await file.arrayBuffer();
-  if (buf.byteLength > MAX_UPLOAD_BYTES) {
-    return redirect(url, '/admin/uploads', { msg: 'err' });
-  }
+  if (buf.byteLength > MAX_UPLOAD_BYTES) return null;
   await db.blob.set(name, buf, file.type);
-  const row = await db.createContent({
+  await db.createContent({
     title: file.name,
     slug: name,
     type: 'attachment',
@@ -1251,7 +1204,31 @@ async function uploadFile(ctx) {
     authorId: ctx.user.uid,
     fields: { contentType: file.type, size: buf.byteLength },
   });
-  return redirect(url, '/admin/uploads', { msg: 'ok' });
+  return { name };
+}
+
+async function uploadFile(ctx) {
+  const { url } = ctx;
+  const form = await ctx.request.formData();
+  const stored = await storeUploadedFile(ctx, form.get('file'));
+  return redirect(url, '/admin/uploads', { msg: stored ? 'ok' : 'err' });
+}
+
+/** 编辑器图片上传（EasyMDE 粘贴/拖放/图片按钮）：同一套落盘逻辑，返回 JSON 地址 */
+async function uploadImageJson(ctx) {
+  const form = await ctx.request.formData();
+  const stored = await storeUploadedFile(ctx, form.get('file'));
+  if (!stored) return json({ ok: 0, msg: '上传失败' }, 400);
+  return json({ ok: 1, url: `/upload/${encodeURIComponent(stored.name)}` });
+}
+
+/** 编辑器分屏预览：用站点自己的渲染器出 HTML，预览与发布效果一致（短代码、画廊等都认） */
+async function previewMarkdownAction(ctx) {
+  const form = await ctx.request.formData();
+  const text = String(form.get('text') || '');
+  return new Response(renderMarkdown(text), {
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
 }
 
 /* ==================== 站点设置 ==================== */
