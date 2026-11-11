@@ -105,6 +105,14 @@
   border-radius: var(--radius-inner);
   background: var(--background);
   box-shadow: var(--box-shadow);
+  /* 只隐藏滚动条外观，滚动本身保留（站长 2026-11-11 要求） */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.joe_index__title-filter-panel::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 .joe_index__title-filter-panel[hidden] {
   display: none;

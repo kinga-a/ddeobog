@@ -108,3 +108,9 @@ test('阅读进度条：JS 驱动（rAF+transform），不再用 scroll-driven C
   assert.ok(post.includes("{ passive: true }"), '滚动监听应为 passive');
   assert.ok(post.includes("bar.style.transform = 'scaleX(' + p + ')'"), '每帧只写 transform');
 });
+
+test('首页分类/标签下拉：滚动条隐藏但可滚', () => {
+  const layout = read('./usr/themes/joe/assets/css/joe.layout.css');
+  assert.ok(layout.includes('.joe_index__title-filter-panel::-webkit-scrollbar'), 'webkit 系应隐藏下拉滚动条');
+  assert.ok(/\.joe_index__title-filter-panel \{[^}]*scrollbar-width: none/.test(layout), 'Firefox 应隐藏下拉滚动条');
+});
