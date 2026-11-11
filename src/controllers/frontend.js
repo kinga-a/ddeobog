@@ -32,7 +32,50 @@ const MAX_DRAW_COMMENT_LENGTH = 700 * 1024;
 const DRAW_COMMENT_RE = /^\{!\{data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+\}!\}$/;
 const MAIL_RE = /^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/;
 
+/* ==================== 公开页快照缓存 ====================
+ * 匿名访客的页面 HTML 渲染结果存 KV 复用 60 秒，省掉重复的整页渲染与
+ * 十几次 KV 读取。响应头保持 html() 的 no-store 不变（浏览器/边缘仍不缓存，
+ * 复用只发生在函数内）。正确性护栏：
+ * - 登录用户（ctx.user）与带会话/文章密码 cookie 的请求一律绕开——管理员
+ *   预览的隐藏文章、已解锁的密码文章既不能读也不能写快照；
+ * - 一切内容/评论/分类/设置变更都会在 db 层自增 snap:ver 使快照整表换代
+ *   （见 Database.#bumpSnap），只有浏览数这类容忍迟到的数字靠 60 秒 TTL 收敛。
+ */
+const SNAP_TTL_MS = 60_000;
+const SNAP_MAX_BODY = 400_000; // KV 单值大小保险丝，过大页面不存
+
+function snapEligible(ctx) {
+  if (ctx.request.method !== 'GET' || ctx.user) return false;
+  const { path } = ctx;
+  if (path === '/joe/api' || path.startsWith('/comment/')) return false;
+  if (path === '/feed' || path === '/feed/' || path === '/sitemap.xml' || path === '/robots.txt') return false;
+  const cookies = parseCookies(ctx.request);
+  if (cookies[CONFIG.SESSION_COOKIE] || cookies[CONFIG.POST_PWD_COOKIE]) return false;
+  return true;
+}
+
 export async function handleFrontend(ctx) {
+  if (!snapEligible(ctx)) return handleFrontendInner(ctx);
+  const { db, url } = ctx;
+  const ver = (await db.kv.getJSON('snap:ver')) || 1;
+  const key = `snap:${ver}:${url.pathname}${url.search}`;
+  const hit = await db.kv.getJSON(key).catch(() => null);
+  if (hit && typeof hit.t === 'number' && Date.now() - hit.t < SNAP_TTL_MS && typeof hit.body === 'string') {
+    return html(hit.body);
+  }
+  const res = await handleFrontendInner(ctx);
+  if (res.status === 200 && (res.headers.get('Content-Type') || '').includes('text/html')) {
+    try {
+      const body = await res.clone().text();
+      if (body.length <= SNAP_MAX_BODY) {
+        await db.kv.putJSON(key, { t: Date.now(), body });
+      }
+    } catch { /* 存快照失败不影响本次响应 */ }
+  }
+  return res;
+}
+
+async function handleFrontendInner(ctx) {
   const { db, request, url, path } = ctx;
   const method = request.method;
 

@@ -57,6 +57,23 @@ export class Database {
     this.blob = blob;
   }
 
+  /**
+   * 公开页快照失效：内容/评论/分类/设置/用户资料变更后自增快照版本，
+   * 前台匿名 HTML 快照（frontend.js，60 秒 TTL）随之整表换代。
+   * 放在各变更方法入口调用——变更失败时多一次失效也只是少缓存一轮，无副作用；
+   * 本身失败更不能影响正经业务，故吞掉异常。
+   */
+  async #bumpSnap() {
+    try {
+      const ver = (await this.kv.getJSON('snap:ver')) || 1;
+      await this.kv.putJSON('snap:ver', ver + 1);
+      // 顺手清掉上一代的快照页，免得每次变更都留下一批孤儿 key 在 KV 里累积；
+      // 正在读旧代的请求最多是未命中重渲染，无正确性影响。
+      const stale = await this.kv.listKeys(`snap:${ver}:`);
+      if (stale.length) await this.kv.deleteBatch(stale);
+    } catch { /* 快照失效失败不阻断写入 */ }
+  }
+
   // ---------- 序列 ----------
   async nextId(seq) {
     // Node 预览/测试环境保留递增 ID，保证测试与本地数据可复现；
@@ -81,6 +98,7 @@ export class Database {
     return v === null || v === undefined ? fallback : v;
   }
   async setOption(name, value) {
+    await this.#bumpSnap();
     await this.kv.putJSON(`opt:${name}`, value);
   }
   async getOptions() {
@@ -131,6 +149,7 @@ export class Database {
     return user;
   }
   async updateUser(uid, patch) {
+    await this.#bumpSnap();
     const user = await this.getUser(uid);
     if (!user) return null;
     Object.assign(user, patch);
@@ -176,6 +195,7 @@ export class Database {
   }
 
   async createContent(data) {
+    await this.#bumpSnap();
     const cid = await this.nextId('cid');
     const now = Math.floor(Date.now() / 1000);
     const row = {
@@ -244,6 +264,7 @@ export class Database {
   }
 
   async updateContent(cid, patch) {
+    await this.#bumpSnap();
     const row = await this.getContent(cid);
     if (!row) return null;
     const oldCats = row.categories, oldTags = row.tags;
@@ -261,6 +282,7 @@ export class Database {
   }
 
   async deleteContent(cid, { keepBlob = false } = {}) {
+    await this.#bumpSnap();
     const row = await this.getContent(cid);
     if (!row) return false;
     // 附件的字节不在 KV 里，KV 行删掉后 slug 就再也找不回来了，
@@ -291,6 +313,7 @@ export class Database {
 
   /** 软删除内容：先存副本，再从正式数据移除；附件保留 Blob 以便恢复 */
   async trashContent(cid, actor = 'admin') {
+    await this.#bumpSnap();
     const row = await this.getContent(cid);
     if (!row) return false;
     const cidx = await this.#loadCmtIndex();
@@ -313,6 +336,7 @@ export class Database {
 
   /** 软删除评论 */
   async trashComment(coid, actor = 'admin') {
+    await this.#bumpSnap();
     const row = await this.kv.getJSON(`cmt:${coid}`);
     if (!row) return false;
     const key = `trash:comment:${coid}`;
@@ -333,6 +357,7 @@ export class Database {
 
   /** 软删除分类/标签，并记录受影响的文章以便恢复 */
   async trashMeta(mid, actor = 'admin') {
+    await this.#bumpSnap();
     const meta = await this.getMeta(mid);
     if (!meta) return false;
     const listName = meta.type === 'category' ? 'categories' : 'tags';
@@ -365,6 +390,7 @@ export class Database {
 
   /** 从回收站恢复一条记录 */
   async restoreTrash(key) {
+    await this.#bumpSnap();
     const entry = await this.kv.getJSON(key);
     if (!entry) throw new Error('回收站条目不存在');
     if (entry.kind === 'content') await this.#restoreTrashContent(entry);
@@ -458,6 +484,7 @@ export class Database {
 
   /** 永久删除一条回收站记录（附件同时删除 Blob） */
   async purgeTrash(key) {
+    await this.#bumpSnap();
     const entry = await this.kv.getJSON(key);
     if (!entry) return false;
     if (entry.kind === 'content' && entry.type === 'attachment') {
@@ -476,6 +503,7 @@ export class Database {
 
   /** 清空回收站 */
   async emptyTrash() {
+    await this.#bumpSnap();
     const keys = await this.kv.listKeys('trash:');
     let removed = 0;
     for (const key of keys) {
@@ -653,6 +681,7 @@ export class Database {
   }
 
   async createMeta({ name, slug, type, description = '' }) {
+    await this.#bumpSnap();
     const mid = await this.nextId('mid');
     const meta = { mid, name, slug: slug || name, type, description, count: 0, order: 0, parent: 0 };
     await this.kv.putJSON(`meta:${mid}`, meta);
@@ -662,6 +691,7 @@ export class Database {
     return meta;
   }
   async updateMeta(mid, patch) {
+    await this.#bumpSnap();
     const meta = await this.getMeta(mid);
     if (!meta) return null;
     Object.assign(meta, patch);
@@ -674,6 +704,7 @@ export class Database {
     return meta;
   }
   async deleteMeta(mid) {
+    await this.#bumpSnap();
     const meta = await this.getMeta(mid);
     if (!meta) return false;
     await this.kv.delete(`meta:${mid}`);
@@ -716,6 +747,7 @@ export class Database {
     return (await this.kv.getJSON('idx:cmts')) || [];
   }
   async createComment({ cid, author, authorId = 0, ownerId = 0, mail, url, ip, agent, text, parent = 0, status = 'approved' }) {
+    await this.#bumpSnap();
     const coid = await this.nextId('coid');
     const now = Math.floor(Date.now() / 1000);
     const row = {
@@ -741,6 +773,7 @@ export class Database {
     }));
   }
   async updateComment(coid, patch) {
+    await this.#bumpSnap();
     const row = await this.kv.getJSON(`cmt:${coid}`);
     if (!row) return null;
     const oldStatus = row.status;
@@ -756,6 +789,7 @@ export class Database {
     return row;
   }
   async deleteComment(coid) {
+    await this.#bumpSnap();
     const row = await this.kv.getJSON(`cmt:${coid}`);
     if (!row) return false;
     await this.kv.delete(`cmt:${coid}`);

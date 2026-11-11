@@ -493,6 +493,8 @@ await test('置顶角标：服务端直出与接口标记一致', async () => {
     })).json();
     const target = all.data[all.data.length - 1];
     await BLOG_KV.put('opt:theme:joe', JSON.stringify({ JStickPosts: String(target.cid) }));
+    // 直写 KV 绕过了 db.setOption 的快照失效（生产环境没有这种写路径），手动换代
+    await BLOG_KV.put('snap:ver', String(Date.now()));
 
     const p1 = await (await call('POST', '/joe/api', {
       form: { routeType: 'publish_list', page: 1, pageSize: 50, type: 'created' },
@@ -507,6 +509,7 @@ await test('置顶角标：服务端直出与接口标记一致', async () => {
   } finally {
     if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
     else await BLOG_KV.put('opt:theme:joe', prev);
+    await BLOG_KV.put('snap:ver', String(Date.now() + 1));
   }
 });
 
