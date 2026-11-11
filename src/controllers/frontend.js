@@ -49,6 +49,9 @@ function snapEligible(ctx) {
   const { path } = ctx;
   if (path === '/joe/api' || path.startsWith('/comment/')) return false;
   if (path === '/feed' || path === '/feed/' || path === '/sitemap.xml' || path === '/robots.txt') return false;
+  // 关于/留言板是自愈路由：页面被删后靠访问时 ensureDefaultPage 重建，
+  // 给它们吃快照会把「已删除」状态冻住、重建永不触发，故排除。
+  if (path === '/about' || path === '/about/' || path === '/guestbook' || path === '/guestbook/') return false;
   const cookies = parseCookies(ctx.request);
   if (cookies[CONFIG.SESSION_COOKIE] || cookies[CONFIG.POST_PWD_COOKIE]) return false;
   return true;
