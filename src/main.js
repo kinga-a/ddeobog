@@ -14,6 +14,12 @@ import { runHooks, runAction, hasAction, loadBuiltinPlugins } from './plugins.js
 import { setOwoMap, JOE_DEFAULTS } from './render/theme-joe.js';
 import owoJson from './owo.js';
 import { createRequestLogger, createRequestId, requestMeta, safePath } from './logging.js';
+import {
+  applySecurityHeaders,
+  checkAdminAllowList,
+  isAdminPath,
+  readSecurityConfig,
+} from './security.js';
 
 let pluginsLoaded = false;
 
@@ -23,26 +29,38 @@ export default async function onRequest(context) {
   const path = url.pathname;
   const started = Date.now();
   const requestId = createRequestId();
-  const logger = createRequestLogger(env);
+  const logger = createRequestLogger(env, waitUntil);
   const meta = requestMeta(request);
 
   try {
-    // 所有成功/重定向响应统一记录一行结构化日志（EdgeOne 函数日志可检索）
+    // 所有响应统一补安全头，并记录一行结构化日志（EdgeOne 函数日志可检索）
     const done = (res) => {
+      const out = applySecurityHeaders(res);
       logger.info({
         requestId,
         method: request.method,
         path: safePath(path),
-        status: res.status,
+        status: out.status,
         ms: Date.now() - started,
         ...meta,
       });
-      return res;
+      return out;
     };
     // 加载内置插件（进程生命周期内一次）
     if (!pluginsLoaded) {
       await loadBuiltinPlugins();
       pluginsLoaded = true;
+    }
+
+    // ---- 可选 IP 白名单（默认关闭；/admin 与 /mcp）----
+    if (isAdminPath(path)) {
+      const guard = checkAdminAllowList(request, readSecurityConfig(env));
+      if (!guard.allowed) {
+        return done(new Response('Forbidden', {
+          status: 403,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        }));
+      }
     }
 
     const db = env?.__database || (await createDatabase(env));
@@ -169,7 +187,7 @@ export default async function onRequest(context) {
       stack: String(e?.stack || '').slice(0, 800),
       ...meta,
     });
-    return errorPage(e);
+    return applySecurityHeaders(errorPage(e));
   }
 }
 

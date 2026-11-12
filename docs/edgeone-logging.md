@@ -85,10 +85,65 @@ LOG_LEVEL=info npm start
 
 ## 四、在 EdgeOne 查看
 
+### 4.1 控制台「日志分析」为什么看不到
+
+EdgeOne Makers 的「日志分析」目前只收集以下来源（官方文档：<https://pages.edgeone.ai/zh/document/log-analysis>）：
+
+| 来源 | 代码位置 |
+|---|---|
+| SSR | 框架自动生成 |
+| Cloud Functions | `cloud-functions/` |
+| Agents | `agents/` 或自定义目录 |
+| **Edge Functions** | **平台规划中，尚未纳入** |
+
+本项目是 Edge Functions（`edge-functions/`），所以 `src/logging.js` 的 `console.log` JSON **不会出现在「日志分析」页**。这是平台当前的能力限制，不是代码没写或 `LOG_LEVEL` 配置问题。
+
+### 4.2 当前可用的查看方式
+
 1. 重新部署（代码改动必须部署后才会生效）。
 2. 控制台 → 对应 Makers / Pages 项目 → 部署详情 → **函数日志 / 实时日志**。
 3. 选择环境（生产 / 预览）与时间范围，按 `requestId`、`status`、`path` 检索。
 4. 如果是"访问日志"页面为空：那是 CDN 访问日志，需要在 EdgeOne 控制台开通日志服务并配置投递到 CLS；代码无法开启。
+5. 平台提供「指标分析」查看请求量、错误率、响应时间等聚合指标，不依赖函数日志。
+
+### 4.3 已实现的 Cloud Functions 中转（推荐）
+
+本仓库已内置 `cloud-functions/log-ingest.js`（路由 `/log-ingest`）：
+
+```
+Edge Function (console.log JSON)
+   └─ LOG_SINK_URL 异步 POST（waitUntil，不阻塞响应）
+        └─ Cloud Function /log-ingest：校验 Token → console.log(JSON)
+             └─ 控制台「日志分析 → 来源：Cloud Functions」可检索
+```
+
+#### 配置步骤
+
+1. 部署时平台自动识别 `cloud-functions/` 目录，无需改 `edgeone.json`。
+2. 在项目环境变量中增加：
+
+| 变量 | 配置位置 | 值 |
+|---|---|---|
+| `LOG_SINK_TOKEN` | **Edge Functions 与 Cloud Functions 都要配** | 随机长字符串，两边一致 |
+| `LOG_SINK_URL` | Edge Functions | `https://<项目访问域名>/log-ingest` |
+
+3. 重新部署（Edge 与 Cloud 函数都要发新生效）。
+4. 控制台 → 日志分析 → **日志来源选 Cloud Functions**，按 `sink:"edge"`、`requestId`、`status`、`path` 检索。
+
+行为说明：
+
+- `LOG_SINK_URL` 或 `LOG_SINK_TOKEN` 任一为空时**完全不转发**，与旧版本一致。
+- 转发失败静默，不影响请求；`LOG_LEVEL=error` 时只转发异常日志。
+- Cloud Function 只接受 POST + Bearer Token，单条上限 16KB，字段白名单 + 长度截断；未配置 Token 时返回 503。
+- 如果 `/log-ingest` 被 Edge Functions 的 catch-all 路由抢先处理，把 `LOG_SINK_URL` 换成 Cloud Function 的独立访问地址（控制台函数详情可查）。
+
+#### 其他方案
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| 外部日志服务 | 把 `LOG_SINK_URL` 指向自建 API / Loki / CLS，复用现有异步转发 | 需额外日志服务与鉴权 |
+| 访问日志投递 CLS | 控制台开通 EdgeOne 日志服务，投递 CDN 访问日志到 CLS | 只能看 CDN 层数据，不含 `requestId`/`ms` 等应用字段 |
+| 等待平台支持 | Edge Functions 来源上线后，现有 JSON 日志可直接按 `requestId` 检索 | 时间不确定 |
 
 ## 五、验证
 
@@ -98,6 +153,9 @@ node tools/log-check.mjs
 
 # 边缘运行时全链路
 node tools/edge-runtime-check.mjs
+
+# 日志转发（Edge → Cloud Function 中转）
+node test-log-sink.mjs
 
 # 构建产物与回归
 node test-bundle.mjs
@@ -123,6 +181,7 @@ node test.mjs
 
 ## 七、限制与后续
 
+- **日志分析来源限制**：Makers「日志分析」当前不收集 Edge Functions，代码侧无法开启；只能等平台支持，或走 4.3 的外部投递 / Cloud Functions 中转。
 - 每请求一行日志，高流量时会产生可观的日志量；可用 `LOG_LEVEL=error` 降量。
 - 平台日志保留时间由 EdgeOne 控制，不作为长期审计存储。
 - 当前不写 KV，避免增加请求延迟；如果需要在后台看日志，可后续增加"慢请求/错误写 KV + 后台日志页"（默认仅记录 >1s 或 5xx，采样写入）。

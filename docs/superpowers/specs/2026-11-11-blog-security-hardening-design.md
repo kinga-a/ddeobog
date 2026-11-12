@@ -3,7 +3,7 @@
 - 项目：TypechoEdge 博客（`/workspace/ddeobog-main`）
 - 日期：2026-11-11
 - 范围：评论防护、安全响应头、可选后台 IP 白名单、安全事件展示
-- 状态：待评审
+- 状态：已实现（2026-11-12，落地差异见文末「十三、实现说明」）
 
 ## 一、背景与现状
 
@@ -280,3 +280,43 @@ form-action 'self'
 - 评论验证码/第三方反垃圾（仅在刷屏仍严重时评估）。
 - 自动备份、日志轮转、进程守护（运维批）。
 - 搜索尾延迟与 options 缓存（性能批）。
+
+## 十三、实现说明（2026-11-12）
+
+### 13.1 落地文件
+
+| 文件 | 内容 |
+|---|---|
+| `src/security.js`（新增） | 配置读取、短哈希、IP 解析、蜜罐、去重、限流、事件、安全头、白名单 |
+| `src/controllers/frontend.js` | `handleCommentPost` 接入蜜罐 → 字段校验 → 插件钩子 → 去重 → 限流 → 写库 → 计数；管理员/作者豁免去重与限流 |
+| `src/main.js` | `done()` 与 500 分支统一补安全头；`/admin`、`/mcp` 白名单校验 |
+| `src/controllers/admin.js` | 安全页「评论防护」卡片（阈值、最近 10 条事件）+ `clear-security-events` 操作 |
+| `src/render/theme-joe.js` | 文章评论表单与留言墙表单新增蜜罐字段 |
+| `usr/themes/joe/assets/js/joe.global.js` | 评论 ajax 显式提交 `hp_site`（该脚本手动构造 data，不序列化表单） |
+| `usr/themes/joe/assets/css/joe.refine.css` | `.hp` 视觉隐藏样式 |
+| `server.mjs` | 注入可信 `X-Real-IP`；静态资源补安全头 |
+| `edgeone.json` | `/*` 全局安全头（含 CSP Report-Only） |
+| `test-security-hardening.mjs`（新增） | 8 项回归：头、蜜罐、去重、限流、管理员豁免、白名单、事件展示/清空 |
+
+### 13.2 与设计的差异
+
+1. **蜜罐字段名改为 `hp_site`**：`website` 被浏览器/密码管理器自动填充的概率偏高。同时因为 `joe.global.js` 的评论提交是手动构造 `{author, mail, text, parent, url, _}`，仅在表单里加 input 不会发送，必须同步改脚本并重新生成 `.min.js`。留言墙使用 `new FormData(form)`，加字段即可。
+2. **限流命中返回 200 + 静默提示，而非 429**：jQuery 对非 2xx 走 `error()`，只会提示「发送失败！请刷新重试！」，无法展示 `Retry-After`。按设计 5.1.4 的兜底方案统一返回与待审一致的静默文案，同时避免向脚本暴露拦截信号。
+3. **安全头在 `done()` 注入，未抽 `handleRequest`**：现有所有分支已经过 `done()`，异常分支单独补头即可；`Response.redirect` / fetch 返回的 Response 头为 immutable，`applySecurityHeaders` 会捕获后复制头新建 Response。
+4. **配置不做模块级缓存**：EdgeOne 的 `context.env` 按请求注入，缓存首个请求会吞掉后续绑定；配置解析只有几次字符串比较，成本可忽略。
+5. **白名单同时覆盖 `/mcp` 与 `/mcp/`**，`server.mjs` 用真实 socket 地址覆盖客户端自带的 `X-Real-IP`，防止本地伪造。
+
+### 13.3 验证结果
+
+| 测试 | 结果 |
+|---|---|
+| `node test-security-hardening.mjs` | 8 / 8 |
+| `node test-security.mjs` | 11 / 11 |
+| `node test.mjs` | 90 / 90 |
+| `node test-bundle.mjs` | 8 / 8 |
+| `npm run test:sqlite` | 9 / 9 |
+| `node tools/edge-runtime-check.mjs` | 通过 |
+| `node tools/edge-install-check.mjs` | 通过 |
+| 本地 `server.mjs` 冒烟 | HTML 5 个头、静态资源 4 个头、302 基础头、白名单 403/302 均符合 |
+
+构建产物 371.1 KB，未混入 `node:sqlite`；`hp_site`、CSP 头均已进入 `edge-functions/*.js`。

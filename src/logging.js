@@ -9,6 +9,10 @@
  *    "path":"/archives/1/","status":200,"ms":12,"ip":"1a2b3c4d","ua":"..."}
  *
  * 隐私：不记录 query、Cookie、Authorization、请求体；IP 只存短哈希，UA 截断。
+ *
+ * 可选转发：配置 LOG_SINK_URL + LOG_SINK_TOKEN 后，每行日志会异步 POST 到
+ * cloud-functions/log-ingest.js（Cloud Functions 的日志会被控制台「日志分析」
+ * 收集）。未配置时行为与之前完全一致。
  */
 
 const LEVELS = { off: 0, error: 1, info: 2, debug: 3 };
@@ -64,13 +68,39 @@ export function requestMeta(request) {
   };
 }
 
-export function createRequestLogger(env) {
+/** 可选日志转发：URL 与 Token 都配置时才启用，失败静默，不影响请求 */
+function createLogSink(env, waitUntil) {
+  const url = envValue(env, 'LOG_SINK_URL', '');
+  const token = envValue(env, 'LOG_SINK_TOKEN', '');
+  if (!url || !token) return null;
+  return (line) => {
+    const task = fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: line,
+    }).catch(() => {});
+    if (typeof waitUntil === 'function') {
+      try {
+        waitUntil(task);
+      } catch {
+        /* waitUntil 不可用时放任任务自行完成 */
+      }
+    }
+  };
+}
+
+export function createRequestLogger(env, waitUntil) {
   const level = loggerLevel(env);
   const enabled = (name) => level !== 'off' && LEVELS[level] >= LEVELS[name];
+  const sink = createLogSink(env, waitUntil);
   const emit = (name, event) => {
     const line = JSON.stringify({ ts: new Date().toISOString(), level: name, ...event });
     if (name === 'error') console.error(line);
     else console.log(line);
+    if (sink) sink(line);
   };
   return {
     info(event) {

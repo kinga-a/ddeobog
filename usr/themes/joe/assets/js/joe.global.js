@@ -408,6 +408,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const _ = $(".joe_comment__respond-form input[name='_']").val();
         const mail = $(".joe_comment__respond-form .head input[name='mail']").val();
         const url = $(".joe_comment__respond-form .head input[name='url']").val();
+        const hpSite = $form.find("input[name='hp_site']").val();
         let text = $(".joe_comment__respond-form .body textarea[name='text']").val();
         if (author.trim() === "") return Qmsg.info("请输入昵称！");
         if (!/\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*/.test(mail)) return Qmsg.info("请输入正确的邮箱！");
@@ -422,7 +423,7 @@ document.addEventListener("DOMContentLoaded", () => {
         $.ajax({
           url: action,
           type: "POST",
-          data: { author, mail, text, parent, url, _ },
+          data: { author, mail, text, parent, url, _, hp_site: hpSite },
           dataType: "text",
           success(res) {
             let arr = [],

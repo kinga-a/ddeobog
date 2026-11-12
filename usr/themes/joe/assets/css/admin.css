@@ -1484,7 +1484,7 @@ body.ui-modal-open { overflow: hidden; }
 .burger {
   position: fixed;
   top: calc(12px + env(safe-area-inset-top));
-  right: 14px;
+  right: calc(14px + env(safe-area-inset-right));
   z-index: 70;
   display: none;
   place-items: center;
@@ -1519,7 +1519,7 @@ body.ui-modal-open { overflow: hidden; }
 .admin-theme-toggle {
   position: fixed;
   top: calc(12px + env(safe-area-inset-top));
-  right: 62px;
+  right: calc(62px + env(safe-area-inset-right));
   z-index: 71;
   display: inline-flex;
   align-items: center;
@@ -2069,9 +2069,9 @@ details.card.fold > .fold__body { padding: 2px 26px 24px; }
 .settings-form { padding-bottom: 84px; }
 .settings-actions {
   position: fixed;
-  right: 40px;
-  bottom: 24px;
-  z-index: 20;
+  right: max(40px, env(safe-area-inset-right));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 30;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -2082,9 +2082,33 @@ details.card.fold > .fold__body { padding: 2px 26px 24px; }
   box-shadow: var(--sh-2);
 }
 @media (max-width: 1080px) {
-  .settings-actions { right: 24px; }
+  .settings-actions { right: max(24px, env(safe-area-inset-right)); }
 }
 @media (max-width: 760px) {
-  .settings-actions { left: 16px; right: 16px; bottom: 16px; }
-  .settings-actions .btn { flex: 1; }
+  /* 给悬浮栏留出高度 + iPhone 底部安全区，避免滚到底时遮住最后一个字段 */
+  .settings-form { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+  .settings-actions {
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 30;
+    padding: 8px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .settings-actions .btn {
+    flex: 1;
+    min-height: 48px;
+    font-size: 15px;
+  }
+}
+/* 软键盘弹出或横屏小视口：悬浮栏会压住输入框，暂时隐藏 */
+@media (max-width: 760px) and (max-height: 520px) {
+  .settings-actions { display: none; }
+}
+/* JS 检测到移动端输入聚焦时同样隐藏（iOS 键盘不改变布局视口高度） */
+@media (max-width: 760px) {
+  body.is-typing .settings-actions { display: none; }
 }

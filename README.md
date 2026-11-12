@@ -133,6 +133,12 @@ npm start        # http://127.0.0.1:5173
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `DB_PATH` | `data/blog.sqlite` | SQLite 文件路径（相对项目根或绝对路径） |
 | `MAX_BODY_BYTES` | `26214400`（25 MB） | 单个请求体上限 |
+| `MAX_UPLOAD_BYTES` | 本地 `20 MB` / 平台 `950 KB` | 单个附件上限 |
+| `COMMENT_RATE_LIMIT` | `5` | 同一访客窗口内最多评论条数（1–100） |
+| `COMMENT_RATE_WINDOW` | `600` | 评论限流窗口（秒，60–86400） |
+| `COMMENT_DUP_WINDOW` | `600` | 重复内容去重窗口（秒，60–86400） |
+| `ADMIN_ALLOW_IPS` | 空（不限制） | `/admin` 与 `/mcp` 的 IP 白名单，逗号分隔，支持 `1.2.3.4`、`1.2.3.*`、`*` |
+| `ADMIN_TRUST_PROXY` | `0` | 为 `1` 时信任 `X-Forwarded-For` / `CF-Connecting-IP`（EdgeOne 或反代部署） |
 
 要求 **Node.js >= 22.5**（`node:sqlite` 目前为实验特性，`npm start` 已内置 `--experimental-sqlite`）。
 
@@ -147,6 +153,17 @@ docker compose up -d --build
 
 备份：停止服务后直接复制 `data/blog.sqlite`（退出时会自动合并 WAL），或使用后台的 JSON 备份/恢复功能。
 
+## 安全加固
+
+`src/security.js` 提供评论防护与安全响应头，EdgeOne 与本地 SQLite 两条路径都生效：
+
+- **评论蜜罐**：两个评论表单含视觉隐藏的 `hp_site` 字段；命中后不写库，返回与待审一致的静默提示。
+- **内容去重**：同一文章 + 邮箱 + 正文在窗口内重复提交不重复写库。
+- **频率限制**：按 `文章 + IP + 邮箱 + UA` 哈希计数，默认 5 条 / 10 分钟；管理员与文章作者豁免。
+- **拦截事件**：后台「安全设置 → 评论防护」可查看最近 10 条并清空（KV 键 `sec:events`，最多 100 条）。
+- **安全响应头**：所有响应带 `nosniff` 与 `Referrer-Policy`；HTML 额外带 `X-Frame-Options`、`Permissions-Policy` 与 `CSP-Report-Only`。`server.mjs` 与 `edgeone.json` 同步覆盖静态资源。
+- **可选后台白名单**：`ADMIN_ALLOW_IPS` 默认关闭。**frp TCP 模式下真实 IP 都是 127.0.0.1，开启前必须先改用反代或 PROXY protocol，否则会锁死后台**；EdgeOne 线上需同时设置 `ADMIN_TRUST_PROXY=1`。
+
 ## 本地开发
 
 ```bash
@@ -157,6 +174,12 @@ npm test             # 全量测试（需要 playwright）
 ```
 
 KV / Blob 需在真实 EdgeOne 环境绑定后使用，本地可参照 [EdgeOne CLI](https://pages.edgeone.ai/zh/document/edgeone-cli) 调试；纯本地运行用上面的 SQLite 方式即可。
+
+## 日志
+
+- 默认每个请求输出一行 JSON 到 `console`（`LOG_LEVEL=info`；`error` 只输出异常，`off` 关闭）。
+- Makers「日志分析」当前不收集 Edge Functions。仓库内置 `cloud-functions/log-ingest.js` 中转：配置 `LOG_SINK_URL` 与 `LOG_SINK_TOKEN`（两侧一致）后，可在控制台「日志分析 → 来源：Cloud Functions」按 `requestId` / `status` / `path` 检索。
+- 未配置时完全不转发；转发失败静默，不阻塞请求。详见 `docs/edgeone-logging.md`。
 
 ## 已知差异
 

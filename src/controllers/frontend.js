@@ -23,6 +23,16 @@ import { sameOrigin } from '../auth/session.js';
 import { handleJoeApi } from './joe-api.js';
 import { runHooks } from '../plugins.js';
 import { IS_NODE, DEFAULT_PAGES, ensureDefaultPage } from '../default-pages.js';
+import {
+  readSecurityConfig,
+  hasHoneypotValue,
+  commentIdentity,
+  checkCommentDuplicate,
+  markCommentDuplicate,
+  checkCommentRate,
+  bumpCommentRate,
+  recordSecurityEvent,
+} from '../security.js';
 
 /** 普通评论内容上限（字符） */
 const MAX_COMMENT_LENGTH = 2000;
@@ -546,11 +556,22 @@ async function handleCommentPost(ctx) {
 
   const form = await request.formData().catch(() => null);
   if (!form) return commentError('请求格式错误');
+  const config = readSecurityConfig(ctx.env);
   const author = String(form.get('author') || '').trim();
   const mail = String(form.get('mail') || '').trim();
   const urlField = String(form.get('url') || '').trim();
   const text = String(form.get('text') || '').trim();
   const parent = parseInt(String(form.get('parent') || form.get('coid') || '0'), 10) || 0;
+  const login = ctx.user;
+  // 管理员与文章作者豁免去重/限流，但仍检查蜜罐
+  const privileged = !!login && (login.group === 'administrator' || login.uid === post.authorId);
+  const guardMail = login ? login.mail : mail;
+
+  // 蜜罐：非空即视为自动提交。响应与待审一致，不写库、不暴露拦截信号。
+  if (hasHoneypotValue(form)) {
+    await recordSecurityEvent(db, { type: 'honeypot', cid, request, mail: guardMail, config });
+    return commentNotice();
+  }
 
   const invalid = validateComment({ author, mail, text });
   if (invalid) return commentError(invalid);
@@ -559,12 +580,28 @@ async function handleCommentPost(ctx) {
   const hooked = await runHooks('commentSubmit', { author, mail, url: urlField, text, parent }, ctx);
   if (hooked && hooked.reject) return commentError(hooked.message || '评论被拒绝');
 
+  let rateKey = '';
+  let dupKey = '';
+  if (!privileged) {
+    const dup = await checkCommentDuplicate(db, { cid, mail: guardMail, text, config });
+    if (dup.duplicate) {
+      await recordSecurityEvent(db, { type: 'duplicate', cid, request, mail: guardMail, config });
+      return commentNotice();
+    }
+    const identity = await commentIdentity({ cid, request, mail: guardMail, config });
+    const rate = await checkCommentRate(db, identity, config);
+    if (rate.limited) {
+      await recordSecurityEvent(db, { type: 'rate', cid, request, mail: guardMail, config });
+      return commentNotice();
+    }
+    rateKey = rate.key;
+    dupKey = dup.key;
+  }
+
   const ip = request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() || '';
   const agent = request.headers.get('User-Agent') || '';
-  const login = ctx.user;
   // 审核开关（commentStatus=waiting）下普通访客的评论先待审；管理员与
   // 文章作者本人直发，免得自己人也被卡进审核队列。
-  const privileged = !!login && (login.group === 'administrator' || login.uid === post.authorId);
   const status = ctx.options.commentStatus === 'waiting' && !privileged ? 'waiting' : 'approved';
 
   await db.createComment({
@@ -581,19 +618,30 @@ async function handleCommentPost(ctx) {
     status,
   });
 
+  if (!privileged) {
+    await bumpCommentRate(db, rateKey, config);
+    await markCommentDuplicate(db, dupKey);
+  }
+
   await runHooks('commentPost', { cid, author, text }, ctx);
   if (status === 'waiting') {
     // 待审评论不在前台出现，若按成功协议（含 Joe 标记）返回，前端会刷新
     // 页面、评论者只会看到自己的评论「消失」。改走提示协议：不含 Joe
     // 标记，前端会把 .container 里的文案弹给评论者看。
-    return new Response('<!DOCTYPE html><html><body><div class="container">评论已提交，审核通过后显示</div></body></html>', {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    });
+    return commentNotice();
   }
   // Joe 前端约定：响应 HTML 含 "Joe" 即视为成功（刷新页面）
   return new Response('<!DOCTYPE html><html><body><div id="Joe">ok</div></body></html>', {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
+}
+
+/** 静默提示页：与待审文案一致，不刷新页面、不暴露是否被拦截 */
+function commentNotice(msg = '评论已提交，审核通过后显示') {
+  return new Response(
+    `<!DOCTYPE html><html><body><div class="container">${escapeHtml(msg)}</div></body></html>`,
+    { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
 }
 
 function commentError(msg) {

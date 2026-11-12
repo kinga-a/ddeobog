@@ -141,6 +141,9 @@ async function serveStatic(pathname, req, res) {
       'Cache-Control': `public, max-age=${maxAge}`,
       ETag: etag,
       'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'SAMEORIGIN',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     });
     res.end(req.method === 'HEAD' ? undefined : await readFile(abs));
     return true;
@@ -203,6 +206,9 @@ const server = http.createServer(async (req, res) => {
     for (const [k, v] of Object.entries(req.headers)) {
       if (typeof v === 'string') headers[k] = v;
     }
+    // 本机 socket 地址是可信来源，覆盖客户端自带的 X-Real-IP，
+    // 供安全模块（评论身份键、后台 IP 白名单）使用。
+    headers['x-real-ip'] = String(req.socket.remoteAddress || '').replace(/^::ffff:/i, '');
 
     const request = new Request(parsed.href, {
       method: req.method,

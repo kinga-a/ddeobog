@@ -10,6 +10,11 @@ import { escapeHtml as esc, plainExcerpt, renderMarkdown } from '../render/markd
 import { avatarUrl } from '../render/html.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
 import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
+import {
+  readSecurityConfig,
+  listSecurityEvents,
+  clearSecurityEvents,
+} from '../security.js';
 import { mcpClientExample, loadMcpServers, saveMcpServers, mcpTokenFields, sha256Hex } from '../mcp.js';
 import { exportBackup, importBackup, isBackupKey, backupFileName } from '../backup.js';
 import { encryptBackup, decryptBackup, isEncryptedBackup } from '../backup-crypto.js';
@@ -410,6 +415,16 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       }
     }
     linkLabels(document);
+
+    // 移动端软键盘：输入聚焦时隐藏悬浮保存栏，避免压住当前输入框
+    var syncTypingState=function(){
+      if(!window.matchMedia||!window.matchMedia('(max-width: 760px)').matches) return;
+      var el=document.activeElement;
+      var typing=!!(el&&el.closest&&el.closest('input,textarea,select'));
+      document.body.classList.toggle('is-typing',typing);
+    };
+    document.addEventListener('focusin',syncTypingState);
+    document.addEventListener('focusout',function(){setTimeout(syncTypingState,0);});
 
     var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var main=document.querySelector('.main');
@@ -1537,6 +1552,8 @@ async function saveSettings(ctx) {
 async function securityPage(ctx) {
   const { db, user, url } = ctx;
   const step = url.searchParams.get('step');
+  const events = await listSecurityEvents(db);
+  const secConfig = readSecurityConfig(ctx.env);
 
   let totpSection;
   if (user.totpEnabled) {
@@ -1698,8 +1715,35 @@ async function securityPage(ctx) {
     </div>
   </details>`;
 
+  const eventLabel = { honeypot: '蜜罐命中', duplicate: '重复内容', rate: '频率超限' };
+  const eventRows = events
+    .slice(0, 10)
+    .map((ev) => `<tr>
+      <td data-label="类型"><span class="badge ${ev.type === 'rate' ? 'yellow' : 'green'}">${eventLabel[ev.type] || esc(ev.type || '未知')}</span></td>
+      <td data-label="文章">${ev.cid ? `<a href="/archives/${ev.cid}/" target="_blank" rel="noopener">#${ev.cid}</a>` : '-'}</td>
+      <td data-label="指纹"><code>${esc(ev.ipHash || '-')}</code> / <code>${esc(ev.uaHash || '-')}</code></td>
+      <td data-label="时间">${ev.at ? new Date(ev.at).toLocaleString('zh-CN') : '-'}</td>
+    </tr>`)
+    .join('');
+
+  const securityCard = `<div class="card">
+    <div class="mcp-head">
+      <div>
+        <h2 class="card__title">评论防护</h2>
+        <p class="card__intro">蜜罐、内容去重与频率限制；管理员与文章作者不受去重和限流影响。</p>
+      </div>
+      <span class="mcp-count">${secConfig.rateLimit} 条 / ${Math.round(secConfig.rateWindow / 60)} 分钟</span>
+    </div>
+    ${events.length ? `<table><thead><tr><th scope="col">类型</th><th scope="col">文章</th><th scope="col">指纹</th><th scope="col">时间</th></tr></thead><tbody>${eventRows}</tbody></table>
+      <form method="post" action="/admin/security" data-confirm="确定清空全部拦截记录？">
+        <input type="hidden" name="op" value="clear-security-events">
+        <button class="btn sm danger" type="submit">清空记录</button>
+      </form>` : '<p class="hint">最近没有拦截记录。</p>'}
+  </div>`;
+
   const body = `${MSG(ctx)}
   <h1>安全设置</h1>
+  ${securityCard}
   ${totpCard}
   <details class="card fold">
     <summary class="fold__head">修改密码</summary>
@@ -1852,6 +1896,12 @@ async function generateMcpTokenFor(ctx, form) {
   return redirect(url, '/admin/security', { msg: 'token', reveal: await stashMcpReveal(db, token) });
 }
 
+/** 清空评论防护拦截记录 */
+async function clearSecurityEventsAction(ctx) {
+  await clearSecurityEvents(ctx.db);
+  return redirect(ctx.url, '/admin/security', { msg: 'ok' });
+}
+
 const SECURITY_ACTIONS = new Map([
   ['enable', enableTotp],
   ['disable', disableTotp],
@@ -1860,6 +1910,7 @@ const SECURITY_ACTIONS = new Map([
   ['mcp-update', updateMcpServer],
   ['mcp-generate', generateMcpTokenFor],
   ['mcp-delete', deleteMcpServer],
+  ['clear-security-events', clearSecurityEventsAction],
 ]);
 
 /* ==================== 备份恢复 ==================== */

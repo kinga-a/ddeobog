@@ -1058,6 +1058,7 @@ export async function renderGuestbookWall(ctx, page) {
         <input type="text" name="author" maxlength="32" placeholder="昵称" required>
         <input type="email" name="mail" placeholder="邮箱（用于头像）" required>
       </div>
+      <div class="hp" aria-hidden="true"><label for="hp-site-wall">网站</label><input id="hp-site-wall" type="text" name="hp_site" tabindex="-1" autocomplete="off"></div>
       <textarea name="text" rows="4" placeholder="写下你的留言…" required></textarea>
       <div class="joe_wall__form-foot">
         <span>${waiting ? '留言需要审核后展示' : '提交后会立即贴在墙上'}</span>
@@ -1432,6 +1433,7 @@ export async function commentsBlock(ctx, post) {
         <div class="list"><input type="text" value="${escapeHtml(user?.mail || '')}" autocomplete="off" name="mail" placeholder="请输入邮箱..." /></div>
         <div class="list"><input type="text" autocomplete="off" name="url" placeholder="请输入网址（非必填）..." /></div>
       </div>
+      <div class="hp" aria-hidden="true"><label for="hp-site-comment-${post.cid}">网站</label><input id="hp-site-comment-${post.cid}" type="text" name="hp_site" tabindex="-1" autocomplete="off" /></div>
       <div class="body">
         <textarea class="text joe_owo__target" name="text" autocomplete="new-password" placeholder="说点什么吧，点击右上方切换成画图试试？"></textarea>
         <div class="draw" style="display: none;">
