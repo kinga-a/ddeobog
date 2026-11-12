@@ -1,5 +1,14 @@
 # Changelog
 
+## 未发布
+
+### 修复
+- 文章正文内容边界统一修复：单图（`.joe_detail__article-image`）、视频、iframe、内联 SVG/canvas/audio/embed/object 均限制在 `.joe_main` 内；代码块与宽表格改为内部横向滚动；长链接、长单词、图片说明自动断行；文章标题与评论区同样兜底，不再覆盖右侧 `.joe_aside`。
+- 后台设置页悬浮保存栏适配手机端：底部/左右安全区、48px 按钮、输入聚焦时自动隐藏，避免软键盘遮挡。
+
+### 日志
+- 新增 `cloud-functions/log-ingest.js` 中转；配置 `LOG_SINK_URL` + `LOG_SINK_TOKEN` 后，Edge Functions 日志可在 Makers「日志分析 → Cloud Functions」检索。
+
 ## v1.6.2 (2026-11-08)
 
 ### 后台

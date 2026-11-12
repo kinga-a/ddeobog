@@ -613,3 +613,60 @@ html body .hp {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* 正文内容边界：主题只给 img:not([class]) 加了 max-width，单图、图集子项、
+   内联 SVG/视频/iframe、宽表格与长代码行都可能撑出 .joe_main 并覆盖
+   右侧 .joe_aside。这里统一兜底：媒体缩放、代码/表格内部滚动、长文本断行。 */
+html body .joe_detail__article img,
+html body .joe_detail__article video,
+html body .joe_detail__article svg,
+html body .joe_detail__article canvas,
+html body .joe_detail__article audio,
+html body .joe_detail__article embed,
+html body .joe_detail__article object,
+html body .joe_detail__article iframe {
+  max-width: 100%;
+}
+html body .joe_detail__article img,
+html body .joe_detail__article video,
+html body .joe_detail__article svg {
+  height: auto;
+}
+html body .joe_detail__article-image {
+  display: block;
+  margin: 0 0 18px;
+}
+html body .joe_detail__article pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+html body .joe_detail__article table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+html body .joe_detail__article :not(pre) > code,
+html body .joe_detail__article a,
+html body .joe_detail__article figcaption,
+html body .joe_detail__article {
+  overflow-wrap: anywhere;
+}
+html body .joe_detail__title {
+  overflow-wrap: anywhere;
+}
+html body .joe_main.joe_post {
+  overflow-x: clip;
+}
+
+/* 评论区同样兜底：长链接、长单词、用户贴的超宽图片 */
+html body .joe_comment .substance {
+  overflow-wrap: anywhere;
+}
+html body .joe_comment .substance img,
+html body .joe_comment .substance video {
+  max-width: 100%;
+  height: auto;
+}
