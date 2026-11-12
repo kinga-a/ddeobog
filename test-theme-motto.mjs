@@ -1,8 +1,8 @@
 /**
  * 主题「座右铭」的取值与回退行为测试。
  *
- * joe.global.js 是整包上线的第三方脚本，直接跑会拉进来一大堆 DOM 依赖。
- * 这里只把座右铭那一段代码块原样抠出来，注入桩 $ 和 Joe 后执行——
+ * 5iblog.global.js 是整包上线的第三方脚本，直接跑会拉进来一大堆 DOM 依赖。
+ * 这里只把座右铭那一段代码块原样抠出来，注入桩 $ 和 Blog 后执行——
  * 验的是真实分支行为，不是源码里有没有某个字符串。
  */
 import { test } from 'node:test';
@@ -10,14 +10,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const SRC = fs.readFileSync(
-  new URL('./usr/themes/joe/assets/js/joe.global.js', import.meta.url), 'utf8');
+  new URL('./usr/themes/5iblog/assets/js/5iblog.global.js', import.meta.url), 'utf8');
 
 const DEFAULT_MOTTO = '有钱终成眷属，没钱亲眼目睹';
 
 /** 抠出「座右铭」那个代码块（按花括号配平） */
 function mottoBlock() {
   const start = SRC.indexOf('/* 座右铭 */');
-  assert.ok(start > 0, 'joe.global.js 里应仍存在座右铭代码块');
+  assert.ok(start > 0, '5iblog.global.js 里应仍存在座右铭代码块');
   const open = SRC.indexOf('{', start);
   let depth = 0;
   for (let i = open; i < SRC.length; i++) {
@@ -39,7 +39,7 @@ function run(motto, ajax) {
   const painted = [];
   const $ = () => ({ html: (t) => painted.push(t) });
   $.ajax = ajax;
-  new Function('$', 'Joe', mottoBlock())($, { MOTTO: motto });
+  new Function('$', 'Blog', mottoBlock())($, { MOTTO: motto });
   return painted;
 }
 
@@ -69,7 +69,7 @@ test('接口失败时退回默认文案，而不是留空', () => {
   const painted = [];
   const $ = () => ({ html: (t) => painted.push(t) });
   $.ajax = (o) => { opts = o; o.error(); };
-  new Function('$', 'Joe', mottoBlock())($, { MOTTO: 'https://v1.jinrishici.com/rensheng.txt' });
+  new Function('$', 'Blog', mottoBlock())($, { MOTTO: 'https://v1.jinrishici.com/rensheng.txt' });
 
   assert.ok(opts && opts.error, '必须注册 error 回调，否则失败时无从兜底');
   assert.deepEqual(painted, [DEFAULT_MOTTO], '接口失败应退回默认文案');

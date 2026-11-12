@@ -9,7 +9,8 @@ import { CONFIG } from '../config.js';
 import { escapeHtml as esc, plainExcerpt, renderMarkdown } from '../render/markdown.js';
 import { avatarUrl } from '../render/html.js';
 import { generateTotpSecret, verifyTotp, otpauthUri, totpQrSvg } from '../auth/totp.js';
-import { JOE_DEFAULTS, normalizeBirthday } from '../render/theme-joe.js';
+import { BLOG_DEFAULTS, normalizeBirthday } from '../render/theme-5iblog.js';
+import { clearWeatherCache } from '../weather.js';
 import {
   readSecurityConfig,
   listSecurityEvents,
@@ -108,6 +109,7 @@ async function loginSuccess(db, user) {
 const ADMIN_POST_ROUTES = new Map([
   ['post', savePost],
   ['delete', deletePost],
+  ['page-order', pageOrderAction],
   ['meta', saveMeta],
   ['meta-delete', deleteMeta],
   ['comment', commentAction],
@@ -184,8 +186,8 @@ export async function handleAdmin(ctx) {
 function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = '' } = {}) {
   const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>登录 - ${esc(ctx.options.title)}</title>
-  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css?v=${CONFIG.VERSION}">
-  <link rel="icon" href="${esc(ctx.options.joe?.JFavicon || '/usr/themes/joe/assets/img/favicon.ico')}">
+  <link rel="stylesheet" href="/usr/themes/5iblog/assets/css/admin.css?v=${CONFIG.VERSION}">
+  <link rel="icon" href="${esc(ctx.options.blog?.JFavicon || '/usr/themes/5iblog/assets/img/favicon.ico')}">
   <meta name="color-scheme" content="light dark">
   <script>(function(){try{var t=localStorage.getItem('admin-theme');var d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-admin-theme', t || (d?'dark':'light'));}catch(e){}})();</script>
 </head><body class="auth">
@@ -202,7 +204,7 @@ function loginPage(ctx, { error = '', totp = false, pendingToken = '', name = ''
       <div class="item"><label for="login-password">密码</label><input id="login-password" type="password" name="password" required></div>
       <button type="submit" name="step" value="password">登录</button>
     </form>`}
-    <div class="tip">TypechoEdge on EdgeOne · 安全登录</div>
+    <div class="tip">5iblog on EdgeOne · 安全登录</div>
   </div></body></html>`;
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
@@ -305,15 +307,15 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
       .map(([name, items]) => (name ? `<div class="side__group">${name}</div>` : '') + items.map(renderLink).join(''))
       .join('') +
     `<div class="side__foot">${foot.map(renderLink).join('')}</div>`;
-  const joe = ctx.options.joe || {};
+  const blog = ctx.options.blog || {};
   const brandAvatar =
-    joe.JAside_Author_Avatar ||
-    avatarUrl(ctx.user?.mail || '', 44, joe.JAvatarSource || 'weavatar');
+    blog.JAside_Author_Avatar ||
+    avatarUrl(ctx.user?.mail || '', 44, blog.JAvatarSource || 'weavatar');
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>${title} - ${esc(ctx.options.title)}</title>
-  <link rel="stylesheet" href="/usr/themes/joe/assets/lib/font-awesome@4.7.0/font-awesome.min.css">
-  <link rel="stylesheet" href="/usr/themes/joe/assets/css/admin.css?v=${CONFIG.VERSION}">
-  <link rel="icon" href="${esc(ctx.options.joe?.JFavicon || '/usr/themes/joe/assets/img/favicon.ico')}">
+  <link rel="stylesheet" href="/usr/themes/5iblog/assets/lib/font-awesome@4.7.0/font-awesome.min.css">
+  <link rel="stylesheet" href="/usr/themes/5iblog/assets/css/admin.css?v=${CONFIG.VERSION}">
+  <link rel="icon" href="${esc(ctx.options.blog?.JFavicon || '/usr/themes/5iblog/assets/img/favicon.ico')}">
   <meta name="color-scheme" content="light dark">
 </head><body>
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -331,7 +333,7 @@ function adminLayout(ctx, { title, active = '', body = '' }) {
           <span class="brand__mark" aria-hidden="true"><img src="${esc(brandAvatar)}" alt="" width="28" height="28" loading="lazy" decoding="async"></span>
           <span class="brand__text">${esc(ctx.options.title)}</span>
         </span>
-        <small>TypechoEdge v${CONFIG.VERSION}</small>
+        <small>5iblog v${CONFIG.VERSION}</small>
       </div>
       ${menu}
     </nav>
@@ -741,6 +743,8 @@ const MSG = (ctx) => {
   if (t === 'err') return `<div class="msg err">操作失败</div>`;
   if (t === 'saved') return `<div class="msg ok">已保存</div>`;
   if (t === 'token') return `<div class="msg ok">已生成新令牌</div>`;
+  if (t === 'slug-invalid') return `<div class="msg err">自定义路径无效：只能使用字母、数字、中文、-、_，且不能是纯数字</div>`;
+  if (t === 'slug-taken') return `<div class="msg err">自定义路径已被其他文章使用</div>`;
   return '';
 };
 
@@ -774,7 +778,7 @@ async function dashboard(ctx) {
   ]);
   const mcpEnabledCount = mcpServers.filter((server) => server.enabled !== false).length;
 
-  const birthday = normalizeBirthday(ctx.options.joe?.JBirthDay);
+  const birthday = normalizeBirthday(ctx.options.blog?.JBirthDay);
   const runDays = birthday ? Math.max(0, Math.floor((Date.now() - new Date(birthday).getTime()) / 86400000)) : 0;
   const fmt = (ts) => new Date(ts * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   const statusBadge = (status) =>
@@ -856,7 +860,7 @@ async function dashboard(ctx) {
     .join('');
 
   const overview = `<dl class="dash-overview">
-      <div><dt>站点主题</dt><dd>Joe</dd></div>
+      <div><dt>站点主题</dt><dd>5iblog</dd></div>
       <div><dt>建站时长</dt><dd>${runDays} 天</dd></div>
       <div><dt>两步验证</dt><dd>${user.totpEnabled ? '<span class="badge green">已开启</span>' : '<span class="badge yellow">未开启</span>'}</dd></div>
       <div><dt>MCP 服务</dt><dd>${mcpEnabledCount ? `<span class="badge green">${mcpEnabledCount} 个已开启</span>` : '<span class="badge yellow">未开启</span>'}</dd></div>
@@ -986,14 +990,28 @@ async function postsList(ctx) {
 
 async function pagesList(ctx) {
   const { db } = ctx;
-  const list = await db.listContentsIndex({ type: 'page', pageSize: 100, allStatus: true });
+  const list = await db.listContentsIndex({ type: 'page', pageSize: 100, allStatus: true, order: 'order' });
+  const total = list.items.length;
   const rows = list.items
     .map(
-      (p) => `<tr>
+      (p, i) => `<tr>
     <td data-label="ID">${p.cid}</td>
     <td data-label="标题"><a href="/${p.slug}/" target="_blank">${esc(p.title)}</a></td>
     <td data-label="路径"><code>/${p.slug}/</code></td>
     <td data-label="状态"><span class="badge ${p.status === 'publish' ? 'green' : ''}">${p.status === 'publish' ? '公开' : p.status}</span></td>
+    <td data-label="排序">
+      <span class="order-pos">${i + 1}</span>
+      <form method="post" action="/admin/page-order" style="display:inline">
+        <input type="hidden" name="cid" value="${p.cid}">
+        <input type="hidden" name="direction" value="up">
+        <button class="btn sm" type="submit" title="上移" aria-label="上移" ${i === 0 ? 'disabled' : ''}>↑</button>
+      </form>
+      <form method="post" action="/admin/page-order" style="display:inline">
+        <input type="hidden" name="cid" value="${p.cid}">
+        <input type="hidden" name="direction" value="down">
+        <button class="btn sm" type="submit" title="下移" aria-label="下移" ${i === total - 1 ? 'disabled' : ''}>↓</button>
+      </form>
+    </td>
     <td>
       <a class="btn sm" href="/admin/page?cid=${p.cid}">编辑</a>
       <form method="post" action="/admin/delete" style="display:inline" data-confirm="确定删除该页面？">
@@ -1007,10 +1025,31 @@ async function pagesList(ctx) {
   const body = `${MSG(ctx)}
   <div class="page-head"><h1>管理页面（${list.total}）</h1><a class="btn primary" href="/admin/page"><i class="fa fa-plus" aria-hidden="true"></i>创建页面</a></div>
   <div class="card">
-    <table><thead><tr><th scope="col">ID</th><th scope="col">标题</th><th scope="col">路径</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="5">暂无页面</td></tr>'}</tbody></table>
+    <table><thead><tr><th scope="col">ID</th><th scope="col">标题</th><th scope="col">路径</th><th scope="col">状态</th><th scope="col">排序</th><th scope="col">操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6">暂无页面</td></tr>'}</tbody></table>
   </div>`;
   return html(adminLayout(ctx, { title: '管理页面', active: 'pages', body }));
+}
+
+/** 页面排序：按当前顺序上下移动，保存时统一归一化为 1..n */
+async function pageOrderAction(ctx) {
+  const { db, url } = ctx;
+  const form = await ctx.request.formData();
+  const cid = parseInt(form.get('cid') || '0', 10);
+  const direction = form.get('direction') === 'up' ? -1 : 1;
+  const list = await db.listContentsIndex({ type: 'page', pageSize: 1000, allStatus: true, order: 'order' });
+  const items = [...list.items];
+  const index = items.findIndex((p) => p.cid === cid);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= items.length) {
+    return redirect(url, '/admin/pages', { msg: 'ok' });
+  }
+  const [moved] = items.splice(index, 1);
+  items.splice(target, 0, moved);
+  for (let i = 0; i < items.length; i += 1) {
+    await db.updateContent(items[i].cid, { order: i + 1 });
+  }
+  return redirect(url, '/admin/pages', { msg: 'ok' });
 }
 
 
@@ -1040,6 +1079,7 @@ async function postEditor(ctx, kind) {
   const isPage = kind === 'page' || post?.type === 'page';
   const cats = await db.listMetas('category');
   const tagNames = await postTagNames(db, post);
+  const slugValue = post?.slug && String(post.slug) !== String(post.cid) ? post.slug : '';
   const catChecks = categoryChecks(cats, post?.categories || []);
 
   const body = `${MSG(ctx)}
@@ -1048,19 +1088,34 @@ async function postEditor(ctx, kind) {
   <form method="post" action="/admin/post">
     ${cid ? `<input type="hidden" name="cid" value="${cid}">` : ''}
     <input type="hidden" name="type" value="${isPage ? 'page' : 'post'}">
-    <div class="item"><label>标题</label><input type="text" name="title" value="${esc(post?.title || '')}" required></div>
     ${isPage
-      ? `<div class="item"><label>缩略名（URL 路径）</label><input type="text" name="slug" value="${esc(post?.slug || '')}" placeholder="about" pattern="[a-zA-Z0-9_-]+"><div class="hint">访问路径 /缩略名/，留空自动生成</div></div>`
-      : ''}
+      ? `<div class="row">
+        <div class="item" style="flex:2 1 320px"><label>标题</label><input type="text" name="title" value="${esc(post?.title || '')}" required></div>
+        <div class="item" style="flex:1 1 280px"><label>缩略名（URL 路径）</label>
+          <div class="slug-input"><span>/</span><input type="text" name="slug" value="${esc(post?.slug || '')}" placeholder="about" pattern="[a-zA-Z0-9_-]+"></div>
+          <div class="hint">访问路径 /缩略名/，留空自动生成</div>
+        </div>
+      </div>`
+      : `<div class="row">
+        <div class="item" style="flex:2 1 320px"><label>标题</label><input type="text" name="title" value="${esc(post?.title || '')}" required></div>
+        <div class="item" style="flex:1 1 240px"><label>自定义路径（可选）</label>
+          <div class="slug-input"><span>/archives/</span><input type="text" name="slug" value="${esc(slugValue)}" maxlength="60" placeholder="留空使用文章 ID"></div>
+          <div class="hint">仅字母、数字、-、_ 或中文；留空自动使用文章 ID</div>
+        </div>
+      </div>`}
     <div class="item"><label>内容（支持 Markdown，<!--more--> 之前为摘要）</label>
-      <textarea name="text" id="joe-md-text" class="md-textarea" aria-label="内容（支持 Markdown）" style="min-height:320px">${esc(post?.text || '')}</textarea></div>
+      <textarea name="text" id="blog-md-text" class="md-textarea" aria-label="内容（支持 Markdown）" style="min-height:320px">${esc(post?.text || '')}</textarea></div>
     <div class="row">
       <div class="item"><label>状态</label>
         <select name="status">
           <option value="publish" ${post?.status !== 'hidden' ? 'selected' : ''}>公开</option>
           <option value="hidden" ${post?.status === 'hidden' ? 'selected' : ''}>隐藏</option>
         </select></div>
-      ${isPage ? '' : `<div class="item"><label>访问密码（可选）</label><input type="password" name="password" autocomplete="new-password" placeholder="${post?.password ? '已设置，留空表示不修改' : '留空表示不加密'}"></div>`}
+      ${isPage ? '' : `<div class="item"><label>访问密码（可选）</label>
+        <input type="password" name="password" autocomplete="new-password" placeholder="${post?.password ? '已设置，留空表示保留' : '留空表示不加密'}">
+        ${post?.password ? '<label class="pw-clear"><input type="checkbox" name="clearPassword" value="1"> 清除访问密码</label>' : ''}
+        <div class="hint">${post?.password ? '填写新密码会替换旧密码；勾选「清除访问密码」可关闭密码访问' : '留空表示不加密'}</div>
+      </div>`}
       <div class="item"><label>允许评论</label>
         <select name="allowComment">
           <option value="1" ${post?.allowComment !== false ? 'selected' : ''}>允许</option>
@@ -1075,14 +1130,18 @@ async function postEditor(ctx, kind) {
         <div class="item"><input type="text" name="field_abstract" value="${esc(post?.fields?.abstract || '')}" placeholder="摘要（abstract）"></div>
         <div class="item"><input type="text" name="field_mode" value="${esc(post?.fields?.mode || '')}" placeholder="特殊模式（mode，如 links）"></div>
       </div>
-      <div class="hint">Joe 主题扩展字段：thumb=封面图、abstract=列表摘要、keywords/description=SEO、mode=links 时正文渲染为友链页</div>
+      <div class="row">
+        <div class="item"><input type="text" name="field_keywords" value="${esc(post?.fields?.keywords || '')}" placeholder="SEO 关键词（keywords，逗号分隔）"></div>
+        <div class="item"><input type="text" name="field_description" value="${esc(post?.fields?.description || '')}" placeholder="SEO 描述（description）"></div>
+      </div>
+      <div class="hint">5iblog 主题扩展字段：thumb=封面图、abstract=列表摘要、keywords/description=SEO、mode=links 时正文按「名称||URL||头像」每行渲染为友链卡片</div>
     </div>
     <button class="btn primary" type="submit">${isNew ? '发布' : '保存修改'}</button>
     <a class="btn" href="/admin/${isPage ? 'pages' : 'posts'}">返回列表</a>
   </form>
   </div>
-  <link rel="stylesheet" href="/usr/themes/joe/assets/lib/easymde@2.18.0/easymde.min.css">
-  <script src="/usr/themes/joe/assets/js/joe.admin-editor.min.js?v=${CONFIG.VERSION}" defer></script>`;
+  <link rel="stylesheet" href="/usr/themes/5iblog/assets/lib/easymde@2.18.0/easymde.min.css">
+  <script src="/usr/themes/5iblog/assets/js/5iblog.admin-editor.min.js?v=${CONFIG.VERSION}" defer></script>`;
   return html(adminLayout(ctx, { title: isNew ? '撰写' : '编辑', active: isPage ? 'page' : 'post', body }));
 }
 
@@ -1109,7 +1168,7 @@ async function resolveTagIds(db, rawTags) {
 /** 合并自定义字段：表单提供则覆盖，留空则删除 */
 function parsePostFields(form, existing = {}) {
   const fields = { ...existing };
-  for (const k of ['thumb', 'abstract', 'mode']) {
+  for (const k of ['thumb', 'abstract', 'mode', 'keywords', 'description']) {
     const v = String(form.get(`field_${k}`) || '').trim();
     if (v) fields[k] = v;
     else delete fields[k];
@@ -1124,10 +1183,22 @@ async function savePost(ctx) {
   const type = form.get('type') === 'page' ? 'page' : 'post';
   const title = String(form.get('title') || '').trim() || '未命名';
   const text = String(form.get('text') || '');
-  let slug = String(form.get('slug') || '').trim();
-  if (type === 'page' && !slug) slug = 'page-' + Date.now().toString(36);
-
+  let slug = String(form.get('slug') || '').trim().replace(/^\/+|\/+$/g, '');
   const existing = cid ? await db.getContent(cid) : null;
+  let slugNotice = '';
+  if (type === 'page') {
+    if (!slug) slug = 'page-' + Date.now().toString(36);
+  } else if (!slug) {
+    // 留空：沿用文章 ID
+    slug = cid ? String(cid) : '';
+  } else {
+    const valid = /^[\p{L}\p{N}_-]{1,60}$/u.test(slug) && !/^\d+$/u.test(slug);
+    const hit = await db.getContentBySlug(slug, 'post');
+    if (!valid || (hit && hit.cid !== cid)) {
+      slugNotice = valid ? 'slug-taken' : 'slug-invalid';
+      slug = cid ? String(existing?.slug || cid) : '';
+    }
+  }
   const categories = form.getAll('categories').map(Number).filter(Boolean);
   const tags = await resolveTagIds(db, form.get('tags'));
   const fields = parsePostFields(form, existing?.fields || {});
@@ -1135,8 +1206,11 @@ async function savePost(ctx) {
   // 访问密码不落明文。留空 = 不修改（编辑时沿用旧值）；改造前写下的明文，
   // 在这篇文章下次被保存时自动转成 PBKDF2。
   const rawPassword = String(form.get('password') || '');
+  const clearPassword = form.get('clearPassword') === '1';
   let password = '';
-  if (rawPassword) {
+  if (clearPassword) {
+    password = '';
+  } else if (rawPassword) {
     password = await hashPassword(rawPassword);
   } else if (existing) {
     password = existing.password || '';
@@ -1161,7 +1235,7 @@ async function savePost(ctx) {
   } else {
     await db.createContent(data);
   }
-  return redirect(url, type === 'page' ? '/admin/pages' : '/admin/posts', { msg: 'saved' });
+  return redirect(url, type === 'page' ? '/admin/pages' : '/admin/posts', { msg: slugNotice || 'saved' });
 }
 
 async function deletePost(ctx) {
@@ -1419,7 +1493,7 @@ function onOffSelect(name, value, label = '') {
 
 async function settingsPage(ctx) {
   const o = ctx.options;
-  const theme = o.joe || JOE_DEFAULTS;
+  const theme = { ...BLOG_DEFAULTS, ...(o.blog || {}) };
   const body = `${MSG(ctx)}
   <h1>站点设置</h1>
   <div class="card">
@@ -1434,16 +1508,16 @@ async function settingsPage(ctx) {
     </div>
     <div class="row">
       <div class="item"><label>每页文章数</label><input type="number" name="pageSize" value="${o.pageSize || 10}" min="1" max="50"></div>
-      <div class="item"><label>传统分页</label>${onOffSelect('j_Pagination_Mode', theme.Pagination_Mode || 'off')}<p class="hint">开启：显示 1/2/3 分页，点击翻页；关闭：显示「查看更多」，点击追加下一页，全部加载后按钮消失。</p></div>
       <div class="item"><label>评论默认状态</label><select name="commentStatus">
         <option value="approved" ${o.commentStatus !== 'waiting' ? 'selected' : ''}>直接发布</option>
         <option value="waiting" ${o.commentStatus === 'waiting' ? 'selected' : ''}>先审核后发布</option>
       </select></div>
+      <div class="item"><label>传统分页</label>${onOffSelect('j_Pagination_Mode', theme.Pagination_Mode || 'off')}<p class="hint">开启：显示 1/2/3 分页，点击翻页；关闭：显示「查看更多」，点击追加下一页，全部加载后按钮消失。</p></div>
     </div>
       </div>
     </details>
     <details class="fold fold--in" open>
-      <summary class="fold__head">Joe 主题设置</summary>
+      <summary class="fold__head">5iblog 主题设置</summary>
       <div class="fold__body">
     <div class="row">
       <div class="item"><label>Logo 图片 URL</label><input type="text" name="j_JLogo" value="${esc(theme.JLogo || '')}"></div>
@@ -1456,7 +1530,7 @@ async function settingsPage(ctx) {
       <div class="item"><label>侧栏博主链接</label><input type="text" name="j_JAside_Author_Link" value="${esc(theme.JAside_Author_Link || '')}"></div>
     </div>
     <div class="row">
-      <div class="item"><label>博主栏背景图 URL</label><input type="text" name="j_JAside_Author_Image" value="${esc(theme.JAside_Author_Image || '')}"></div>
+      <div class="item"><label>博主栏 / 侧边栏壁纸 URL</label><input type="text" name="j_JAside_Author_Image" value="${esc(theme.JAside_Author_Image || '')}"></div>
       <div class="item"><label>博主格言（Motto）</label><input type="text" name="j_JAside_Author_Motto" value="${esc(theme.JAside_Author_Motto || '')}"></div>
       <div class="item"><label>热门文章侧栏数量</label><input type="number" name="j_JAside_Hot_Num" value="${esc(theme.JAside_Hot_Num || '5')}" min="0" max="10"></div>
     </div>
@@ -1465,6 +1539,16 @@ async function settingsPage(ctx) {
       <div class="item"><label>人生倒计时侧栏</label>${onOffSelect('j_JAside_Timelife_Status', theme.JAside_Timelife_Status)}</div>
       <div class="item"><label>评论功能</label>${onOffSelect('j_JCommentStatus', theme.JCommentStatus)}</div>
     </div>
+    <div class="row">
+      <div class="item"><label>天气侧栏</label>${onOffSelect('j_JWeather_Status', theme.JWeather_Status)}</div>
+      <div class="item"><label>天气城市 / 地区代码</label><input type="text" name="j_JWeather_City" value="${esc(theme.JWeather_City || '')}" placeholder="北京 或 110000"></div>
+      <div class="item"><label>天气预报天数</label><input type="number" name="j_JWeather_Days" value="${esc(theme.JWeather_Days || '4')}" min="1" max="7"></div>
+    </div>
+    <div class="row">
+      <div class="item"><label>天气接口 URL</label><input type="text" name="j_JWeather_Api" value="${esc(theme.JWeather_Api || '')}" placeholder="支持 {city} / {adcode} 占位符"></div>
+      <div class="item"><label>天气接口 API Key（可选）</label><input type="password" name="j_JWeather_Key" value="${esc(theme.JWeather_Key || '')}" autocomplete="new-password"></div>
+    </div>
+    <p class="hint">天气板块显示在「人生倒计时」上方；城市可填中文名或 6 位地区代码（如 110000）。默认使用 UApiPro 免费接口（中文），自定义接口需返回 weather、temperature、forecast 等兼容字段；服务端缓存 10 分钟，接口失败时自动隐藏。</p>
     <div class="row">
       <div class="item"><label>便签留言墙（需先建页面“guestbook”）</label>${onOffSelect('j_JGuestbook_Wall', theme.JGuestbook_Wall)}</div>
       <div class="item"><label>舔狗日记侧栏</label>${onOffSelect('j_JAside_Flatterer', theme.JAside_Flatterer)}</div>
@@ -1528,8 +1612,8 @@ async function saveSettings(ctx) {
   }
   if (form.has('pageSize')) await db.setOption('pageSize', Math.max(1, parseInt(form.get('pageSize'), 10) || 10));
 
-  // Joe 主题配置合并
-  const theme = { ...((await db.getOption('theme:joe')) || JOE_DEFAULTS) };
+  // 5iblog 主题配置合并
+  const theme = { ...BLOG_DEFAULTS, ...(((await db.getOption('theme:5iblog')) || (await db.getOption('theme:joe'))) || {}) };
   for (const [key, val] of form.entries()) {
     if (!key.startsWith('j_')) continue;
     const name = key.slice(2);
@@ -1539,11 +1623,19 @@ async function saveSettings(ctx) {
     } else if (name === 'JIndex_Carousel' || name === 'JIndex_Ad') {
       // 多行配置统一换行，保留一行一条
       theme[name] = String(val).replace(/\r\n?/g, '\n').trim();
+    } else if (name === 'JWeather_City' || name === 'JWeather_Api' || name === 'JWeather_Key') {
+      theme[name] = String(val).trim();
+    } else if (name === 'JWeather_Days') {
+      const days = parseInt(val, 10);
+      theme[name] = String(Math.min(7, Math.max(1, Number.isFinite(days) ? days : 4)));
     } else {
       theme[name] = String(val);
     }
   }
-  await db.setOption('theme:joe', theme);
+  await db.setOption('theme:5iblog', theme);
+  if (['j_JWeather_Status', 'j_JWeather_City', 'j_JWeather_Api', 'j_JWeather_Key', 'j_JWeather_Days'].some((k) => form.has(k))) {
+    await clearWeatherCache(db);
+  }
   return redirect(url, '/admin/settings', { msg: 'saved' });
 }
 
@@ -1569,7 +1661,7 @@ async function securityPage(ctx) {
     // 生成新密钥并展示二维码
     const secret = generateTotpSecret();
     await db.setOption(`totpPending:${user.uid}`, secret);
-    const uri = otpauthUri(secret, user.mail || user.name, ctx.options.title || 'TypechoEdge');
+    const uri = otpauthUri(secret, user.mail || user.name, ctx.options.title || '5iblog');
     const qr = totpQrSvg(uri);
     totpSection = `<h2 class="card__title">第一步：扫描二维码</h2>
     <div class="qr-box">${qr.replace('<svg', '<svg width="200" height="200"')}</div>
@@ -2064,7 +2156,7 @@ async function backupPage(ctx) {
         <div class="item"><label>密码 / 应用密码</label><input type="password" name="password" value="" placeholder="${cfg && cfg.password ? '已保存，留空保持不变' : '输入密码'}" autocomplete="current-password"></div>
       </div>
       <div class="row">
-        <div class="item"><label>远程目录</label><input type="text" name="dir" value="${esc(cfg ? cfg.dir : 'backups/typecho')}" placeholder="backups/typecho"></div>
+        <div class="item"><label>远程目录</label><input type="text" name="dir" value="${esc(cfg ? cfg.dir : 'backups/5iblog')}" placeholder="backups/5iblog"></div>
         <div class="item"><label>保留份数</label><input type="number" name="keep" min="1" max="50" value="${cfg ? cfg.keep : 10}"></div>
       </div>
       <div class="row">

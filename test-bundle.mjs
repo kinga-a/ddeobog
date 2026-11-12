@@ -73,8 +73,8 @@ await test('bundle: 首页渲染', async () => {
   const r = await call('GET', '/');
   assert.equal(r.status, 200);
   const h = await r.text();
-  assert.ok(h.includes('joe_header'));
-  assert.ok(h.includes('Hello TypechoEdge'));
+  assert.ok(h.includes('blog_header'));
+  assert.ok(h.includes('Hello 5iblog'));
 });
 
 await test('bundle: Markdown 渲染 + QR 二维码可用（qrcode-generator 已打进 bundle）', async () => {
@@ -91,7 +91,7 @@ await test('bundle: 首页列表可读（list() 不得传 cursor: undefined）',
 });
 
 await test('bundle: 不存在的 /usr/ 静态资源返回 404 而非 500', async () => {
-  const r = await call('GET', '/usr/themes/joe/assets/nope.css');
+  const r = await call('GET', '/usr/themes/5iblog/assets/nope.css');
   assert.equal(r.status, 404);
 });
 

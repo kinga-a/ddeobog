@@ -1,6 +1,6 @@
 # 博客安全加固设计（A：应用层加固）
 
-- 项目：TypechoEdge 博客（`/workspace/ddeobog-main`）
+- 项目：5iblog 博客（`/workspace/ddeobog-main`）
 - 日期：2026-11-11
 - 范围：评论防护、安全响应头、可选后台 IP 白名单、安全事件展示
 - 状态：已实现（2026-11-12，落地差异见文末「十三、实现说明」）
@@ -74,7 +74,7 @@
 
 #### 5.1.1 表单变更
 
-文章评论表单（`src/render/theme-joe.js` 的 `joe_comment__respond-form`）与留言墙表单（`joe_wall__form`）各增加一个蜜罐字段：
+文章评论表单（`src/render/theme-5iblog.js` 的 `blog_comment__respond-form`）与留言墙表单（`blog_wall__form`）各增加一个蜜罐字段：
 
 ```html
 <div class="hp" aria-hidden="true">
@@ -113,11 +113,11 @@
 
 | 场景 | 状态码 | 响应体 | 是否写库 |
 |---|---|---|---|
-| 正常评论 | 200 | 现有成功协议（含 Joe 标记） | 是 |
-| 待审核 | 200 | 现有提示协议（不含 Joe 标记） | 是 |
-| 蜜罐命中 | 200 | 静默成功提示（不含 Joe 标记） | 否 |
-| 重复内容 | 200 | 静默成功提示（不含 Joe 标记） | 否 |
-| 频率超限 | 429 | 提示协议（不含 Joe 标记）+ `Retry-After` | 否 |
+| 正常评论 | 200 | 现有成功协议（含 Blog 标记） | 是 |
+| 待审核 | 200 | 现有提示协议（不含 Blog 标记） | 是 |
+| 蜜罐命中 | 200 | 静默成功提示（不含 Blog 标记） | 否 |
+| 重复内容 | 200 | 静默成功提示（不含 Blog 标记） | 否 |
+| 频率超限 | 429 | 提示协议（不含 Blog 标记）+ `Retry-After` | 否 |
 
 静默成功页与待审提示一致，避免攻击者通过状态码/文案判断是否被拦截。默认返回 429 + `Retry-After`（值为窗口剩余秒数，最少 60）；实现阶段用浏览器验证前端评论脚本：若它把非 2xx 当网络错误，则退回 200 + 提示，以浏览器实测为准，并在测试中固定最终行为。
 
@@ -195,7 +195,7 @@ form-action 'self'
 |---|---|
 | 新增 `src/security.js` | 蜜罐、去重、限流、事件、头、白名单 |
 | `handleCommentPost` 接入防护 | `src/controllers/frontend.js` |
-| 两个评论表单加蜜罐字段 | `src/render/theme-joe.js` |
+| 两个评论表单加蜜罐字段 | `src/render/theme-5iblog.js` |
 | 统一安全头 + 白名单 | `src/main.js` |
 | 静态资源头 | `server.mjs` |
 | 全局头 | `edgeone.json` |
@@ -255,7 +255,7 @@ form-action 'self'
 ## 十、实施顺序
 
 1. `src/security.js`：纯函数与单元测试（哈希、窗口判断、IP 解析、头构造）。
-2. `theme-joe.js`：两个评论表单加蜜罐字段。
+2. `theme-5iblog.js`：两个评论表单加蜜罐字段。
 3. `frontend.js`：接入蜜罐、去重、限流、事件。
 4. `main.js`：抽出 `handleRequest`，统一安全头；接入白名单。
 5. `server.mjs` / `edgeone.json`：静态与全局头同步，并在 `server.mjs` 注入 `X-Real-IP`。
@@ -291,16 +291,16 @@ form-action 'self'
 | `src/controllers/frontend.js` | `handleCommentPost` 接入蜜罐 → 字段校验 → 插件钩子 → 去重 → 限流 → 写库 → 计数；管理员/作者豁免去重与限流 |
 | `src/main.js` | `done()` 与 500 分支统一补安全头；`/admin`、`/mcp` 白名单校验 |
 | `src/controllers/admin.js` | 安全页「评论防护」卡片（阈值、最近 10 条事件）+ `clear-security-events` 操作 |
-| `src/render/theme-joe.js` | 文章评论表单与留言墙表单新增蜜罐字段 |
-| `usr/themes/joe/assets/js/joe.global.js` | 评论 ajax 显式提交 `hp_site`（该脚本手动构造 data，不序列化表单） |
-| `usr/themes/joe/assets/css/joe.refine.css` | `.hp` 视觉隐藏样式 |
+| `src/render/theme-5iblog.js` | 文章评论表单与留言墙表单新增蜜罐字段 |
+| `usr/themes/5iblog/assets/js/5iblog.global.js` | 评论 ajax 显式提交 `hp_site`（该脚本手动构造 data，不序列化表单） |
+| `usr/themes/5iblog/assets/css/5iblog.refine.css` | `.hp` 视觉隐藏样式 |
 | `server.mjs` | 注入可信 `X-Real-IP`；静态资源补安全头 |
 | `edgeone.json` | `/*` 全局安全头（含 CSP Report-Only） |
 | `test-security-hardening.mjs`（新增） | 8 项回归：头、蜜罐、去重、限流、管理员豁免、白名单、事件展示/清空 |
 
 ### 13.2 与设计的差异
 
-1. **蜜罐字段名改为 `hp_site`**：`website` 被浏览器/密码管理器自动填充的概率偏高。同时因为 `joe.global.js` 的评论提交是手动构造 `{author, mail, text, parent, url, _}`，仅在表单里加 input 不会发送，必须同步改脚本并重新生成 `.min.js`。留言墙使用 `new FormData(form)`，加字段即可。
+1. **蜜罐字段名改为 `hp_site`**：`website` 被浏览器/密码管理器自动填充的概率偏高。同时因为 `5iblog.global.js` 的评论提交是手动构造 `{author, mail, text, parent, url, _}`，仅在表单里加 input 不会发送，必须同步改脚本并重新生成 `.min.js`。留言墙使用 `new FormData(form)`，加字段即可。
 2. **限流命中返回 200 + 静默提示，而非 429**：jQuery 对非 2xx 走 `error()`，只会提示「发送失败！请刷新重试！」，无法展示 `Retry-After`。按设计 5.1.4 的兜底方案统一返回与待审一致的静默文案，同时避免向脚本暴露拦截信号。
 3. **安全头在 `done()` 注入，未抽 `handleRequest`**：现有所有分支已经过 `done()`，异常分支单独补头即可；`Response.redirect` / fetch 返回的 Response 头为 immutable，`applySecurityHeaders` 会捕获后复制头新建 Response。
 4. **配置不做模块级缓存**：EdgeOne 的 `context.env` 按请求注入，缓存首个请求会吞掉后续绑定；配置解析只有几次字符串比较，成本可忽略。

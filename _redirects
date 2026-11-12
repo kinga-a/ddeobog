@@ -1,0 +1,4 @@
+/usr/themes/joe/assets/js/joe.* /usr/themes/5iblog/assets/js/5iblog.:splat 301
+/usr/themes/joe/assets/css/joe.* /usr/themes/5iblog/assets/css/5iblog.:splat 301
+/usr/themes/joe/assets/json/joe.* /usr/themes/5iblog/assets/json/5iblog.:splat 301
+/usr/themes/joe/* /usr/themes/5iblog/:splat 301

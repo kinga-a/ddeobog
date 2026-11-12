@@ -15,7 +15,7 @@ import { openSqliteStore, SqliteBlobStorage } from './src/storage/sqlite.js';
 import { KV } from './src/storage/kv.js';
 import { Database } from './src/db.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'typecho-sqlite-'));
+const dir = mkdtempSync(join(tmpdir(), '5iblog-sqlite-'));
 const dbPath = join(dir, 'blog.sqlite');
 let store = openSqliteStore({ path: dbPath });
 
@@ -103,7 +103,7 @@ test('内容 / 分类 / 标签 / 索引 / 统计', async () => {
   const author = await db.getUserByName('admin');
 
   const post = await db.createContent({
-    title: '在 SQLite 上跑 Typecho',
+    title: '在 SQLite 上跑 5iblog',
     text: '正文开始\n\n![封面](/upload/cover.png)\n\n<!--more-->摘要部分',
     authorId: author.uid,
     type: 'post',
@@ -238,7 +238,7 @@ test('重启后数据、自增序列与附件保持', async () => {
 
   assert.equal(await db.isInstalled(), true);
   assert.equal((await db.listUsers()).length, 1);
-  assert.equal((await db.getContent(1))?.title, '在 SQLite 上跑 Typecho');
+  assert.equal((await db.getContent(1))?.title, '在 SQLite 上跑 5iblog');
   assert.equal((await db.listComments(1)).length, 1);
 
   const meta = await db.createMeta({ type: 'tag', name: '重启', slug: 'restart' });

@@ -1,5 +1,5 @@
 /**
- * Markdown 渲染器 —— 兼容 Typecho HyperDown 常用语法子集：
+ * Markdown 渲染器 —— 兼容 5iblog HyperDown 常用语法子集：
  * 标题/粗斜/删除线/行内代码/代码块/链接/图片/引用/有序无序列表/表格/分隔线/自动链接/<!--more-->
  */
 
@@ -194,7 +194,7 @@ function parseMediaBlock(line) {
   const imgOnly = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
   if (imgOnly) {
     const src = imgOnly[2].split(/\s+/)[0];
-    return `<img src="${escapeHtml(src)}" alt="${escapeHtml(imgOnly[1])}" class="joe_detail__article-image" loading="lazy" decoding="async" />`;
+    return `<img src="${escapeHtml(src)}" alt="${escapeHtml(imgOnly[1])}" class="blog_detail__article-image" loading="lazy" decoding="async" />`;
   }
   return null;
 }
@@ -225,13 +225,13 @@ function slugId(text) {
 }
 
 /**
- * Typecho DPlayer 插件的短代码。
+ * 5iblog DPlayer 插件的短代码。
  *
- * 文章 10 用的是 `{dplayer src="…"}`，这是从原 Typecho 站搬过来的内容，
+ * 文章 10 用的是 `{dplayer src="…"}`，这是从原 5iblog 站搬过来的内容，
  * 而本项目的渲染器从来没有解析过短代码，所以它以字面量形式被转义后直接输出到
  * 页面上（`{dplayer src=&quot;…&quot;/}`）——视频当然出不来。
  *
- * 只认 dplayer 这一个：全站只有文章 10 用到，且主题自带的 joe-dplayer 组件是拿
+ * 只认 dplayer 这一个：全站只有文章 10 用到，且主题自带的 blog-dplayer 组件是拿
  * `player` 基础地址拼 iframe 的，没有该属性会拼出 `undefinedhttps://…`，用不了。
  * 所以直接渲染原生 <video>，不引入任何播放器依赖。
  */
@@ -257,7 +257,7 @@ function isVideoUrl(url) {
  * 一行里只有图片、且至少两张时，并排展示。
  *
  * 为什么必须单独处理：正文里不带 class 的 <img> 会命中主题的
- * `.joe_detail__article img:not([class]){display:block}`，两张图只能上下堆叠。
+ * `.blog_detail__article img:not([class]){display:block}`，两张图只能上下堆叠。
  * 所以这里给每张图带上 class 跳开那条规则，外层再套一层 flex。
  *
  * 只在「整行都是图片」时才并排；图旁边有文字就仍走普通段落，免得
@@ -270,10 +270,10 @@ function renderGallery(line) {
     // 第二个分组可能带 "title"，与单图分支一致取空白前的地址
     return (
       `<img src="${escapeHtml(p[2].split(/\s+/)[0])}" alt="${escapeHtml(p[1])}" ` +
-      `class="joe_detail__article-gallery__item" loading="lazy" decoding="async" />`
+      `class="blog_detail__article-gallery__item" loading="lazy" decoding="async" />`
     );
   });
-  return `<div class="joe_detail__article-gallery">${imgs.join('')}</div>`;
+  return `<div class="blog_detail__article-gallery">${imgs.join('')}</div>`;
 }
 
 /**
@@ -289,7 +289,7 @@ function renderGallery(line) {
 function renderVideo(url, alt) {
   const caption = String(alt || '').trim();
   return (
-    `<figure class="joe_detail__article-media">` +
+    `<figure class="blog_detail__article-media">` +
     `<video src="${escapeHtml(url)}" controls preload="metadata" playsinline></video>` +
     (caption ? `<figcaption>${inline(caption)}</figcaption>` : '') +
     `</figure>`

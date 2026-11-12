@@ -1,14 +1,14 @@
 /**
- * 数据层 —— 将 Typecho 的 7 张表（contents/metas/comments/users/options/fields/relationships）
+ * 数据层 —— 将 5iblog 的 7 张表（contents/metas/comments/users/options/fields/relationships）
  * 映射为 EdgeOne KV 中的 JSON 文档 + 轻量索引。
  *
  * KV 键布局：
- *   opt:<name>                 配置项（对应 typecho_options）
- *   user:<uid>                 用户（对应 typecho_users）
+ *   opt:<name>                 配置项（对应 5iblog_options）
+ *   user:<uid>                 用户（对应 5iblog_users）
  *   usern:<name> / userm:<mail> 用户名/邮箱 → uid 索引
- *   post:<cid>                 内容全文（对应 typecho_contents + fields + relationships）
- *   meta:<mid>                 分类/标签（对应 typecho_metas）
- *   cmt:<coid>                 评论（对应 typecho_comments）
+ *   post:<cid>                 内容全文（对应 5iblog_contents + fields + relationships）
+ *   meta:<mid>                 分类/标签（对应 5iblog_metas）
+ *   cmt:<coid>                 评论（对应 5iblog_comments）
  *   idx:posts                  文章索引（列表元数据，按 created 倒序）
  *   idx:metas                  分类/标签索引
  *   idx:cmts                   评论索引
@@ -263,6 +263,7 @@ export class Database {
       abstract: row.password ? '' : plainAbstract(row.text, 90),
       created: row.created,
       modified: row.modified,
+      order: row.order || 0,
       type: row.type,
       status: row.status,
       commentsNum: row.commentsNum,
@@ -599,6 +600,9 @@ export class Database {
       list = [...list].sort((a, b) => value(b.cid) - value(a.cid) || b.created - a.created);
     } else if (order === 'commentsNum') {
       list = [...list].sort((a, b) => (b.commentsNum || 0) - (a.commentsNum || 0) || b.created - a.created);
+    } else if (order === 'order') {
+      // 独立页面排序：order 相同时按创建时间从早到晚，保证未手动排序的页面稳定
+      list = [...list].sort((a, b) => (a.order || 0) - (b.order || 0) || b.created - a.created);
     } else {
       list = [...list].sort((a, b) => b.created - a.created);
     }

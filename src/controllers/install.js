@@ -1,6 +1,6 @@
 /**
  * 安装向导 —— 首次访问时引导创建管理员账号，写入 KV
- * 对应 Typecho install.php 流程（简化为一页）
+ * 对应 5iblog install.php 流程（简化为一页）
  */
 import { escapeHtml } from '../render/markdown.js';
 import { IS_NODE, ensureDefaultPage } from '../default-pages.js';
@@ -34,7 +34,7 @@ function installPage(ctx, error = '') {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>安装 - TypechoEdge</title>
+<title>安装 - 5iblog</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f4f5f7; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -53,8 +53,8 @@ function installPage(ctx, error = '') {
 </head>
 <body>
   <div class="card">
-    <h1>欢迎使用 TypechoEdge</h1>
-    <div class="sub">运行在腾讯 EdgeOne 边缘函数上的 Typecho 兼容博客。<br>首次使用请创建管理员账号，${IS_NODE ? '数据将保存到本地 SQLite 文件' : '数据将保存到 KV 存储与 Blob 存储'}。</div>
+    <h1>欢迎使用 5iblog</h1>
+    <div class="sub">运行在腾讯 EdgeOne 边缘函数上的 5iblog 兼容博客。<br>首次使用请创建管理员账号，${IS_NODE ? '数据将保存到本地 SQLite 文件' : '数据将保存到 KV 存储与 Blob 存储'}。</div>
     ${error ? `<div class="err">${escapeHtml(error)}</div>` : ''}
     <form method="post" action="/install">
       <div class="item">
@@ -92,11 +92,11 @@ function installPage(ctx, error = '') {
 
 /** 安装时写入的示例文章 */
 const SEED_POST = {
-  title: 'Hello TypechoEdge',
+  title: 'Hello 5iblog',
   slug: 'hello',
-  text: `欢迎使用 **TypechoEdge**！
+  text: `欢迎使用 **5iblog**！
 
-这是一个运行在 \`腾讯 EdgeOne\` 边缘函数上的博客系统，完全兼容 Typecho 数据模型与 Joe 主题。
+这是一个运行在 \`腾讯 EdgeOne\` 边缘函数上的博客系统，完全兼容 5iblog 数据模型与 5iblog 主题。
 
 ## 特性
 
@@ -104,8 +104,8 @@ const SEED_POST = {
 - 支持 **Markdown** 写作（标题、代码块、表格、图片……）
 - 首次访问一键安装，账号数据存放在 KV 空间
 - 登录支持 **TOTP 两步验证**（RFC 6238，兼容各类验证器 App）
-- 兼容 Typecho 路由：\`/archives/1/\`、\`/category/xx/\`、\`/tag/xx/\`
-- 插件系统：JS 钩子机制对应 Typecho 插件接口
+- 兼容 5iblog 路由：\`/archives/1/\`、\`/category/xx/\`、\`/tag/xx/\`
+- 插件系统：JS 钩子机制对应 5iblog 插件接口
 
 <!--more-->
 
@@ -120,10 +120,10 @@ console.log('Hello from EdgeOne Edge Functions!');
 > 数据全部保存在你绑定的 KV 命名空间中，可随时在控制台查看。`,
   authorId: 1,
   type: 'post',
-  fields: { thumb: '', abstract: '欢迎使用 TypechoEdge —— EdgeOne 边缘函数上的 Typecho 兼容博客' },
+  fields: { thumb: '', abstract: '欢迎使用 5iblog —— EdgeOne 边缘函数上的 5iblog 兼容博客' },
 };
 
-/** Typecho options 表的默认值（站点名/描述由安装表单提供） */
+/** 5iblog options 表的默认值（站点名/描述由安装表单提供） */
 function defaultOptions(title, description) {
   return {
     title,
@@ -132,7 +132,7 @@ function defaultOptions(title, description) {
     timezone: '8',
     installed: 1,
     pageSize: 10,
-    theme: 'joe',
+    theme: 'blog',
     commentsRequireMail: true,
     commentsRequireURL: false,
     commentsThreaded: true,
@@ -166,11 +166,11 @@ async function doInstall(ctx) {
     group: 'administrator',
   });
 
-  // 默认配置（对应 Typecho options 表）
+  // 默认配置（对应 5iblog options 表）
   for (const [k, v] of Object.entries(defaultOptions(title, description))) await db.setOption(k, v);
-  // Joe 主题默认配置
-  const { JOE_DEFAULTS } = await import('../render/theme-joe.js');
-  await db.setOption('theme:joe', JOE_DEFAULTS);
+  // 5iblog 主题默认配置
+  const { BLOG_DEFAULTS } = await import('../render/theme-5iblog.js');
+  await db.setOption('theme:5iblog', BLOG_DEFAULTS);
 
   // 示例首篇文章
   await db.createContent(SEED_POST);

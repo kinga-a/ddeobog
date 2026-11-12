@@ -196,7 +196,7 @@ test('校验：非法格式、超高版本、缺失 data 都会被拒绝', () =>
 
 test('备份文件名为 UTC 时间戳且可安全用于路径', () => {
   const name = backupFileName(new Date(Date.UTC(2026, 10, 8, 22, 45, 0)));
-  assert.equal(name, 'typecho-edge-20261108-224500.json');
+  assert.equal(name, '5iblog-20261108-224500.json');
   assert.equal(safeFileName(name), name);
   assert.equal(safeFileName('/tmp/../x.json'), 'x.json');
   assert.throws(() => safeFileName('..'), /不合法/);
@@ -204,12 +204,12 @@ test('备份文件名为 UTC 时间戳且可安全用于路径', () => {
 });
 
 test('WebDAV 配置校验与 URL 拼接', () => {
-  const cfg = normalizeConfig({ url: 'https://dav.example.com/dav/', username: 'u', password: 'p', dir: '/backups/typecho/', keep: 5 });
+  const cfg = normalizeConfig({ url: 'https://dav.example.com/dav/', username: 'u', password: 'p', dir: '/backups/5iblog/', keep: 5 });
   assert.equal(cfg.url, 'https://dav.example.com/dav');
-  assert.equal(cfg.dir, 'backups/typecho');
+  assert.equal(cfg.dir, 'backups/5iblog');
   assert.equal(cfg.keep, 5);
-  assert.equal(davUrl(cfg), 'https://dav.example.com/dav/backups/typecho/');
-  assert.equal(davUrl(cfg, 'a.json'), 'https://dav.example.com/dav/backups/typecho/a.json');
+  assert.equal(davUrl(cfg), 'https://dav.example.com/dav/backups/5iblog/');
+  assert.equal(davUrl(cfg, 'a.json'), 'https://dav.example.com/dav/backups/5iblog/a.json');
   assert.throws(() => normalizeConfig({ url: 'ftp://x' }), /http/);
 });
 
@@ -286,8 +286,8 @@ test('WebDAV 全链路：MKCOL / PUT / PROPFIND / GET / DELETE', async () => {
     assert.ok(authSeen, '应发送 Basic 认证头');
 
     await ensureDir(cfg);
-    const name = await putBackup(cfg, 'typecho-edge-20261108-224500.json', JSON.stringify({ a: 1 }));
-    assert.equal(name, 'typecho-edge-20261108-224500.json');
+    const name = await putBackup(cfg, '5iblog-20261108-224500.json', JSON.stringify({ a: 1 }));
+    assert.equal(name, '5iblog-20261108-224500.json');
 
     const files = await listBackups(cfg);
     assert.equal(files.length, 1);

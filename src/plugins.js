@@ -1,10 +1,10 @@
 /**
- * 插件系统 —— Typecho 插件机制的 JS 等价实现
+ * 插件系统 —— 5iblog 插件机制的 JS 等价实现
  *
- * 与 Typecho 的对应关系：
- *   Typecho Helper::addAction('xx', 'Widget_Xx')  →  registerAction('xx', handler)
- *   Typecho 插件钩子 (Typecho_Plugin::factory)   →  registerHook('name', fn)
- *   Typecho 主题 functions.php themeInit          →  registerHook('themeInit', fn)
+ * 与 5iblog 的对应关系：
+ *   5iblog Helper::addAction('xx', 'Widget_Xx')  →  registerAction('xx', handler)
+ *   5iblog 插件钩子 (5iblog_Plugin::factory)   →  registerHook('name', fn)
+ *   5iblog 主题 functions.php themeInit          →  registerHook('themeInit', fn)
  *
  * 支持的钩子：
  *   themeInit(ctx)                 主题初始化（可修改 ctx.options）

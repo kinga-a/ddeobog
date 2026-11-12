@@ -1,0 +1,952 @@
+/*!
+ * Blog 视觉精修层
+ *
+ * 目标：在不改动主题结构的前提下，统一排版节奏、留白、层级与微交互。
+ * 加载顺序：位于所有页面级样式之后（cssLinks 末尾），可用同/低特异性覆盖。
+ * 约定：
+ *   1. 颜色一律走主题变量（--theme / --background / --routine ...），自动适配夜间模式；
+ *   2. 只做「视觉层」调整，不改动 JS 依赖的尺寸与定位（如缩略图宽高比、列表容器）；
+ *   3. 动效全部可被 prefers-reduced-motion 关闭。
+ */
+
+:root {
+  --rf-max: 1180px;
+  --rf-radius: 14px;
+  --rf-radius-sm: 10px;
+  --rf-ease: cubic-bezier(.22, .61, .36, 1);
+  --rf-ease-out: cubic-bezier(.16, 1, .3, 1);
+  --rf-line: rgba(18, 22, 40, .08);
+  --rf-line-soft: rgba(18, 22, 40, .05);
+  --rf-shadow: 0 26px 56px -30px rgba(18, 22, 40, .42);
+  --rf-shadow-sm: 0 10px 24px -18px rgba(18, 22, 40, .4);
+}
+
+html[data-night='night'] body {
+  --rf-line: rgba(255, 255, 255, .1);
+  --rf-line-soft: rgba(255, 255, 255, .06);
+  --rf-shadow: 0 26px 56px -30px rgba(0, 0, 0, .85);
+  --rf-shadow-sm: 0 10px 24px -18px rgba(0, 0, 0, .8);
+}
+
+/* ---------- 1. 基础排版 ---------- */
+
+html body {
+  font-family: "PingFang SC", "HarmonyOS Sans SC", "Noto Sans SC", "Hiragino Sans GB",
+    "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html body .blog_container {
+  max-width: var(--rf-max);
+}
+
+/* 中文标题收紧字距，正文略微放大行高 */
+html body .blog_index__title-title,
+html body .blog_detail__title,
+html body .blog_aside__item-title {
+  letter-spacing: -.01em;
+}
+
+/* ---------- 2. 顶部导航 ---------- */
+
+/* 顶部导航保持不透明主题底色：iOS Safari 的状态栏取色依赖页面顶部实际背景，
+   改成 transparent 后切换夜间模式顶部颜色不会跟随。 */
+html body .blog_header {
+  background: var(--background);
+  box-shadow: 0 1px 0 var(--rf-line-soft);
+}
+
+html body .blog_header__above {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 页面底色显式绑定变量，保证 Safari 顶部/底部安全区取到当前主题色 */
+html { background: #ffffff; }
+html[data-night='night'] { background: #232323; }
+html body { background: var(--background); }
+
+html body .blog_header__above-nav .item::after {
+  height: 2px;
+  border-radius: 2px;
+  transition: opacity .4s var(--rf-ease), transform .4s var(--rf-ease);
+}
+
+/* 顶部导航：字号提到 16px，避免在 18px 文章标题旁边显得过弱 */
+html body .blog_header__above-nav .item {
+  font-size: 16px;
+  letter-spacing: .01em;
+}
+
+/* 当前页：字重 + 下划线双重标识，避免四个导航项完全同权 */
+html body .blog_header__above-nav .item.active {
+  font-weight: 600;
+}
+
+/* 搜索框与按钮同步到 14px，和导航形成同一层级 */
+html body .blog_header__above-search .input,
+html body .blog_header__above-search .submit {
+  font-size: 14px;
+}
+
+html body .blog_header__above-search .input {
+  transition: background .35s var(--rf-ease), border-color .35s var(--rf-ease),
+    box-shadow .35s var(--rf-ease);
+}
+
+/* 搜索框聚焦不画蓝色光晕（站长 2026-11-11 要求，PC 与手机一致）：
+   早先这里给容器画了主题色 outline + 淡蓝阴影两层光圈，现全部去掉；
+   输入框聚焦时的主题色边框（主题全局规则）也一并压掉。
+   但边框不能隐形：静止与聚焦都给一条中性灰边（--classA），看得清轮廓、
+   又不是蓝色。展开的搜索条（searchout）同样处理。 */
+html body .blog_header__above-search:focus-within {
+  outline: none;
+  box-shadow: none;
+}
+html body .blog_header__above-search .input { border-color: var(--classA); }
+html body .blog_header__above-search .input:focus { border-color: var(--classA); }
+html body .blog_header__searchout .search input { border-color: var(--classA); }
+html body .blog_header__searchout .search input:focus,
+html body .blog_header__searchout .search input:focus-visible { outline: none; box-shadow: none; }
+
+/* 内部控件不再单独画轮廓，避免右侧出现断开的深蓝线 */
+html body .blog_header__above-search .input:focus,
+html body .blog_header__above-search .input:focus-visible,
+html body .blog_header__above-search .submit:focus,
+html body .blog_header__above-search .submit:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ---------- 3. 首页标题栏 ---------- */
+
+html body .blog_index__title {
+  height: 56px;
+  border-bottom: 1px solid var(--rf-line);
+}
+
+html body .blog_index__title-title {
+  height: 56px;
+  line-height: 56px;
+  font-weight: 600;
+}
+
+html body .blog_index__title-title .item {
+  margin-right: 26px;
+  font-size: 15px;
+}
+
+html body .blog_index__title-title .item.active {
+  font-weight: 600;
+}
+
+html body .blog_index__title-notice {
+  height: 56px;
+}
+
+/* ---------- 4. 文章列表 ----------
+   列表沿用主题原生样式（分隔线 + 横排图文），不改边框/圆角/背景；
+   这里只调整标题、摘要、元信息的排版与入场上。 */
+
+html body .blog_list__item {
+  animation: rf-fade-up .62s var(--rf-ease-out) both;
+}
+
+html body .blog_list__item:nth-child(2) { animation-delay: .05s; }
+html body .blog_list__item:nth-child(3) { animation-delay: .1s; }
+html body .blog_list__item:nth-child(4) { animation-delay: .15s; }
+html body .blog_list__item:nth-child(5) { animation-delay: .2s; }
+html body .blog_list__item:nth-child(6) { animation-delay: .25s; }
+
+html body .blog_list__item .information .title {
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  transition: color .3s var(--rf-ease);
+}
+
+html body .blog_list__item .information .title:hover {
+  color: var(--theme);
+}
+
+html body .blog_list__item .information .abstract {
+  margin-top: 8px;
+  color: var(--minor);
+  font-size: 14px;
+  line-height: 1.72;
+  opacity: .92;
+}
+
+html body .blog_list__item .meta {
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 13px;
+  color: var(--minor);
+  font-variant-numeric: tabular-nums;
+}
+
+html body .blog_list__item .meta .items {
+  gap: 13px;
+}
+
+html body .blog_list__item .meta .items li {
+  display: inline-flex;
+  align-items: center;
+}
+
+html body .blog_list__item .meta .items li + li::before {
+  content: "";
+  width: 3px;
+  height: 3px;
+  margin-right: 13px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .45;
+}
+
+/* ---------- 5. 侧栏 ---------- */
+
+html body .blog_aside__item {
+  border: 1px solid var(--rf-line);
+  border-radius: var(--rf-radius);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+html body .blog_aside__item-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+
+html body .blog_aside__item-contain {
+  padding-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.75;
+}
+
+/* 侧栏里的百分比/计数等辅助数字，弱化但可读 */
+html body .blog_aside__item-contain .progress-percentage,
+html body .blog_aside__item-contain .progress-bar + .progress-percentage {
+  font-weight: 600;
+  color: var(--minor);
+}
+
+/* ---------- 6. 文章详情 ---------- */
+
+html body .blog_detail__title {
+  font-size: clamp(26px, 3.6vw, 34px);
+  line-height: 1.35;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+html body .blog_detail__article {
+  font-size: 16.5px;
+  line-height: 1.9;
+  color: var(--routine);
+}
+
+html body .blog_detail__article > p {
+  margin: 0 0 1.35em;
+}
+
+html body .blog_detail__article > p:first-of-type {
+  color: var(--main);
+  font-size: 17.5px;
+  line-height: 1.85;
+}
+
+html body .blog_detail__article h2 {
+  font-size: clamp(22px, 2.6vw, 26px);
+  line-height: 1.45;
+  margin: 2.1em 0 .8em;
+  letter-spacing: -.015em;
+}
+
+html body .blog_detail__article h3 {
+  font-size: 20px;
+  line-height: 1.5;
+  margin: 1.8em 0 .7em;
+}
+
+html body .blog_detail__article h4 {
+  font-size: 17px;
+  margin: 1.6em 0 .6em;
+}
+
+html body .blog_detail__article blockquote {
+  margin: 1.6em 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--theme);
+  border-radius: 0 var(--rf-radius-sm) var(--rf-radius-sm) 0;
+  background: color-mix(in srgb, var(--theme) 7%, transparent);
+  color: var(--routine);
+}
+
+html body .blog_detail__article blockquote > p:last-child {
+  margin-bottom: 0;
+}
+
+html body .blog_detail__article img {
+  border-radius: var(--rf-radius-sm);
+}
+
+html body .blog_detail__article pre {
+  border-radius: var(--rf-radius-sm);
+  border: 1px solid var(--rf-line-soft);
+}
+
+html body .blog_detail__article :not(pre) > code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--classD);
+  font-size: .92em;
+}
+
+html body .blog_detail__article a {
+  color: var(--theme);
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  background-position: 0 100%;
+  transition: opacity .3s var(--rf-ease);
+}
+
+html body .blog_detail__article a:hover {
+  opacity: .75;
+}
+
+html body .blog_detail__related-content {
+  gap: 14px;
+}
+
+html body .blog_detail__related-content .item img {
+  border-radius: var(--rf-radius-sm);
+  transition: transform .6s var(--rf-ease-out);
+}
+
+html body .blog_detail__related-content .item:hover img {
+  transform: scale(1.03);
+}
+
+/* 阅读进度条：元素由 5iblog.post_page.js 创建并用 rAF + transform 驱动。
+   原 scroll-driven CSS 动画在移动端 Safari 上跟随不跟手、体感卡顿，
+   且老浏览器整条不显示；JS 驱动全端一致且只写合成层属性。 */
+html body .blog_reading-progress {
+  position: fixed;
+  z-index: 1200;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--theme);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* ---------- 7. 页脚 ---------- */
+
+html body .blog_footer__above {
+  border-top: 1px solid var(--rf-line-soft);
+}
+
+/* ---------- 8. 响应式 ---------- */
+
+@media (max-width: 992px) {
+  html body .blog_container {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  html body .blog_index__title {
+    height: 48px;
+  }
+
+  html body .blog_index__title-title {
+    height: 48px;
+    line-height: 48px;
+  }
+
+  html body .blog_index__title-title .item {
+    margin-right: 18px;
+    font-size: 14.5px;
+  }
+
+  html body .blog_detail__title {
+    font-size: 25px;
+  }
+
+  html body .blog_list__item .information .title {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  html body .blog_list__item .information .abstract {
+    font-size: 13.5px;
+    line-height: 1.68;
+  }
+
+  html body .blog_detail__article,
+  html body .blog_detail__article > p:first-of-type {
+    font-size: 16px;
+    line-height: 1.85;
+  }
+
+  /* 触控目标不小于 44px（只作用于导航与操作入口，不改标题行高） */
+  html body .blog_header__above-nav .item,
+  html body .blog_aside__item-title {
+    min-height: 44px;
+  }
+}
+
+/* ---------- 9. 动效与无障碍 ---------- */
+
+@keyframes rf-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html body .blog_list__item {
+    animation: none;
+  }
+
+  html body .blog_detail__related-content .item:hover img {
+    transform: none;
+  }
+}
+
+/* ---------- 10. 第二轮打磨 ---------- */
+
+/* 首页标题栏：主题色竖条，建立页面级视觉锚点 */
+html body .blog_index__title::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  height: 16px;
+  margin-right: 12px;
+  border-radius: 2px;
+  background: var(--theme);
+}
+
+/* 日期、统计等数字使用等宽数字，避免跳动 */
+html body .blog_detail__count,
+html body .blog_run {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 标题换行更均衡，正文避免孤行 */
+html body .blog_detail__title,
+html body .blog_list__item .information .title {
+  text-wrap: balance;
+}
+
+/* 「查看更多」：描边 → 实心，给出明确的继续阅读暗示 */
+html body .blog_load {
+  margin: 18px auto 4px;
+  padding: 0 26px;
+  height: 40px;
+  line-height: 38px;
+  border: 1px solid var(--rf-line);
+  border-radius: 999px;
+  color: var(--routine);
+  font-size: 13.5px;
+  letter-spacing: .02em;
+  transition: color .35s var(--rf-ease), border-color .35s var(--rf-ease),
+    background .35s var(--rf-ease);
+}
+
+html body .blog_load:hover {
+  color: var(--theme);
+  border-color: color-mix(in srgb, var(--theme) 55%, transparent);
+  background: color-mix(in srgb, var(--theme) 6%, transparent);
+}
+
+/* 键盘焦点可见 */
+html body a:focus-visible,
+html body button:focus-visible,
+html body input:focus-visible,
+html body select:focus-visible,
+html body textarea:focus-visible {
+  outline: 2px solid var(--theme);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* 页脚：更克制的分隔与字距 */
+html body .blog_footer__below {
+  padding: 18px 0;
+  letter-spacing: .02em;
+}
+
+/* 侧栏标签/分类胶囊：统一触感 */
+html body .blog_aside__item-contain a {
+  transition: color .3s var(--rf-ease), background .3s var(--rf-ease);
+}
+
+/* 窄屏：标题栏竖条略矮，避免挤压 */
+@media (max-width: 768px) {
+  html body .blog_index__title::before {
+    height: 14px;
+    margin-right: 10px;
+  }
+}
+
+
+/* iOS 26：Safari 采样视口 fixed 层的 background-color 决定工具栏颜色。
+   遮罩不能只靠 backdrop-filter（会回退到系统默认色），给显式纯色。 */
+html body .blog_header__mask {
+  background-color: rgba(0, 0, 0, .42);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 封面占位图标：默认隐藏，只有封面缺失或加载失败（.is-fallback）时显示 */
+html body .blog_list__item .thumbnail .thumb-fallback {
+  display: none;
+}
+html body .blog_list__item .thumbnail.is-fallback .thumb-fallback {
+  display: block;
+}
+html body .blog_list__item .thumbnail.is-fallback img {
+  display: none;
+}
+
+/* 移动端评论提交按钮：触摸目标 ≥44px */
+@media (max-width: 760px) {
+  html body .blog_comment__respond-form .foot .submit button {
+    height: 44px;
+    min-height: 44px;
+    padding: 0 18px;
+  }
+}
+
+/* 触屏设备输入字号 16px，避免 iOS Safari 聚焦时放大页面 */
+@media (pointer: coarse) {
+  html body .blog_comment__respond-form input,
+  html body .blog_comment__respond-form textarea,
+  html body .blog_wall__form input,
+  html body .blog_wall__form textarea {
+    font-size: 16px;
+  }
+}
+
+/* ---------- 状态页居中：404 / 密码保护 ---------- */
+
+html body .blog_404_page {
+  min-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+html body .blog_404_page .blog_main {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html body .blog_404 {
+  max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+html body .blog_404 h1 { margin: 0 0 12px; }
+html body .blog_404 p { margin: 0 0 18px; }
+
+html body .blog_protected_page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+html body .blog_protected_page .blog_main {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html body .blog_protected_page .blog_detail {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  text-align: center;
+}
+
+html body .blog_protected_page .blog_detail__article-protected {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 22px 0 26px;
+}
+
+html body .blog_protected_page .blog_detail__article-protected-error {
+  text-align: center;
+}
+
+/* 评论蜜罐：视觉与可访问性都隐藏，正常用户不会看到或聚焦 */
+html body .hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* 正文内容边界：主题只给 img:not([class]) 加了 max-width，单图、图集子项、
+   内联 SVG/视频/iframe、宽表格与长代码行都可能撑出 .blog_main 并覆盖
+   右侧 .blog_aside。这里统一兜底：媒体缩放、代码/表格内部滚动、长文本断行。 */
+html body .blog_detail__article img,
+html body .blog_detail__article video,
+html body .blog_detail__article svg,
+html body .blog_detail__article canvas,
+html body .blog_detail__article audio,
+html body .blog_detail__article embed,
+html body .blog_detail__article object,
+html body .blog_detail__article iframe {
+  max-width: 100%;
+}
+html body .blog_detail__article img,
+html body .blog_detail__article video,
+html body .blog_detail__article svg {
+  height: auto;
+}
+html body .blog_detail__article-image {
+  display: block;
+  margin: 0 0 18px;
+}
+html body .blog_detail__article pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+html body .blog_detail__article table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+html body .blog_detail__article :not(pre) > code,
+html body .blog_detail__article a,
+html body .blog_detail__article figcaption,
+html body .blog_detail__article {
+  overflow-wrap: anywhere;
+}
+html body .blog_detail__title {
+  overflow-wrap: anywhere;
+}
+html body .blog_main.blog_post {
+  overflow-x: clip;
+}
+
+/* 评论区同样兜底：长链接、长单词、用户贴的超宽图片 */
+html body .blog_comment .substance {
+  overflow-wrap: anywhere;
+}
+html body .blog_comment .substance img,
+html body .blog_comment .substance video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- 侧栏天气卡片（参考 Uiverse，宽度适配 250px 侧栏） ---------- */
+html body .blog_aside__item.blog_weather_aside {
+  background: #ec7263;
+}
+html body .blog_weather {
+  position: relative;
+  overflow: hidden;
+  min-height: 112px;
+  color: #fff;
+  background: #ec7263;
+  font-size: 13px;
+}
+html body .blog_weather__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 118px;
+  color: rgba(255, 255, 255, .85);
+  letter-spacing: .05em;
+}
+html body .blog_weather__hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 118px;
+  padding: 14px 14px 12px;
+  overflow: hidden;
+}
+html body .blog_weather__orb {
+  position: absolute;
+  border-radius: 50%;
+  background: #efc745;
+  pointer-events: none;
+}
+html body .blog_weather__orb--1 {
+  top: -150px;
+  right: -90px;
+  width: 230px;
+  height: 230px;
+  opacity: .35;
+}
+html body .blog_weather__orb--2 {
+  top: -105px;
+  right: -50px;
+  width: 160px;
+  height: 160px;
+  opacity: .4;
+}
+html body .blog_weather__orb--3 {
+  top: -38px;
+  right: -8px;
+  width: 76px;
+  height: 76px;
+  opacity: .85;
+}
+html body .blog_weather__left {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+}
+html body .blog_weather__condition {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+html body .blog_weather__icon {
+  display: inline-flex;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+html body .blog_weather__icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+html body .blog_weather__temp {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -.02em;
+}
+html body .blog_weather__range {
+  font-size: 12px;
+  opacity: .8;
+}
+html body .blog_weather__right {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+html body .blog_weather__time {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+}
+html body .blog_weather__date {
+  font-size: 11px;
+  opacity: .8;
+}
+html body .blog_weather__city {
+  max-width: 88px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .9;
+}
+html body .blog_weather__days {
+  display: flex;
+  background: #974859;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+html body .blog_weather__day {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 2px 8px;
+  background: #a75265;
+  border-left: 1px solid rgba(255, 255, 255, .06);
+}
+html body .blog_weather__day:first-child {
+  border-left: 0;
+}
+html body .blog_weather__day-week {
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: .75;
+}
+html body .blog_weather__day .blog_weather__icon {
+  width: 16px;
+  height: 16px;
+}
+html body .blog_weather__day-temp {
+  font-size: 11px;
+  white-space: nowrap;
+}
+html body .blog_weather__day-temp em {
+  margin-left: 3px;
+  font-style: normal;
+  opacity: .7;
+}
+
+/* 夜间模式：主题默认隐藏 Logo <img> 并显示一个原版 SVG Logo，
+   本移植版的 Header 只输出 <img>，导致切换深色后 Logo 直接消失。
+   这里保留图片并隐藏不存在的 SVG。 */
+html[data-night='night'] .blog_header__above-logo img {
+  display: block;
+}
+html[data-night='night'] .blog_header__above-logo svg {
+  display: none;
+}
+
+/* 友链卡片：参考 5i.ink 的三列彩色卡片，数据由 links-cache 插件输出 */
+html body .blog_links {
+  margin: 0 0 15px;
+}
+html body .blog_links__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 15px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+html body .blog_links__item {
+  display: block;
+  min-width: 0;
+  list-style: none;
+}
+html body .blog_links__item::marker {
+  content: none;
+}
+html body .blog_links__card {
+  display: block;
+  overflow: hidden;
+  padding: 15px;
+  border-radius: var(--radius-inner, 8px);
+  color: #fff;
+  text-decoration: none;
+  word-break: break-word;
+  transition: transform .35s, box-shadow .35s;
+}
+html body .blog_links__card:hover,
+html body .blog_links__card:focus-visible {
+  transform: translateY(-5px) scale(1.025);
+  box-shadow: 0 34px 20px -24px rgba(136, 161, 206, .3);
+  outline: 0;
+}
+html body .blog_links__title {
+  position: relative;
+  display: block;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+html body .blog_links__title::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: #fff;
+}
+html body .blog_links__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 15px;
+}
+html body .blog_links__desc {
+  min-width: 0;
+  margin-right: 10px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: .9;
+}
+html body .blog_links__avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+@media (max-width: 760px) {
+  html body .blog_links__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+@media (max-width: 520px) {
+  html body .blog_links__list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 正文链接默认带主题色/下划线，友链卡片强制白字并锁定 40px 头像 */
+html body .blog_detail__article .blog_links__card,
+html body .blog_detail__article .blog_links__card:visited,
+html body .blog_detail__article .blog_links__card:hover,
+html body .blog_detail__article .blog_links__title,
+html body .blog_detail__article .blog_links__desc {
+  color: #fff;
+  text-decoration: none;
+}
+html body .blog_detail__article .blog_links__avatar {
+  display: block;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  max-width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+}

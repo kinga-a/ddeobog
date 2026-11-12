@@ -2,39 +2,39 @@
 # 文件名带 hash 的可以永久缓存，不带的用较短缓存
 
 # CSS 文件
-/usr/themes/joe/assets/*.css
+/usr/themes/5iblog/assets/*.css
   Cache-Control: public, max-age=31536000, immutable
 
 # JS 文件
-/usr/themes/joe/assets/*.js
+/usr/themes/5iblog/assets/*.js
   Cache-Control: public, max-age=31536000, immutable
 
 # 图片资源（png/jpg/gif/svg/webp）
-/usr/themes/joe/assets/*.png
+/usr/themes/5iblog/assets/*.png
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.jpg
+/usr/themes/5iblog/assets/*.jpg
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.jpeg
+/usr/themes/5iblog/assets/*.jpeg
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.gif
+/usr/themes/5iblog/assets/*.gif
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.svg
+/usr/themes/5iblog/assets/*.svg
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.webp
+/usr/themes/5iblog/assets/*.webp
   Cache-Control: public, max-age=31536000, immutable
 
 # 字体文件
-/usr/themes/joe/assets/*.woff
+/usr/themes/5iblog/assets/*.woff
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.woff2
+/usr/themes/5iblog/assets/*.woff2
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.ttf
+/usr/themes/5iblog/assets/*.ttf
   Cache-Control: public, max-age=31536000, immutable
-/usr/themes/joe/assets/*.eot
+/usr/themes/5iblog/assets/*.eot
   Cache-Control: public, max-age=31536000, immutable
 
 # 后台样式例外：admin.css 文件名不带 hash 且经常调整，
 # 不能吃一年强缓存，否则改版后老访客一直拿到旧样式（HTML 已更新、CSS 被锁死）。
 # 用 5 分钟短缓存：改动最迟 5 分钟内对所有访客生效。
-/usr/themes/joe/assets/css/admin.css
+/usr/themes/5iblog/assets/css/admin.css
   Cache-Control: public, max-age=300

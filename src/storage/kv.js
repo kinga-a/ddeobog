@@ -99,7 +99,7 @@ export function getKV(env) {
   }
   if (!binding) {
     throw new Error(
-      `[TypechoEdge] 未找到 KV 绑定 "${name}"。请在 EdgeOne 控制台创建 KV 命名空间并以变量名 "${name}" 绑定到本项目。`
+      `[5iblog] 未找到 KV 绑定 "${name}"。请在 EdgeOne 控制台创建 KV 命名空间并以变量名 "${name}" 绑定到本项目。`
     );
   }
   return new KV(binding);

@@ -118,6 +118,17 @@ async function serveStatic(pathname, req, res) {
   }
   if (!rel.startsWith('usr/')) return false;
 
+  // 旧主题静态路径兼容：历史文章/外链仍指向 /usr/themes/joe/*
+  const legacyThemePrefix = 'usr/themes/joe/';
+  if (rel.startsWith(legacyThemePrefix)) {
+    const legacyPath = rel.slice(legacyThemePrefix.length).replace(/(^|\/)joe\./g, (_m, prefix) => `${prefix}5iblog.`);
+    res.writeHead(301, {
+      Location: `/usr/themes/5iblog/${legacyPath}`,
+    });
+    res.end();
+    return true;
+  }
+
   const abs = resolve(ROOT, rel);
   if (!abs.startsWith(USR_ROOT + sep)) return false;
 
@@ -134,7 +145,7 @@ async function serveStatic(pathname, req, res) {
 
     const ext = extname(abs).toLowerCase();
     // admin.css 不带 hash 且经常调整，给短缓存；其余静态资源 1 小时
-    const maxAge = /\/(css\/admin\.css|js\/joe\.admin-editor)/.test(rel) ? 300 : 3600;
+    const maxAge = /\/(css\/admin\.css|js\/5iblog\.admin-editor)/.test(rel) ? 300 : 3600;
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Content-Length': st.size,

@@ -3,7 +3,7 @@ export const CONFIG = {
   // KV 命名空间绑定变量名（在 EdgeOne 控制台将 KV 命名空间绑定到项目时的变量名）
   KV_BINDING: 'BLOG_KV',
   // Blob 命名空间（@edgeone/pages-blob getStore 名，自动创建）
-  BLOB_STORE: 'typecho-uploads',
+  BLOB_STORE: '5iblog-uploads',
   // Cookie 名
   SESSION_COOKIE: 'te_sess',
   REMEMBER_COOKIE: 'te_remember',
@@ -17,7 +17,7 @@ export const CONFIG = {
   // 评论每页数
   COMMENT_PAGE_SIZE: 10,
   // 默认主题
-  DEFAULT_THEME: 'joe',
+  DEFAULT_THEME: '5iblog',
   // 版本
-  VERSION: '1.6.12',
+  VERSION: '1.7.6',
 };

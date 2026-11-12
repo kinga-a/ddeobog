@@ -2,7 +2,7 @@
 import { escapeHtml } from './markdown.js';
 import { md5Hex } from './md5.js';
 
-/** Joe 风格分页（ul.joe_pagination）
+/** 5iblog 风格分页（ul.blog_pagination）
  * 链接必须是路径式，不能用 ?page=N —— 前端路由只认 /page/N/ 与
  * /<归档>/N/（见 src/controllers/frontend.js 的各条正则），从不读 page
  * 查询参数。写成 ?page=N 时服务端仍按第 1 页渲染，点「下一页」原地不动。 */
@@ -14,7 +14,7 @@ export function pageNav(page, pages, baseUrl, edge = 2) {
     const url = p === 1 ? baseUrl : `${stem}/${p}/`;
     return `<li class="${cls}"><a href="${url}" title="第 ${p} 页">${html}</a></li>`;
   };
-  let html = '<ul class="joe_pagination">';
+  let html = '<ul class="blog_pagination">';
   if (page > 1) html += make(page - 1, '&laquo;', 'prev');
   const nums = new Set([1, pages, page]);
   for (let d = 1; d <= edge; d++) {
@@ -85,13 +85,13 @@ export function thumbnail(content, themeAssets) {
 export { escapeHtml };
 
 /**
- * 解析后台「顶置文章IDs」（option theme:joe 的 JStickPosts）。
+ * 解析后台「顶置文章IDs」（option theme:5iblog 的 JStickPosts）。
  * 逗号分隔的 cid，按填写顺序返回字符串形式并去重；非法项直接丢掉。
  * 排序（renderIndex / publish_list）和角标（indexItem / publish_list）共用它，
  * 避免同一个设置在两处解析出不同结果。
  */
 export function parseStickIds(options) {
-  const raw = options?.joe?.JStickPosts;
+  const raw = options?.blog?.JStickPosts;
   if (!raw) return [];
   const seen = new Set();
   const out = [];

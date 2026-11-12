@@ -30,7 +30,7 @@
       ]
     },
     {
-      "source": "/usr/themes/joe/assets/*",
+      "source": "/usr/themes/5iblog/assets/*",
       "headers": [
         {
           "key": "Cache-Control",
@@ -54,6 +54,20 @@
           "value": "nosniff"
         }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/usr/themes/joe/assets/img/*",
+      "destination": "/usr/themes/5iblog/assets/img/:splat"
+    },
+    {
+      "source": "/usr/themes/joe/assets/thumb/*",
+      "destination": "/usr/themes/5iblog/assets/thumb/:splat"
+    },
+    {
+      "source": "/usr/themes/joe/assets/backdrop/*",
+      "destination": "/usr/themes/5iblog/assets/backdrop/:splat"
     }
   ]
 }

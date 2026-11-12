@@ -1,5 +1,5 @@
 /**
- * TypechoEdge 主入口 —— EdgeOne Edge Function
+ * 5iblog 主入口 —— EdgeOne Edge Function
  * 部署为 edge-functions/[[default]].js（构建产物，勿直接修改本文件的调用方）
  */
 import { CONFIG } from './config.js';
@@ -11,7 +11,7 @@ import { handleFrontend } from './controllers/frontend.js';
 import { handleMcp } from './mcp.js';
 import { escapeHtml } from './render/markdown.js';
 import { runHooks, runAction, hasAction, loadBuiltinPlugins } from './plugins.js';
-import { setOwoMap, JOE_DEFAULTS } from './render/theme-joe.js';
+import { setOwoMap, BLOG_DEFAULTS } from './render/theme-5iblog.js';
 import owoJson from './owo.js';
 import { createRequestLogger, createRequestId, requestMeta, safePath } from './logging.js';
 import {
@@ -83,10 +83,11 @@ export default async function onRequest(context) {
 
     // ---- 组装全局上下文 ----
     const optionsRaw = await db.getOptions();
-    const joe = { ...JOE_DEFAULTS, ...(optionsRaw['theme:joe'] || {}) };
+    const themeRaw = optionsRaw['theme:5iblog'] || optionsRaw['theme:joe'] || {};
+    const blog = { ...BLOG_DEFAULTS, ...themeRaw };
     // 旧默认 link.png 迁移到新 favicon；空值回退默认，避免标签页图标空白
-    if (!joe.JFavicon || joe.JFavicon === '/usr/themes/joe/assets/img/link.png') {
-      joe.JFavicon = JOE_DEFAULTS.JFavicon;
+    if (!blog.JFavicon || blog.JFavicon === '/usr/themes/5iblog/assets/img/link.png') {
+      blog.JFavicon = BLOG_DEFAULTS.JFavicon;
     }
     const options = {
       title: optionsRaw.title || '我的博客',
@@ -95,8 +96,8 @@ export default async function onRequest(context) {
       pageSize: optionsRaw.pageSize || CONFIG.PAGE_SIZE,
       commentStatus: optionsRaw.commentStatus || 'approved',
       theme: optionsRaw.theme || CONFIG.DEFAULT_THEME,
-      themeAssetsBase: '/usr/themes/joe',
-      joe,
+      themeAssetsBase: '/usr/themes/5iblog',
+      blog,
     };
 
     const auth = await currentUser(db, request);
@@ -104,7 +105,7 @@ export default async function onRequest(context) {
 
     // 独立页面列表（导航）
     // 导航只需要标题/slug，使用索引避免把所有页面正文读进内存
-    const pagesList = await db.listContentsIndex({ type: 'page', pageSize: 50 });
+    const pagesList = await db.listContentsIndex({ type: 'page', pageSize: 50, order: 'order' });
     const pages = pagesList.items.map((p) => ({
       cid: p.cid,
       title: p.title,
@@ -131,8 +132,8 @@ export default async function onRequest(context) {
 
     // 根路径图标跟随站点设置里的 Favicon URL，而不是硬编码本地文件
     if (path === '/favicon.ico') {
-      const fallback = JOE_DEFAULTS.JFavicon;
-      const configured = String(options.joe.JFavicon || '').trim();
+      const fallback = BLOG_DEFAULTS.JFavicon;
+      const configured = String(options.blog.JFavicon || '').trim();
       let target;
       try {
         target = new URL(configured || fallback, url);
@@ -156,7 +157,7 @@ export default async function onRequest(context) {
     const custom = await runHooks('route', null, ctx);
     if (custom instanceof Response) return done(custom);
 
-    // ---- 插件 action（/action/[name]，对应 Typecho Widget\Action）----
+    // ---- 插件 action（/action/[name]，对应 5iblog Widget\Action）----
     const actionMatch = path.match(/^\/action\/([a-zA-Z0-9_-]+)\/?$/);
     if (actionMatch) {
       if (hasAction(actionMatch[1])) {

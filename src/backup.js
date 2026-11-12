@@ -10,8 +10,10 @@
  */
 import { CONFIG } from './config.js';
 
-export const BACKUP_FORMAT = 'typecho-edge-backup';
+export const BACKUP_FORMAT = '5iblog-backup';
 export const BACKUP_VERSION = 1;
+/** 兼容旧版本备份（主题迁移前） */
+const LEGACY_BACKUP_FORMATS = new Set(['typecho-edge-backup']);
 
 /** 参与备份的键前缀 */
 export const BACKUP_PREFIXES = [
@@ -83,7 +85,7 @@ export async function exportBackup(db, meta = {}) {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     createdAt: Math.floor(Date.now() / 1000),
-    app: { name: 'TypechoEdge', version: CONFIG.VERSION },
+    app: { name: '5iblog', version: CONFIG.VERSION },
     site: {
       title: meta.title || '',
       description: meta.description || '',
@@ -99,8 +101,8 @@ export function validateBackup(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
     throw new Error('备份文件不是合法的 JSON 对象');
   }
-  if (obj.format !== BACKUP_FORMAT) {
-    throw new Error('不是 TypechoEdge 的备份文件（format 不匹配）');
+  if (obj.format !== BACKUP_FORMAT && !LEGACY_BACKUP_FORMATS.has(obj.format)) {
+    throw new Error('不是 5iblog 的备份文件（format 不匹配）');
   }
   const version = Number(obj.version);
   if (!Number.isFinite(version) || version < 1) {
@@ -156,11 +158,11 @@ export async function importBackup(db, obj, { mode = 'merge' } = {}) {
   return { written, mode };
 }
 
-/** 备份文件名：typecho-edge-20261108-224500.json */
+/** 备份文件名：5iblog-20261108-224500.json */
 export function backupFileName(now = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return (
-    `typecho-edge-${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
+    `5iblog-${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
     `-${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}.json`
   );
 }

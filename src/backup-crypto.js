@@ -3,7 +3,7 @@
  *
  * 加密后的文件仍是一个 JSON 信封，可正常下载、上传、存 WebDAV：
  * {
- *   format: 'typecho-edge-backup-encrypted',
+ *   format: '5iblog-backup-encrypted',
  *   version: 1,
  *   createdAt: 1794149059,
  *   kdf:    { name: 'PBKDF2-SHA256', iterations: 100000, salt: '...' },
@@ -13,7 +13,9 @@
  *
  * 只使用 Web 标准 WebCrypto，Node 与 Edge 运行时通用。
  */
-export const ENCRYPTED_FORMAT = 'typecho-edge-backup-encrypted';
+export const ENCRYPTED_FORMAT = '5iblog-backup-encrypted';
+/** 兼容旧版本加密备份（主题迁移前） */
+const LEGACY_ENCRYPTED_FORMATS = new Set(['typecho-edge-backup-encrypted']);
 export const MIN_PASSWORD_LENGTH = 6;
 
 const DEFAULT_ITERATIONS = 100000;
@@ -63,7 +65,8 @@ async function deriveKey(password, salt, iterations) {
 }
 
 export function isEncryptedBackup(obj) {
-  return !!obj && typeof obj === 'object' && obj.format === ENCRYPTED_FORMAT;
+  return !!obj && typeof obj === 'object'
+    && (obj.format === ENCRYPTED_FORMAT || LEGACY_ENCRYPTED_FORMATS.has(obj.format));
 }
 
 /** 加密备份对象 */

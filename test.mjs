@@ -106,7 +106,7 @@ await test('未安装时重定向到 /install', async () => {
 await test('安装页面可访问', async () => {
   const res = await call('GET', '/install');
   assert.equal(res.status, 200);
-  assert.ok((await res.text()).includes('TypechoEdge'));
+  assert.ok((await res.text()).includes('5iblog'));
 });
 
 await test('完成安装（创建管理员账号存 KV）', async () => {
@@ -124,23 +124,23 @@ await test('完成安装（创建管理员账号存 KV）', async () => {
   assert.ok(globalThis.BLOG_KV.map.has('opt:installed'), 'installed 配置应存入 KV');
 });
 
-await test('安装后首页 200 且包含 Joe 主题结构', async () => {
+await test('安装后首页 200 且包含 Blog 主题结构', async () => {
   const res = await call('GET', '/');
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.ok(html.includes('joe_header'), '应包含 Joe header');
-  assert.ok(html.includes('Hello TypechoEdge'), '应包含示例文章');
-  assert.ok(html.includes('usr/themes/joe/assets/css/joe.global.min.css'), '应引用 Joe 原版 CSS');
+  assert.ok(html.includes('blog_header'), '应包含 Blog header');
+  assert.ok(html.includes('Hello 5iblog'), '应包含示例文章');
+  assert.ok(html.includes('usr/themes/5iblog/assets/css/5iblog.global.min.css'), '应引用 Blog 原版 CSS');
 });
 
 await test('文章页渲染（/archives/1/）', async () => {
   const res = await call('GET', '/archives/1/');
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.ok(html.includes('joe_detail__title'), '应有文章标题结构');
+  assert.ok(html.includes('blog_detail__title'), '应有文章标题结构');
   assert.ok(html.includes('<h2'), 'Markdown 标题应渲染');
-  assert.ok(html.includes('joe_comment__respond'), '应有评论区');
-  assert.ok(html.includes('Joe_Article_Views'), '应有阅读数元素');
+  assert.ok(html.includes('blog_comment__respond'), '应有评论区');
+  assert.ok(html.includes('Blog_Article_Views'), '应有阅读数元素');
 });
 
 await test('RSS 订阅 /feed/', async () => {
@@ -148,7 +148,7 @@ await test('RSS 订阅 /feed/', async () => {
   assert.equal(res.status, 200);
   const xml = await res.text();
   assert.ok(xml.includes('xmlns="http://www.w3.org/2005/Atom"'));
-  assert.ok(xml.includes('Hello TypechoEdge'));
+  assert.ok(xml.includes('Hello 5iblog'));
 });
 
 await test('搜索路由 /search/xxx/', async () => {
@@ -162,15 +162,15 @@ await test('404 页面', async () => {
   assert.equal(res.status, 404);
 });
 
-await test('Joe API: publish_list', async () => {
-  const res = await call('POST', '/joe/api', { form: { routeType: 'publish_list', page: 1, pageSize: 10, type: 'created' } });
+await test('Blog API: publish_list', async () => {
+  const res = await call('POST', '/5iblog/api', { form: { routeType: 'publish_list', page: 1, pageSize: 10, type: 'created' } });
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.code, 1);
   assert.ok(data.data.length >= 1);
   assert.ok(data.data[0].permalink.startsWith('/archives/'));
 
-  // 回归点：首页卡片其实是 joe.index.js 清空后用这份数据重画的，取的是 _.image[0]。
+  // 回归点：首页卡片其实是 5iblog.index.js 清空后用这份数据重画的，取的是 _.image[0]。
   // 没封面时 image 为空数组，取出来是 undefined，模板就渲染出 data-src="undefined"，
   // lazysizes 再把这串写进 src——图片彻底不显示。必须始终有图可取。
   for (const item of data.data) {
@@ -183,17 +183,17 @@ await test('Joe API: publish_list', async () => {
   }
 });
 
-await test('Joe API: handle_views 计数', async () => {
-  const res = await call('POST', '/joe/api', { form: { routeType: 'handle_views', cid: 1 } });
+await test('Blog API: handle_views 计数', async () => {
+  const res = await call('POST', '/5iblog/api', { form: { routeType: 'handle_views', cid: 1 } });
   const data = await res.json();
   assert.equal(data.code, 1);
   assert.equal(data.data.views, 1);
 });
 
-await test('Joe API: search 联想返回标题/permalink/阅读量', async () => {
+await test('Blog API: search 联想返回标题/permalink/阅读量', async () => {
   // 走 GET + query string：边缘运行时的 request.formData() 在无 Content-Type 时
   // 是同步抛错，用 .catch() 接不住，会直接 500
-  const res = await call('GET', '/joe/api?routeType=search&s=Hello&pageSize=8');
+  const res = await call('GET', '/5iblog/api?routeType=search&s=Hello&pageSize=8');
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.code, 1);
@@ -206,15 +206,15 @@ await test('Joe API: search 联想返回标题/permalink/阅读量', async () =>
   assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(hit.time));
 });
 
-await test('Joe API: GET 无参数不 500', async () => {
-  for (const p of ['/joe/api', '/joe/api?routeType=handle_views&cid=1', '/joe/api?routeType=baidu_push']) {
+await test('Blog API: GET 无参数不 500', async () => {
+  for (const p of ['/5iblog/api', '/5iblog/api?routeType=handle_views&cid=1', '/5iblog/api?routeType=baidu_push']) {
     const res = await call('GET', p);
     assert.equal(res.status, 200, `GET ${p} 返回 ${res.status}`);
   }
 });
 
-await test('Joe API: search 空关键字返回空列表而非报错', async () => {
-  const res = await call('POST', '/joe/api', { form: { routeType: 'search', s: '   ' } });
+await test('Blog API: search 空关键字返回空列表而非报错', async () => {
+  const res = await call('POST', '/5iblog/api', { form: { routeType: 'search', s: '   ' } });
   const data = await res.json();
   assert.equal(data.code, 1);
   assert.equal(data.data.total, 0);
@@ -224,13 +224,13 @@ await test('Joe API: search 空关键字返回空列表而非报错', async () =
 await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', async () => {
   const res = await call('GET', '/');
   const html = await res.text();
-  const aboveAtOf = (h) => h.indexOf('class="joe_header__above-search"');
+  const aboveAtOf = (h) => h.indexOf('class="blog_header__above-search"');
   // 与 5i.ink 一致：顶栏和移动端面板都是 <form>，input/button 是表单直接子元素
   assert.ok(
-    /class="joe_header__searchout-inner"\s*>\s*<form class="search"/.test(html),
+    /class="blog_header__searchout-inner"\s*>\s*<form class="search"/.test(html),
     '搜索面板缺少 .search 表单包裹层，主题 CSS 的 input/button 布局不会生效'
   );
-  assert.ok(html.includes('class="joe_header__above-search" method="get"'),
+  assert.ok(html.includes('class="blog_header__above-search" method="get"'),
     '顶栏搜索未使用 form，回车无法走原生提交');
   // 主题 CSS 靠 .submit / .icon / .result .item 的形状出效果，缺一样就散架
   assert.ok(html.includes('class="submit">搜索</button>'), '缺少 .submit 按钮');
@@ -247,25 +247,25 @@ await test('主题：搜索面板结构与脚本齐备（对齐 5i.ink）', asyn
     assert.ok(/^\/(archives\/\d+\/|attachment\/\d+\/|[^/]+\/)/.test(h), `下拉条目链接非法：${h}`);
   }
   // 联想渲染脚本必须被引入
-  assert.ok(html.includes('assets/js/joe.search.js'), '未引入 joe.search.js，搜索框点了没反应');
-  // 下拉容器（联想结果挂载点）必须落在 .joe_header__above-search 之内
-  const aboveAt = html.indexOf('class="joe_header__above-search"');
+  assert.ok(html.includes('assets/js/5iblog.search.js'), '未引入 5iblog.search.js，搜索框点了没反应');
+  // 下拉容器（联想结果挂载点）必须落在 .blog_header__above-search 之内
+  const aboveAt = html.indexOf('class="blog_header__above-search"');
   const resultAt = html.indexOf('class="result"');
-  assert.ok(aboveAt >= 0 && resultAt > aboveAt, '联想结果挂载点 .result 不在 .joe_header__above-search 内');
+  assert.ok(aboveAt >= 0 && resultAt > aboveAt, '联想结果挂载点 .result 不在 .blog_header__above-search 内');
   // 布局补丁样式表必须被引入
-  assert.ok(html.includes('assets/css/joe.layout.css'), '未引入 joe.layout.css');
+  assert.ok(html.includes('assets/css/5iblog.layout.css'), '未引入 5iblog.layout.css');
 });
 
 await test('主题：文章底部 operate + pagination 对齐 5i.ink', async () => {
   const html = await (await call('GET', '/archives/1/')).text();
 
-  // ---- .joe_detail__operate：胶囊标签 + 分享面板 ----
-  assert.ok(html.includes('class="joe_detail__operate"'), '缺少 .joe_detail__operate');
-  assert.ok(html.includes('class="joe_detail__operate-tags"'), '缺少标签区');
-  assert.ok(html.includes('class="joe_detail__operate-share"'), '缺少分享区');
+  // ---- .blog_detail__operate：胶囊标签 + 分享面板 ----
+  assert.ok(html.includes('class="blog_detail__operate"'), '缺少 .blog_detail__operate');
+  assert.ok(html.includes('class="blog_detail__operate-tags"'), '缺少标签区');
+  assert.ok(html.includes('class="blog_detail__operate-share"'), '缺少分享区');
   assert.ok(html.includes('class="reach"'), '缺少 .reach 分享面板容器');
-  assert.ok(!html.includes('class="joe_detail__tags"'),
-    '仍在输出 .joe_detail__tags，主题 CSS 里没有这条规则（裸链接）');
+  assert.ok(!html.includes('class="blog_detail__tags"'),
+    '仍在输出 .blog_detail__tags，主题 CSS 里没有这条规则（裸链接）');
 
   // 三个分享入口，URL 模板与 5i.ink 一致
   assert.ok(html.includes('connect.qq.com/widget/shareqq/index.html?url='), '缺 QQ 分享');
@@ -274,15 +274,15 @@ await test('主题：文章底部 operate + pagination 对齐 5i.ink', async () 
   // 分享链接必须带文章绝对地址，否则第三方平台拿不到原文
   const shareUrls = [...html.matchAll(/class="reach"[\s\S]*?<\/div>/g)][0][0];
   const abs = shareUrls.match(/url=([^&"]+)/);
-  assert.ok(abs && /^https?:\/\/[^/]+\/archives\/\d+\/$/.test(decodeURIComponent(abs[1])),
+  assert.ok(abs && /^https?:\/\/[^/]+\/archives\/[^/]+\/$/.test(decodeURIComponent(abs[1])),
     `分享链接的 url 不是文章绝对地址：${abs && abs[1]}`);
   // 分享图标必须是内联 SVG（主题 CSS 用 svg{cursor:pointer} 和 hover 旋转）
-  assert.ok(/class="joe_detail__operate-share">\s*<svg viewBox="0 0 1024 1024"[^>]*width="26"/.test(html),
+  assert.ok(/class="blog_detail__operate-share">\s*<svg viewBox="0 0 1024 1024"[^>]*width="26"/.test(html),
     '分享入口图标应为 26×26 内联 svg');
 
-  // ---- .joe_post__pagination：可见文字是「上一篇/下一篇」，标题在 title 属性 ----
+  // ---- .blog_post__pagination：可见文字是「上一篇/下一篇」，标题在 title 属性 ----
   // 此刻夹具只有一篇文章，只有「下一篇」；两个方向齐全的那条见「上下篇文字」测试
-  const pag = html.slice(html.indexOf('class="joe_post__pagination"'));
+  const pag = html.slice(html.indexOf('class="blog_post__pagination"'));
   const pagSeg = pag.slice(0, pag.indexOf('</ul>'));
   const sides = { prev: '上一篇', next: '下一篇' };
   let seen = 0;
@@ -297,44 +297,47 @@ await test('主题：文章底部 operate + pagination 对齐 5i.ink', async () 
   assert.equal(seen, 0, '只有一篇文章时上下篇都应缺席');
 
   // ---- 分享面板的展开/收起必须有 JS（5i.ink 缺这段，面板永远 visibility:hidden）----
-  // 页面真正加载的是 joe.global.min.js，与 .js 是两份独立文件、构建也不会重新生成 min。
+  // 页面真正加载的是 5iblog.global.min.js，与 .js 是两份独立文件、构建也不会重新生成 min。
   // 所以要去 HTML 里把脚本地址抠出来，取回那个文件校验，别只查 .js。
-  const scripts = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"[^>]*><\/script>/g)].map((m) => m[1]);
-  assert.ok(scripts.length === 1, `页面应只加载一个 joe.global 脚本，实际：${scripts}`);
+  const scripts = [...html.matchAll(/<script src="([^"]*blog\.global[^"]*)"[^>]*><\/script>/g)].map((m) => m[1]);
+  assert.ok(scripts.length === 1, `页面应只加载一个 5iblog.global 脚本，实际：${scripts}`);
   // /usr/ 静态资源由平台静态层响应，函数不返回内容，这里按 URL 映射回仓库文件读
   const g = await readFile(`.${scripts[0].split('?')[0]}`, 'utf8');
-  assert.ok(/joe_detail__operate-share/.test(g), `${scripts[0]} 未绑定分享面板的展开/收起`);
+  assert.ok(/blog_detail__operate-share/.test(g), `${scripts[0]} 未绑定分享面板的展开/收起`);
 });
 
 await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
   const html = await (await call('GET', '/')).text();
-  const i = html.indexOf('class="joe_header__slideout"');
+  const i = html.indexOf('class="blog_header__slideout"');
   assert.ok(i >= 0, '缺少侧边面板');
-  const seg = html.slice(i, html.indexOf('joe_header__searchout', i));
+  const seg = html.slice(i, html.indexOf('blog_header__searchout', i));
 
   // 旧的 wrap 层和扁平的 a.item 在主题 CSS 里都零命中，必须已被替换
-  assert.ok(!seg.includes('joe_header__slideout-wrap'), '仍在输出零命中的 .joe_header__slideout-wrap');
+  assert.ok(!seg.includes('blog_header__slideout-wrap'), '仍在输出零命中的 .blog_header__slideout-wrap');
   assert.ok(!/<a class="item[^"]*"[^>]*>首页/.test(seg), '仍在输出零命中的扁平 a.item 菜单');
 
   // ---- 壁纸图：absolute + 满宽 150px，主题 CSS 依赖 width/height 属性以外的内联尺寸 ----
-  const img = /<img width="100%" height="150" class="joe_header__slideout-image" src="([^"]*)" alt="侧边栏壁纸"/.exec(seg);
+  const img = /<img width="100%" height="150" class="blog_header__slideout-image" src="([^"]*)" alt="侧边栏壁纸"/.exec(seg);
   assert.ok(img, '壁纸图结构不符（需 width="100%" height="150"）');
   assert.ok(img[1], '壁纸图 src 为空');
+  const asideBg = /data-src="([^"]+)" alt="博主栏壁纸"/.exec(html);
+  assert.ok(asideBg, '缺少博主栏背景图');
+  assert.equal(img[1], asideBg[1], '侧边栏壁纸应与博主栏背景图使用同一 URL');
 
   // ---- 博主卡：.avatar + .info(.link + .motto)，主题 CSS 要求 .avatar 是 50x50 ----
-  const author = seg.slice(seg.indexOf('<div class="joe_header__slideout-author"'), seg.indexOf('<ul class="joe_header__slideout-count"'));
+  const author = seg.slice(seg.indexOf('<div class="blog_header__slideout-author"'), seg.indexOf('<ul class="blog_header__slideout-count"'));
   assert.ok(/<img width="50" height="50" class="avatar lazyload" src="[^"]+" data-src="[^"]+" alt="博主头像"/.test(author),
     '博主头像结构不符（需 50x50 .avatar.lazyload + data-src）');
   assert.ok(/<div class="info">\s*<a class="link" href="[^"]+" target="_blank" rel="noopener noreferrer nofollow">/.test(author),
     '博主昵称需是 .info > a.link 且带 target/rel');
-  assert.ok(/<p class="motto joe_motto">/.test(author), '缺 .motto.joe_motto（JS 会往里填签名）');
+  assert.ok(/<p class="motto blog_motto">/.test(author), '缺 .motto.blog_motto（JS 会往里填签名）');
   // 昵称不能是空字符串
   const nick = /<a class="link"[^>]*>([^<]*)</.exec(author);
   assert.ok(nick && nick[1].trim(), '博主昵称为空');
 
   // ---- 统计：ul > li.item > svg.icon(15) + 文案 + strong ----
-  const count = seg.slice(seg.indexOf('<ul class="joe_header__slideout-count"'), seg.indexOf('class="joe_header__slideout-menu'));
-  assert.ok(count.startsWith('<ul'), '.joe_header__slideout-count 必须是 ul（主题 CSS 按 li.item 排版）');
+  const count = seg.slice(seg.indexOf('<ul class="blog_header__slideout-count"'), seg.indexOf('class="blog_header__slideout-menu'));
+  assert.ok(count.startsWith('<ul'), '.blog_header__slideout-count 必须是 ul（主题 CSS 按 li.item 排版）');
   const items = [...count.matchAll(/<li class="item">\s*<svg class="icon"[^>]*width="15" height="15">/g)];
   assert.equal(items.length, 2, `应有两条统计，实际 ${items.length}`);
   const wrote = /累计撰写 <strong>(\d+)<\/strong> 篇文章/.exec(count);
@@ -343,8 +346,8 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
   assert.ok(got, '评论数未渲染');
 
   // ---- 菜单：ul.panel-box，首页 + .link.panel 手风琴 + ul.slides.panel-body ----
-  const menu = seg.slice(seg.indexOf('<ul class="joe_header__slideout-menu'));
-  assert.ok(/<ul class="joe_header__slideout-menu panel-box">/.test(menu), '菜单必须是 ul.panel-box');
+  const menu = seg.slice(seg.indexOf('<ul class="blog_header__slideout-menu'));
+  assert.ok(/<ul class="blog_header__slideout-menu panel-box">/.test(menu), '菜单必须是 ul.panel-box');
   assert.ok(/<li><a class="link current" href="\/" title="首页"><span>首页<\/span><\/a><\/li>|<li><a class="link" href="\/" title="首页">/.test(menu),
     '菜单首项应为首页');
   // 手风琴分组：有子项才渲染，且 .icon 是 13x13
@@ -385,10 +388,10 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
   }
 
   // ---- 手风琴 JS 必须在真正被加载的 min 里 ----
-  const src = [...html.matchAll(/<script src="([^"]*joe\.global[^"]*)"[^>]*><\/script>/g)];
-  assert.equal(src.length, 1, `应只加载一个 joe.global，实际 ${src.length}`);
+  const src = [...html.matchAll(/<script src="([^"]*blog\.global[^"]*)"[^>]*><\/script>/g)];
+  assert.equal(src.length, 1, `应只加载一个 5iblog.global，实际 ${src.length}`);
   const g = await readFile(`.${src[0][1].split('?')[0]}`, 'utf8');
-  assert.ok(/joe_header__slideout-menu/.test(g), 'min 里没有滑出面板的初始化');
+  assert.ok(/blog_header__slideout-menu/.test(g), 'min 里没有滑出面板的初始化');
   assert.ok(/panel-body/.test(g), 'min 里没有手风琴的展开逻辑');
 
   // 同一批 .panel 只能被绑一次 toggle：绑两次会互相抵消，点击表现为「没反应」。
@@ -402,13 +405,13 @@ await test('主题：侧边滑出面板 slideout 对齐 5i.ink', async () => {
 await test('主题：.min.js 必须由同名 .js 生成（页面加载的是 min）', async () => {
   // 页面引用的是 .min.js，而 .js / .min.js 是两份独立文件、build 也不会重新生成 min。
   // 只改 .js 会让改动静默失效——share 面板就踩过一次。
-  const dir = 'usr/themes/joe/assets/js/';
+  const dir = 'usr/themes/5iblog/assets/js/';
   const names = (await readdir(dir)).filter((f) => f.endsWith('.min.js')).map((f) => f.slice(0, -7));
   assert.ok(names.length >= 8, `预期主题 JS 至少 8 个 min，实际 ${names.length}`);
 
   const markers = {
-    'joe.global': 'joe_detail__operate-share', // 本次新增：文章底部分享面板
-    'joe.search': null,
+    '5iblog.global': 'blog_detail__operate-share', // 本次新增：文章底部分享面板
+    '5iblog.search': null,
   };
 
   for (const name of names) {
@@ -423,35 +426,35 @@ await test('主题：.min.js 必须由同名 .js 生成（页面加载的是 min
   }
 
   // 分享面板的展开逻辑必须在真正被加载的 min 里
-  const min = await readFile(`${dir}joe.global.min.js`, 'utf8');
-  assert.ok(/querySelectorAll\(".joe_detail__operate-share"\)/.test(min),
-    'joe.global.min.js 里没有分享面板的原生绑定');
-  assert.ok(/classList\.toggle\("active"\)/.test(min), 'joe.global.min.js 里没有展开/收起逻辑');
+  const min = await readFile(`${dir}5iblog.global.min.js`, 'utf8');
+  assert.ok(/querySelectorAll\(".blog_detail__operate-share"\)/.test(min),
+    '5iblog.global.min.js 里没有分享面板的原生绑定');
+  assert.ok(/classList\.toggle\("active"\)/.test(min), '5iblog.global.min.js 里没有展开/收起逻辑');
 });
 
-// 回归点：分享面板的 active 切换曾在 joe.global.js 和 joe.post_page.js 里各实现一份。
+// 回归点：分享面板的 active 切换曾在 5iblog.global.js 和 5iblog.post_page.js 里各实现一份。
 // 两个处理器同时绑在同一个 svg 上，点击时各 toggle 一次 .active——刚加上就被对方翻回去，
 // 点多少次面板都不展开。切换逻辑必须只存在于一个文件里。
 await test('分享面板的 active 切换只有一处实现', async () => {
-  const dir = 'usr/themes/joe/assets/js/';
+  const dir = 'usr/themes/5iblog/assets/js/';
   const impl = [];
-  for (const f of ['joe.global.js', 'joe.post_page.js']) {
+  for (const f of ['5iblog.global.js', '5iblog.post_page.js']) {
     const raw = await readFile(`${dir}${f}`, 'utf8');
-    const mentionsShare = raw.includes('joe_detail__operate-share');
+    const mentionsShare = raw.includes('blog_detail__operate-share');
     const toggles = /(classList\.toggle\(\s*["']active["']\s*\)|\.toggleClass\(\s*["']active["']\s*\))/;
     if (mentionsShare && toggles.test(raw)) impl.push(f);
   }
-  assert.deepEqual(impl, ['joe.global.js'],
-    `分享面板的 active 切换必须且只能在 joe.global.js 里实现，实际出现在：${impl.join(', ')}`);
+  assert.deepEqual(impl, ['5iblog.global.js'],
+    `分享面板的 active 切换必须且只能在 5iblog.global.js 里实现，实际出现在：${impl.join(', ')}`);
 });
 
 // 回归点：阅读去重曾是「cid 数组 + 永不过期」，一旦记过就永远不再计数。
 // 数据重置后服务端计数归 0、浏览器仍记着「已统计」，阅读量就永久卡在 0。
 // 现在改成 cid → 时间戳 的映射并设有效期；旧的数组格式一律视为已过期。
 await test('阅读去重有时间窗，且旧数组格式会重新计一次', async () => {
-  const dir = 'usr/themes/joe/assets/js/';
-  const raw = await readFile(`${dir}joe.post_page.js`, 'utf8');
-  const min = await readFile(`${dir}joe.post_page.min.js`, 'utf8');
+  const dir = 'usr/themes/5iblog/assets/js/';
+  const raw = await readFile(`${dir}5iblog.post_page.js`, 'utf8');
+  const min = await readFile(`${dir}5iblog.post_page.min.js`, 'utf8');
 
   // 永久去重的写法不能回来
   assert.ok(!/viewsArr\.includes\(cid\)/.test(raw), '阅读去重又变回永不过期的 viewsArr.includes');
@@ -465,38 +468,38 @@ await test('阅读去重有时间窗，且旧数组格式会重新计一次', as
   // 页面加载的是 min。注意 min 里常量名会被内联（VIEWS_DEDUP_HOURS → _=24），
   // 所以 min 侧只断言压缩后仍存活的结构性标记，不去匹配变量名。
   for (const probe of ['Array.isArray', 'handle_views', 'localStorage.setItem']) {
-    assert.ok(min.includes(probe), `joe.post_page.min.js 里缺少 ${probe}，改动不会生效`);
+    assert.ok(min.includes(probe), `5iblog.post_page.min.js 里缺少 ${probe}，改动不会生效`);
   }
-  assert.ok(!/viewsArr\.includes\(cid\)/.test(min), 'joe.post_page.min.js 里仍是永久去重');
+  assert.ok(!/viewsArr\.includes\(cid\)/.test(min), '5iblog.post_page.min.js 里仍是永久去重');
   // 时间窗确实进了产物：24 小时换算成毫秒
   assert.ok(/\b24\b/.test(min) && /3600\*1e3/.test(min),
-    'joe.post_page.min.js 里看不到 24 小时的去重窗口');
+    '5iblog.post_page.min.js 里看不到 24 小时的去重窗口');
 });
 
 // 置顶角标有两条渲染路径：服务端直出（indexItem）和前端 initDom 重画
-//（joe.index.js → publish_list）。前端那段一直都在，缺的是服务端那份和接口的
+//（5iblog.index.js → publish_list）。前端那段一直都在，缺的是服务端那份和接口的
 // type 标记；两边必须给出一样的结果，否则 JS 一跑角标就消失了。
 await test('置顶角标：服务端直出与接口标记一致', async () => {
-  const dir = 'usr/themes/joe/assets/js/';
-  const js = await readFile(`${dir}joe.index.js`, 'utf8');
+  const dir = 'usr/themes/5iblog/assets/js/';
+  const js = await readFile(`${dir}5iblog.index.js`, 'utf8');
   const badgeRe = /<span class="badge"[^>]*>置顶<\/span>/;
-  assert.ok(badgeRe.test(js), 'joe.index.js 里没有「置顶」角标的渲染片段');
+  assert.ok(badgeRe.test(js), '5iblog.index.js 里没有「置顶」角标的渲染片段');
   // 四个排序页签都要有，否则切换排序后角标会消失
   const badgeCount = (js.match(/<span class="badge"[^>]*>置顶<\/span>/g) || []).length;
-  assert.ok(badgeCount >= 4, `joe.index.js 的角标渲染片段只有 ${badgeCount} 处，排序切换后可能丢角标`);
+  assert.ok(badgeCount >= 4, `5iblog.index.js 的角标渲染片段只有 ${badgeCount} 处，排序切换后可能丢角标`);
 
   // 接口侧：置顶文章必须标成 sticky，否则前端不会显示角标
-  const prev = await BLOG_KV.get('opt:theme:joe');
+  const prev = await BLOG_KV.get('opt:theme:5iblog');
   try {
-    const all = await (await call('POST', '/joe/api', {
+    const all = await (await call('POST', '/5iblog/api', {
       form: { routeType: 'publish_list', page: 1, pageSize: 50, type: 'created' },
     })).json();
     const target = all.data[all.data.length - 1];
-    await BLOG_KV.put('opt:theme:joe', JSON.stringify({ JStickPosts: String(target.cid) }));
+    await BLOG_KV.put('opt:theme:5iblog', JSON.stringify({ JStickPosts: String(target.cid) }));
     // 直写 KV 绕过了 db.setOption 的快照失效（生产环境没有这种写路径），手动换代
     await BLOG_KV.put('snap:ver', String(Date.now()));
 
-    const p1 = await (await call('POST', '/joe/api', {
+    const p1 = await (await call('POST', '/5iblog/api', {
       form: { routeType: 'publish_list', page: 1, pageSize: 50, type: 'created' },
     })).json();
     const sticky = p1.data.filter((d) => d.type === 'sticky');
@@ -507,23 +510,23 @@ await test('置顶角标：服务端直出与接口标记一致', async () => {
     const html = await (await call('GET', '/')).text();
     assert.ok(/class="badge"[^>]*>置顶<\/span>/.test(html), '首页服务端直出的 HTML 里没有置顶角标');
   } finally {
-    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
-    else await BLOG_KV.put('opt:theme:joe', prev);
+    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:5iblog');
+    else await BLOG_KV.put('opt:theme:5iblog', prev);
     await BLOG_KV.put('snap:ver', String(Date.now() + 1));
   }
 });
 
 await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', async () => {
   const html = await (await call('GET', '/')).text();
-  const seg = html.slice(html.indexOf('<div class="joe_action">'));
+  const seg = html.slice(html.indexOf('<div class="blog_action">'));
   const act = seg.slice(0, seg.indexOf('</div>\n</div>') > 0 ? 4000 : 4000);
 
   // 顺序：回顶(scroll) 在上，切换主题(mode) 在下
-  assert.ok(act.indexOf('joe_action_item scroll') < act.indexOf('joe_action_item mode'),
+  assert.ok(act.indexOf('blog_action_item scroll') < act.indexOf('blog_action_item mode'),
     '回顶按钮应在切换主题按钮上方');
 
   // 回顶是火箭，不是主题切换图标的复制品（曾把日间图标直接复制过来）
-  const rocket = act.match(/joe_action_item scroll">([\s\S]*?)<\/svg>/)[1];
+  const rocket = act.match(/blog_action_item scroll">([\s\S]*?)<\/svg>/)[1];
   assert.ok(rocket.includes('M725.902 498.916'), '回顶图标不是火箭');
   assert.ok(rocket.includes('width="25"'), '回顶图标尺寸应为 25');
 
@@ -537,38 +540,38 @@ await test('主题：回顶/切换主题按钮的图标与排列对齐 5i.ink', 
   assert.ok(i1.includes('width="25"') && i2.includes('width="25"'), '切换主题图标尺寸应为 25');
 });
 
-await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点）', async () => {
-  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
+await test('主题：正文与侧栏同属 .blog_body（两栏布局的挂载点）', async () => {
+  const css = await readFile('usr/themes/5iblog/assets/css/5iblog.layout.css', 'utf8');
   // 侧栏在右：order:1 + flex 固定宽度，正文 flex:1
-  assert.ok(/\.joe_body\s*\{[^}]*display:\s*flex/.test(css), 'joe_body 未启用 flex');
-  assert.ok(/\.joe_body > \.joe_aside\s*\{[^}]*order:\s*1/.test(css), '侧栏未置于右侧');
-  assert.ok(/\.joe_body > \.joe_main\s*\{[^}]*flex:\s*1 1 auto/.test(css), '正文列未占据剩余宽度');
+  assert.ok(/\.blog_body\s*\{[^}]*display:\s*flex/.test(css), 'blog_body 未启用 flex');
+  assert.ok(/\.blog_body > \.blog_aside\s*\{[^}]*order:\s*1/.test(css), '侧栏未置于右侧');
+  assert.ok(/\.blog_body > \.blog_main\s*\{[^}]*flex:\s*1 1 auto/.test(css), '正文列未占据剩余宽度');
   // 搜索高亮样式已从内联 <style> 迁到该文件
-  assert.ok(css.includes('.joe_header__above-search .result .item.active'));
+  assert.ok(css.includes('.blog_header__above-search .result .item.active'));
 
   // 悬浮按钮外观交回主题自带样式（对齐 5i.ink），此处不应再覆盖尺寸/悬停
-  assert.ok(!css.includes('.joe_action_item'), '不应再覆盖 .joe_action_item 外观');
+  assert.ok(!css.includes('.blog_action_item'), '不应再覆盖 .blog_action_item 外观');
 
 
   for (const [path, marker] of [
-    ['/', 'joe_index'],
-    ['/archives/1/', 'joe_detail'],
-    ['/search/Hello/', 'joe_archive__title'],
+    ['/', 'blog_index'],
+    ['/archives/1/', 'blog_detail'],
+    ['/search/Hello/', 'blog_archive__title'],
   ]) {
     const res = await call('GET', path);
     const html = await res.text();
     assert.ok(
-      new RegExp(`class="joe_container joe_body"[\\s\\S]{0,120}?class="joe_main[^"]*">[\\s\\S]{0,200}?${marker}`).test(html),
-      `${path} 未套用 .joe_body 两栏容器`
+      new RegExp(`class="blog_container blog_body"[\\s\\S]{0,120}?class="blog_main[^"]*">[\\s\\S]{0,200}?${marker}`).test(html),
+      `${path} 未套用 .blog_body 两栏容器`
     );
 
-    // 关键回归点：侧栏必须是 .joe_body 的**直接子节点**。
-    // 曾因 post 模板少闭合一层 </div>，侧栏被塞进 .joe_main 内部，
-    // 于是 .joe_body > .joe_aside 匹配不到，两栏布局整个失效。
-    const bodyAt = html.indexOf('class="joe_container joe_body"');
+    // 关键回归点：侧栏必须是 .blog_body 的**直接子节点**。
+    // 曾因 post 模板少闭合一层 </div>，侧栏被塞进 .blog_main 内部，
+    // 于是 .blog_body > .blog_aside 匹配不到，两栏布局整个失效。
+    const bodyAt = html.indexOf('class="blog_container blog_body"');
     const bodyTag = html.indexOf('>', bodyAt) + 1;
-    const asideAt = html.indexOf('<aside class="joe_aside">');
-    assert.ok(bodyAt >= 0 && asideAt > bodyAt, `${path} 的侧栏不在 .joe_body 容器内`);
+    const asideAt = html.indexOf('<aside class="blog_aside">');
+    assert.ok(bodyAt >= 0 && asideAt > bodyAt, `${path} 的侧栏不在 .blog_body 容器内`);
 
     const before = html.slice(bodyTag, asideAt);
     const open = (before.match(/<div\b/g) || []).length;
@@ -576,18 +579,18 @@ await test('主题：正文与侧栏同属 .joe_body（两栏布局的挂载点�
     assert.equal(
       open - close,
       0,
-      `${path} 的 .joe_main 没有在侧栏之前闭合（div 多 ${open - close} 个），侧栏被嵌进了正文列`
+      `${path} 的 .blog_main 没有在侧栏之前闭合（div 多 ${open - close} 个），侧栏被嵌进了正文列`
     );
   }
 });
 
-await test('评论提交（存 KV，Joe 协议响应）', async () => {
+await test('评论提交（存 KV，Blog 协议响应）', async () => {
   const res = await call('POST', '/comment/1', {
     form: { author: '张三', mail: 'zhang@test.com', text: '你好呀 ::(呵呵)', parent: 0, _: 'x' },
   });
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.ok(html.includes('Joe'), 'Joe 前端约定响应含 Joe 即成功');
+  assert.ok(html.includes('Blog'), 'Blog 前端约定响应含 Blog 即成功');
   // 验证 KV
   assert.ok(globalThis.BLOG_KV.map.has('cmt:1'), '评论应存入 KV');
 });
@@ -656,6 +659,10 @@ await test('后台撰写文章（Markdown + 分类标签 + 字段）', async () 
   assert.ok(html.includes('language-js'), '代码块');
 });
 
+
+
+
+
 await test('文章：上下篇可见文字为「上一篇/下一篇」，标题在 title 属性', async () => {
   // 造第三篇，让中间的 cid=2 上下篇齐全
   await call('POST', '/admin/post', {
@@ -664,7 +671,7 @@ await test('文章：上下篇可见文字为「上一篇/下一篇」，标题�
 
   const pagOf = async (cid) => {
     const h = await call('GET', `/archives/${cid}/`).then((r) => r.text());
-    const seg = h.slice(h.indexOf('class="joe_post__pagination"'));
+    const seg = h.slice(h.indexOf('class="blog_post__pagination"'));
     return seg.slice(0, seg.indexOf('</ul>'));
   };
   const pick = (pag, side) =>
@@ -679,10 +686,10 @@ await test('文章：上下篇可见文字为「上一篇/下一篇」，标题�
   assert.equal(next[3], '下一篇', `下一篇可见文字实际「${next && next[3]}」`);
   // db.prevNext 的约定与 5i.ink 一致：prev 指向更新的一篇，next 指向更早的一篇
   assert.equal(prev[1], '/archives/3/');
-  assert.equal(next[1], '/archives/1/');
+  assert.equal(next[1], '/archives/hello/');
   // title 是目标文章的标题，可见文字不该再重复它
   assert.equal(prev[2], '第三篇文章');
-  assert.equal(next[2], 'Hello TypechoEdge');
+  assert.equal(next[2], 'Hello 5iblog');
 
   // 最新一篇没有上一篇，最旧一篇没有下一篇——缺席而不是渲染空 li
   assert.equal(pick(await pagOf(3), 'prev'), null, '最新一篇不该有上一篇');
@@ -721,7 +728,7 @@ await test('留言板默认可用：未建页面时 /guestbook/ 仍返回便签�
   assert.equal(res.status, 200);
   const body = await res.text();
   assert.ok(body.includes('留言板'), '页面应包含留言板标题');
-  assert.ok(body.includes('joe_wall__board'), '默认应启用便签墙');
+  assert.ok(body.includes('blog_wall__board'), '默认应启用便签墙');
   const home = await call('GET', '/').then((r) => r.text());
   assert.ok(home.includes('href="/guestbook/"'), '导航应始终包含留言板');
 });
@@ -737,9 +744,24 @@ await test('主题：侧边面板分组为 分类/标签/页面，且标签链�
     form: { type: 'page', title: '关于', slug: 'about', text: '正文', status: 'publish' },
   });
 
+  await test('自定义字段 mode=links 渲染友链卡片', async () => {
+    const saved = await call('POST', '/admin/post', {
+      form: {
+        type: 'page', title: '友链测试', slug: 'friends-test',
+        text: '示例A||https://a.example.com||\n示例B||https://b.example.com||',
+        status: 'publish', allowComment: '0', field_mode: 'links',
+      },
+    });
+    assert.equal(saved.status, 302);
+    const out = await (await call('GET', '/friends-test/')).text();
+    assert.ok(out.includes('blog_links'), '友链模式应输出 blog_links 布局');
+    assert.ok(out.includes('示例A') && out.includes('https://a.example.com'));
+    assert.ok(out.includes('示例B') && out.includes('https://b.example.com'));
+  });
+
   const html = await (await call('GET', '/')).text();
-  const i = html.indexOf('<ul class="joe_header__slideout-menu');
-  const menu = html.slice(i, html.indexOf('joe_header__searchout', i));
+  const i = html.indexOf('<ul class="blog_header__slideout-menu');
+  const menu = html.slice(i, html.indexOf('blog_header__searchout', i));
 
   const labels = [...menu.matchAll(/<span>([^<]+)<\/span><svg class="icon"[^>]*width="13" height="13">/g)].map((m) => m[1]);
   assert.deepEqual(labels, ['分类', '标签', '页面'], `分组应为 分类/标签/页面，实际 ${labels.join('/')}`);
@@ -760,13 +782,13 @@ await test('主题：侧边面板分组为 分类/标签/页面，且标签链�
 
 await test('主题：索引页标题栏右侧是分类/标签展开按钮（默认收起，可切换）', async () => {
   const html = await (await call('GET', '/')).text();
-  const titleEnd = html.indexOf('</ul>', html.indexOf('<ul class="joe_index__title-title'));
+  const titleEnd = html.indexOf('</ul>', html.indexOf('<ul class="blog_index__title-title'));
   const after = html.slice(titleEnd + 5, titleEnd + 60);
-  assert.ok(after.trimStart().startsWith('<div class="joe_index__title-filter">'),
+  assert.ok(after.trimStart().startsWith('<div class="blog_index__title-filter">'),
     `筛选按钮容器应紧跟标题导航之后，实际：${after.slice(0, 40)}`);
 
   // 旧的一排标签入口已被按钮取代
-  assert.ok(!html.includes('joe_index__title-tags'), '不应再有旧的标签行容器');
+  assert.ok(!html.includes('blog_index__title-tags'), '不应再有旧的标签行容器');
 
   // 分类按钮在标签按钮之前
   const catBtn = html.indexOf('data-panel="category"');
@@ -780,7 +802,7 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
 
   // 两个面板默认收起，各自列出全部条目
   for (const kind of ['category', 'tag']) {
-    const p = html.match(new RegExp(`<div class="joe_index__title-filter-panel joe_index__title-filter-panel--${kind}" hidden>`));
+    const p = html.match(new RegExp(`<div class="blog_index__title-filter-panel blog_index__title-filter-panel--${kind}" hidden>`));
     assert.ok(p, `${kind} 面板应存在且默认带 hidden`);
     const body = html.slice(html.indexOf(p[0]), html.indexOf('</div>', html.indexOf(p[0])));
     const hrefs = [...body.matchAll(/href="(\/[^"]*)"[^>]*>([^<]+)</g)].map((m) => ({ href: m[1], name: m[2] }));
@@ -794,7 +816,7 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
   assert.ok(html.includes('aria-expanded="false"'), '按钮初始 aria-expanded 应为 false');
 
   // 每个按钮都带一个跟随文字颜色的线性图标（currentColor），且图标不同
-  const btns = [...html.matchAll(/<button[^>]*joe_index__title-filter-btn[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1]);
+  const btns = [...html.matchAll(/<button[^>]*blog_index__title-filter-btn[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1]);
   assert.equal(btns.length, 2, '应有两个按钮');
   const iconPaths = btns.map((b) => (b.match(/<svg[^>]*>[\s\S]*?<path d="([^"]{40,})"/) || [])[1]);
   assert.ok(iconPaths.every(Boolean), '每个按钮都应有图标');
@@ -809,7 +831,7 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
     return (body.match(/href="\/(category|tag)\//g) || []).length;
   };
   const panelCount = (kind) => {
-    const p0 = html.indexOf(`joe_index__title-filter-panel--${kind}" hidden>`);
+    const p0 = html.indexOf(`blog_index__title-filter-panel--${kind}" hidden>`);
     const body = html.slice(p0, html.indexOf('</div>', p0));
     return (body.match(/href="\/(category|tag)\//g) || []).length;
   };
@@ -817,10 +839,10 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
   assert.equal(panelCount('tag'), sideCount('标签'), '标签面板条目数应与侧栏一致');
 
   // 交互脚本：切换 + 点外部关闭
-  const js = await readFile('usr/themes/joe/assets/js/joe.index.js', 'utf8');
-  const min = await readFile('usr/themes/joe/assets/js/joe.index.min.js', 'utf8');
-  for (const [label, src] of [['joe.index.js', js], ['joe.index.min.js', min]]) {
-    assert.ok(src.includes('joe_index__title-filter-btn'), `${label} 应绑定按钮`);
+  const js = await readFile('usr/themes/5iblog/assets/js/5iblog.index.js', 'utf8');
+  const min = await readFile('usr/themes/5iblog/assets/js/5iblog.index.min.js', 'utf8');
+  for (const [label, src] of [['5iblog.index.js', js], ['5iblog.index.min.js', min]]) {
+    assert.ok(src.includes('blog_index__title-filter-btn'), `${label} 应绑定按钮`);
     // esbuild 会把 'click' 改成 "click"，两种引号都认
     assert.ok(/\$\(document\)\.on\(['"]click['"]/.test(src), `${label} 应有点击外部关闭的逻辑`);
     assert.ok(src.includes('stopPropagation'), `${label} 按钮点击应阻止冒泡，否则会被「点外部关闭」立刻收起`);
@@ -828,63 +850,63 @@ await test('主题：索引页标题栏右侧是分类/标签展开按钮（默�
   }
 
   // 样式：面板绝对定位 + 默认隐藏 + 移动端不显示
-  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
-  const panel = css.match(/\.joe_index__title-filter-panel\s*\{([^}]*)\}/)[1];
+  const css = await readFile('usr/themes/5iblog/assets/css/5iblog.layout.css', 'utf8');
+  const panel = css.match(/\.blog_index__title-filter-panel\s*\{([^}]*)\}/)[1];
   assert.ok(/position:\s*absolute/.test(panel), '面板应绝对定位在按钮下方');
-  assert.ok(/\.joe_index__title-filter-panel\[hidden\]\s*\{\s*display:\s*none/.test(css), '面板默认应 display:none');
-  const rule = css.match(/@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?\.joe_index__title-filter[\s\S]*?\}/);
+  assert.ok(/\.blog_index__title-filter-panel\[hidden\]\s*\{\s*display:\s*none/.test(css), '面板默认应 display:none');
+  const rule = css.match(/@media[^{]*max-width:\s*768px[^{]*\{[\s\S]*?\.blog_index__title-filter[\s\S]*?\}/);
   assert.ok(rule && /display:\s*none/.test(rule[0]), '移动端应隐藏筛选按钮');
 
   // 胶囊按钮样式：图标 + 圆角 + 展开态填主题色
-  const btn = css.match(/\.joe_index__title-filter-btn\s*\{([^}]*)\}/)[1];
+  const btn = css.match(/\.blog_index__title-filter-btn\s*\{([^}]*)\}/)[1];
   assert.ok(/border-radius:\s*14px/.test(btn), '按钮应为胶囊圆角');
   assert.ok(/display:\s*inline-flex/.test(btn), '按钮应让图标与文字同行居中');
   assert.ok(/var\(--classD\)/.test(btn), '按钮底色应用主题的 classD');
-  const active = css.match(/\.joe_index__title-filter-btn\.active\s*\{([^}]*)\}/)[1];
+  const active = css.match(/\.blog_index__title-filter-btn\.active\s*\{([^}]*)\}/)[1];
   assert.ok(/background:\s*var\(--theme\)/.test(active), '展开态应填充主题色');
   assert.ok(/color:\s*#fff/.test(active), '展开态文字应为白色');
 });
 
 
 await test('主题：分类/标签等归档页的面包屑单行不换行', async () => {
-  const css = await readFile('usr/themes/joe/assets/css/joe.layout.css', 'utf8');
+  const css = await readFile('usr/themes/5iblog/assets/css/5iblog.layout.css', 'utf8');
   const rule = (sel) => {
     const m = css.match(new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`));
     assert.ok(m, `layout.css 缺少 ${sel} 规则`);
     return m[1];
   };
-  assert.ok(/display:\s*flex/.test(rule('.joe_bread__bread')), '面包屑应为 flex 单行');
-  const item = rule('.joe_bread__bread .item');
+  assert.ok(/display:\s*flex/.test(rule('.blog_bread__bread')), '面包屑应为 flex 单行');
+  const item = rule('.blog_bread__bread .item');
   assert.ok(/white-space:\s*nowrap/.test(item), '面包屑条目不应换行');
   assert.ok(/text-overflow:\s*ellipsis/.test(item), '过长时应用省略号');
 
-  // 回归点：.joe_bread 的样式原本只在 post.min.css 里，归档页加载不到。
+  // 回归点：.blog_bread 的样式原本只在 post.min.css 里，归档页加载不到。
   // layout.css 是全站基础样式，必须自带这一份，否则分类/标签页会退回块级堆叠。
-  const archive = await readFile('usr/themes/joe/assets/css/joe.archive.min.css', 'utf8');
-  assert.ok(!archive.includes('joe_bread'), 'joe.archive.min.css 不含面包屑样式（靠 layout.css 兜底）');
+  const archive = await readFile('usr/themes/5iblog/assets/css/5iblog.archive.min.css', 'utf8');
+  assert.ok(!archive.includes('blog_bread'), '5iblog.archive.min.css 不含面包屑样式（靠 layout.css 兜底）');
 
   // 归档页实际渲染了面包屑，且结构完整
   const html = await (await call('GET', '/category/default/')).text();
-  const m = html.match(/<ul class="joe_bread__bread">([\s\S]*?)<\/ul>/);
+  const m = html.match(/<ul class="blog_bread__bread">([\s\S]*?)<\/ul>/);
   assert.ok(m, '分类页应有面包屑');
   assert.ok(/<a href="\/" class="link" title="首页">首页<\/a>/.test(m[1]), '面包屑首项应为首页链接');
   assert.ok((m[1].match(/class="line">\/<\/li>/g) || []).length >= 1, '面包屑应有分隔符');
   // 样式在归档页确实被加载
-  assert.ok(/href="[^"]*joe\.layout\.css(?:\?[^"]*)?"/.test(html), '归档页应加载 layout.css');
+  assert.ok(/href="[^"]*blog\.layout\.css(?:\?[^"]*)?"/.test(html), '归档页应加载 layout.css');
 
-  // 面包屑用短名，完整标题留给 title 属性和下方的 .joe_archive__title
+  // 面包屑用短名，完整标题留给 title 属性和下方的 .blog_archive__title
   const crumb = (h) => (h.match(/<li class="item" title="([^"]*)">([^<]*)<\/li>/g) || []);
   const catCrumb = crumb(html);
   assert.equal(catCrumb.length, 1, '分类页面包屑应有且仅有一个非链接条目');
   assert.ok(catCrumb[0].includes('>默认分类<'), `分类面包屑应为短名「默认分类」，实际 ${catCrumb[0]}`);
   assert.ok(catCrumb[0].includes('title="分类 默认分类 下的文章"'), '面包屑 title 应保留完整标题');
-  assert.ok(html.includes('<div class="joe_archive__title">分类 默认分类 下的文章</div>'),
+  assert.ok(html.includes('<div class="blog_archive__title">分类 默认分类 下的文章</div>'),
     '页面大标题仍应是完整标题');
   assert.ok(html.includes('<title>分类 默认分类 下的文章 - '), 'SEO title 仍应是完整标题');
 
   // 标签页同样
   const tagHtml = await (await call('GET', '/tag/%E6%B5%8B%E8%AF%95/')).text();
-  assert.ok(/<ul class="joe_bread__bread">/.test(tagHtml), '标签页应有面包屑');
+  assert.ok(/<ul class="blog_bread__bread">/.test(tagHtml), '标签页应有面包屑');
   const tagCrumb = crumb(tagHtml);
   assert.ok(tagCrumb[0].includes('>测试<'), `标签面包屑应为短名「测试」，实际 ${tagCrumb[0]}`);
 
@@ -898,7 +920,7 @@ await test('主题：分类/标签等归档页的面包屑单行不换行', asyn
 });
 
 await test('封面图：thumb > 正文第一图（Markdown 与 HTML 都认） > 默认图', async () => {
-  const A = 'https://ddblog.y11.fun/usr/themes/joe/assets';
+  const A = 'https://ddblog.y11.fun/usr/themes/5iblog/assets';
   const isDefault = (u) => u.includes('/assets/thumb/');
   const t = (post) => thumbnail(post, A);
 
@@ -926,7 +948,7 @@ await test('封面图：thumb > 正文第一图（Markdown 与 HTML 都认） > 
     assert.ok(Number.isInteger(n) && n >= 1 && n <= 42, `cid ${cid} 的默认图编号 ${n} 超出 1..42`);
   }
   assert.ok(t({ cid: 1, fields: {}, text: '' }) === t({ cid: 1, fields: {}, text: '' }), '同一篇默认图应固定');
-  const names = await readdir('usr/themes/joe/assets/thumb');
+  const names = await readdir('usr/themes/5iblog/assets/thumb');
   assert.equal(names.filter((f) => f.endsWith('.jpg')).length, 42, '内置默认图应为 42 张');
 
   // 回归点：内置默认图原本是相对路径 /usr/...，而页面上其它封面都是绝对地址。
@@ -961,7 +983,7 @@ await test('图片懒加载：缩略图走 lazysizes（lazyload + data-src）', 
     assert.ok(/src="data:image\/gif/.test(card[1]), '懒加载缩略图应有轻量占位');
   }
 
-  const css = await readFile('usr/themes/joe/assets/css/joe.index.min.css', 'utf8');
+  const css = await readFile('usr/themes/5iblog/assets/css/5iblog.index.min.css', 'utf8');
   assert.ok(css.includes('.thumbnail img.lazyload'), '应定义懒加载初始态');
   assert.ok(css.includes('.thumbnail img.lazyloaded'), '应定义懒加载完成态');
   assert.ok(/\.thumbnail img\.lazyload\s*\{[^}]*opacity: 0/.test(css), '加载完成前应隐藏占位');
@@ -992,7 +1014,7 @@ await test('评论审核开关：评论管理页可开关，开启后访客评�
   assert.equal(submit.status, 200);
   const submitHtml = await submit.text();
   assert.ok(submitHtml.includes('审核通过后显示'), '待审时应提示评论者');
-  assert.ok(!submitHtml.includes('id="Joe"'), '待审时不应返回成功标记，否则前端刷新后评论像消失了一样');
+  assert.ok(!submitHtml.includes('id="Blog"'), '待审时不应返回成功标记，否则前端刷新后评论像消失了一样');
   const postAnon = await call('GET', '/archives/1/').then((r) => r.text());
   assert.ok(!postAnon.includes('待审评论一条'), '待审评论不应在前台显示');
   cookie = savedCookie;
@@ -1095,9 +1117,9 @@ await test('备份页：统计、导出、导入与 WebDAV 表单齐全', async 
 await test('备份导出：附件下载、合法 JSON、不含会话与 WebDAV 密码', async () => {
   const res = await call('GET', '/admin/backup?export=1');
   assert.equal(res.status, 200);
-  assert.match(res.headers.get('content-disposition') || '', /attachment; filename="typecho-edge-\d{8}-\d{6}\.json"/);
+  assert.match(res.headers.get('content-disposition') || '', /attachment; filename="5iblog-\d{8}-\d{6}\.json"/);
   const data = JSON.parse(await res.text());
-  assert.equal(data.format, 'typecho-edge-backup');
+  assert.equal(data.format, '5iblog-backup');
   assert.equal(data.version, 1);
   assert.ok(data.data['opt:title'], '应包含站点配置');
   assert.ok(data.data['idx:posts'], '应包含文章索引');
@@ -1149,7 +1171,7 @@ await test('备份加密：POST 密码导出密文，导入需同一密码', asy
   });
   assert.equal(exported.status, 200);
   const envelope = JSON.parse(await exported.text());
-  assert.equal(envelope.format, 'typecho-edge-backup-encrypted');
+  assert.equal(envelope.format, '5iblog-backup-encrypted');
   assert.ok(!JSON.stringify(envelope).includes('"text"'), '密文不应包含正文结构');
   assert.ok(!JSON.stringify(envelope).includes('"post:'), '密文不应包含键名');
 
@@ -1186,7 +1208,7 @@ await test('WebDAV 配置：保存后不回显密码，导出也不包含', asyn
       url: 'https://dav.example.com/remote.php/dav/files/blog',
       username: 'blog',
       password: 'dav-pass-123',
-      dir: 'backups/typecho',
+      dir: 'backups/5iblog',
       keep: '5',
       backupPassword: 'dav-backup-pass',
     },
@@ -1285,14 +1307,14 @@ await test('TOTP：正确动态码登录成功', async () => {
   assert.ok(cookie.includes('te_sess='));
 });
 
-await test('站点设置保存（含 Joe 主题配置）', async () => {
+await test('站点设置保存（含 Blog 主题配置）', async () => {
   const res = await call('POST', '/admin/settings', {
     form: { title: '新站名', description: '新描述', pageSize: '5', commentStatus: 'approved', j_JBirthDay: '2024/01/01 00:00:00', j_JAside_Author_Nick: '边缘君' },
   });
   assert.equal(res.status, 302);
   const home = await call('GET', '/').then((r) => r.text());
   assert.ok(home.includes('新站名'));
-  assert.ok(home.includes('边缘君'), 'Joe 主题侧栏昵称生效');
+  assert.ok(home.includes('边缘君'), 'Blog 主题侧栏昵称生效');
 });
 
 await test('站点设置：开关组件渲染、三段默认展开、保存语义与旧下拉一致', async () => {
@@ -1300,7 +1322,7 @@ await test('站点设置：开关组件渲染、三段默认展开、保存语�
   const html = await call('GET', '/admin/settings').then((r) => r.text());
   assert.ok(html.includes('class="switch"'), '开关应渲染为切换组件');
   assert.ok(!/<select name="j_JCommentStatus"/.test(html), '评论功能开关不应再是下拉（头像源等真下拉除外）');
-  assert.equal((html.match(/details class="fold fold--in" open/g) || []).length, 3, '站点基础/Joe 主题/首页模块应默认展开');
+  assert.equal((html.match(/details class="fold fold--in" open/g) || []).length, 3, '站点基础/Blog 主题/首页模块应默认展开');
   // 模拟浏览器提交开关：关 = 只有隐藏域 off；开 = off 后再跟 on（entries 顺序合并，后者胜出）
   const postSettings = async (pairs) => {
     const body = new URLSearchParams();
@@ -1356,7 +1378,7 @@ await test('友链插件：mode=links 页面渲染', async () => {
   });
   const res = await call('GET', '/links/');
   const html = await res.text();
-  assert.ok(html.includes('joe_links'), '应渲染友链结构');
+  assert.ok(html.includes('blog_links'), '应渲染友链结构');
   assert.ok(html.includes('https://qq.com'));
 });
 
@@ -1434,7 +1456,7 @@ await test('页脚：无任何署名/驱动文案行（站长两度确认删除�
   const home = await call('GET', '/').then((r) => r.text());
   assert.ok(!home.includes('Powered by'), '不得出现 Powered by 署名');
   assert.ok(!home.includes('本站由'), '不得出现「本站由…驱动」文案');
-  assert.ok(!home.includes('TypechoEdge 驱动'), '不得出现驱动文案');
+  assert.ok(!home.includes('5iblog 驱动'), '不得出现驱动文案');
 });
 
 await test('分页链接是路径式，且真能翻到第 2 页', async () => {
@@ -1474,30 +1496,30 @@ await test('分页链接是路径式，且真能翻到第 2 页', async () => {
   );
 });
 
-// 回归点：首页列表不是服务端直出——joe.index.js 的 initDom() 会先清空 .joe_list，
+// 回归点：首页列表不是服务端直出——5iblog.index.js 的 initDom() 会先清空 .blog_list，
 // 再拿 publish_list 的数据重画。置顶排序如果只写在 renderIndex 里会被这次重画整个
 // 覆盖，后台配了「顶置文章IDs」首页也看不到置顶效果。必须在接口层实现。
 // 放在分页测试之后：需要至少 4 篇文章才能验证跨页去重。
 await test('置顶文章排最前且全列表不重复', async () => {
-  const prev = await BLOG_KV.get('opt:theme:joe');
+  const prev = await BLOG_KV.get('opt:theme:5iblog');
   try {
     // 用 pageSize=2 强制分页，才能验证跨页去重
-    const all = await (await call('POST', '/joe/api', {
+    const all = await (await call('POST', '/5iblog/api', {
       form: { routeType: 'publish_list', page: 1, pageSize: 50, type: 'created' },
     })).json();
     assert.ok(all.data.length >= 4, `需要至少 4 篇才能测跨页，实际 ${all.data.length} 篇`);
 
     // 置顶「自然顺序最后一篇」，这样排序变化最明显
     const target = all.data[all.data.length - 1];
-    await BLOG_KV.put('opt:theme:joe', JSON.stringify({ JStickPosts: String(target.cid) }));
+    await BLOG_KV.put('opt:theme:5iblog', JSON.stringify({ JStickPosts: String(target.cid) }));
 
-    const p1 = await (await call('POST', '/joe/api', {
+    const p1 = await (await call('POST', '/5iblog/api', {
       form: { routeType: 'publish_list', page: 1, pageSize: 2, type: 'created' },
     })).json();
     assert.equal(p1.data[0].cid, target.cid, `置顶文章 ${target.cid} 没排在第一位，实际首位是 ${p1.data[0].cid}`);
 
     // 置顶文章被前置后，后续页必须把它剔除，否则无限滚动会出现重复卡片
-    const p2 = await (await call('POST', '/joe/api', {
+    const p2 = await (await call('POST', '/5iblog/api', {
       form: { routeType: 'publish_list', page: 2, pageSize: 2, type: 'created' },
     })).json();
     assert.ok(!p2.data.some((d) => d.cid === target.cid), `置顶文章 ${target.cid} 在第 2 页重复出现`);
@@ -1505,35 +1527,38 @@ await test('置顶文章排最前且全列表不重复', async () => {
     const cids = p1.data.map((d) => d.cid);
     assert.equal(new Set(cids).size, cids.length, `第 1 页内部重复：${cids.join(',')}`);
 
-    // 角标：joe.index.js 用 type==='sticky' 决定要不要渲染「置顶」徽章。
+    // 角标：5iblog.index.js 用 type==='sticky' 决定要不要渲染「置顶」徽章。
     // 后台的 JStickPosts 不会改文章 status，所以接口必须显式标出来。
     assert.equal(p1.data[0].type, 'sticky', `置顶文章 ${target.cid} 的 type 不是 sticky，角标不会显示`);
     assert.ok(!p2.data.some((d) => d.type === 'sticky'), '非置顶文章被误标成 sticky');
     assert.ok(p2.data.every((d) => d.type !== 'sticky'), '第 2 页不该出现置顶文章');
   } finally {
-    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
-    else await BLOG_KV.put('opt:theme:joe', prev);
+    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:5iblog');
+    else await BLOG_KV.put('opt:theme:5iblog', prev);
   }
 });
 await test('置顶文章：沉在第 2 页的文章也能顶到 SSR 首页第一位', async () => {
   // 上一条用例只测了接口（接口一直是对的）；SSR 首页曾把置顶做在
   // 「分页切片之后」，置顶文章不在第 1 页切片里就永远顶不上来，
   // 传统与查看更多两种模式的首屏都是 SSR，所以都失效。这条补 SSR。
-  const liOrder = (html) => [...html.matchAll(/<li class="joe_list__item[^"]*">[\s\S]{0,300}?href="\/archives\/(\d+)\//g)].map((m) => m[1]);
-  const prev = await BLOG_KV.get('opt:theme:joe');
+  const liOrder = (html) => [...html.matchAll(/<li class="blog_list__item[^"]*">[\s\S]{0,300}?href="\/archives\/([^/"]+)\//g)].map((m) => m[1]);
+  const prev = await BLOG_KV.get('opt:theme:5iblog');
   try {
     const page2 = await call('GET', '/page/2/').then((r) => r.text());
-    const target = liOrder(page2)[0];
-    assert.ok(target, '第 2 页应有可置顶的文章');
-    await BLOG_KV.put('opt:theme:joe', JSON.stringify({ JStickPosts: String(target) }));
+    const targetSlug = liOrder(page2)[0];
+    assert.ok(targetSlug, '第 2 页应有可置顶的文章');
+    const idx = (await globalThis.BLOG_KV.get('idx:posts', { type: 'json' })) || [];
+    const target = String((idx.find((e) => e.slug === targetSlug) || {}).cid || '');
+    assert.ok(target, `无法从第 2 页的 ${targetSlug} 解析文章 cid`);
+    await BLOG_KV.put('opt:theme:5iblog', JSON.stringify({ JStickPosts: String(target) }));
     const home = await call('GET', '/').then((r) => r.text());
-    assert.equal(liOrder(home)[0], target, `置顶文章 ${target} 应在 SSR 首页第一位，实际第一位 ${liOrder(home)[0]}`);
+    assert.equal(liOrder(home)[0], targetSlug, `置顶文章 ${targetSlug} 应在 SSR 首页第一位，实际第一位 ${liOrder(home)[0]}`);
     assert.ok(home.includes('置顶'), '置顶文章应带「置顶」角标');
     const page2After = await call('GET', '/page/2/').then((r) => r.text());
-    assert.ok(!liOrder(page2After).includes(target), '置顶文章不应在第 2 页重复出现');
+    assert.ok(!liOrder(page2After).includes(targetSlug), '置顶文章不应在第 2 页重复出现');
   } finally {
-    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:joe');
-    else await BLOG_KV.put('opt:theme:joe', prev);
+    if (prev === undefined || prev === null) await BLOG_KV.delete('opt:theme:5iblog');
+    else await BLOG_KV.put('opt:theme:5iblog', prev);
   }
 });
 
@@ -1548,13 +1573,13 @@ await test('搜索提交按钮为中文', async () => {
   assert.ok(!/>\s*Search\s*</.test(html), '页面不应残留英文 Search 文案');
 });
 
-// joe.index.js 的 initDom() 会清空服务端列表并用 /joe/api 重画，若初始页码写死 1，
+// 5iblog.index.js 的 initDom() 会清空服务端列表并用 /5iblog/api 重画，若初始页码写死 1，
 // 访问 /page/2/ 会被 JS 刷回第一页。断言它从 URL 解析当前页（查压缩后的 min.js）。
 await test('首页无限滚动从 URL 取初始页码', async () => {
-  const src = await readFile('usr/themes/joe/assets/js/joe.index.min.js', 'utf8');
+  const src = await readFile('usr/themes/5iblog/assets/js/5iblog.index.min.js', 'utf8');
   assert.ok(
     /location\.pathname\.match\(\/\\?\/page\//.test(src) || /pathname\.match\(\/\\\/page\\\//.test(src),
-    'joe.index.min.js 应从 location.pathname 解析 /page/N/ 的页码'
+    '5iblog.index.min.js 应从 location.pathname 解析 /page/N/ 的页码'
   );
 });
 
@@ -1649,7 +1674,7 @@ await test('RSS 里没有隐藏文章（对管理员也一样）', async () => {
 });
 
 await test('主题 API 的首页列表：匿名无隐藏文章，管理员有且带 status', async () => {
-  const url = '/joe/api?routeType=publish_list&pageSize=50';
+  const url = '/5iblog/api?routeType=publish_list&pageSize=50';
   const saved = cookie;
   cookie = '';
   const anon = await call('GET', url).then((r) => r.text());
@@ -1675,7 +1700,7 @@ await test('密码文章：输入框是 POST 表单，URL 不再带密码', asyn
   const page = await call('GET', `/archives/${pwdCid}/`);
   const html = await page.text();
   assert.ok(
-    html.includes(`<form class="joe_detail__article-protected" method="post" action="/archives/${pwdCid}/"`),
+    html.includes(`<form class="blog_detail__article-protected" method="post" action="/archives/${pwdCid}/"`),
     '密码表单是 POST 且指向本文章',
   );
   assert.ok(!html.includes('密码内正文XYZ'), '未解锁不返回正文');
@@ -1707,7 +1732,7 @@ await test('密码文章：正确密码下发 HttpOnly cookie 并跳转', async 
   const sc = res.headers.get('Set-Cookie') || '';
   assert.ok(sc.includes('te_pwd='), '下发 te_pwd');
   assert.ok(sc.includes('HttpOnly'), 'HttpOnly');
-  assert.ok(sc.includes(`Path=/archives/${pwdCid}/`), '路径限定到该文章');
+  assert.ok(sc.includes('Path=/archives/'), 'Cookie 覆盖 /archives/，兼容自定义路径和旧 ID');
   assert.equal(res.headers.get('Location'), `/archives/${pwdCid}/`);
   cookie = sc.split(';')[0];
 });
@@ -1749,11 +1774,11 @@ await test('编辑器：撰写页接入 EasyMDE，旧工具条下线', async () 
   await loginAdmin();
   const html = await call('GET', '/admin/post').then((r) => r.text());
   assert.ok(html.includes('easymde@2.18.0/easymde.min.css'), '应引入 EasyMDE 样式');
-  assert.ok(html.includes('joe.admin-editor.min.js'), '应引入编辑器初始化脚本');
-  assert.ok(html.includes('id="joe-md-text"'), 'textarea 应保留约定 id');
+  assert.ok(html.includes('5iblog.admin-editor.min.js'), '应引入编辑器初始化脚本');
+  assert.ok(html.includes('id="blog-md-text"'), 'textarea 应保留约定 id');
   assert.ok(html.includes('name="text"'), 'textarea 仍须保留原 name，否则保存会丢正文');
-  assert.ok(!html.includes('joe-md-bar'), '旧工具条容器不应再出现');
-  assert.ok(!html.includes('joe.admin-md'), '旧工具条脚本不应再引入');
+  assert.ok(!html.includes('blog-md-bar'), '旧工具条容器不应再出现');
+  assert.ok(!html.includes('5iblog.admin-md'), '旧工具条脚本不应再引入');
   // 全屏编辑会给 body/html 上滚动锁，SPA 换页的清理代码必须在（否则离开编辑页后整站滑不动）
   assert.ok(html.includes("document.documentElement.style.overflow=''"), 'SPA 换页应清理编辑器遗留的滚动锁');
 });
@@ -1761,7 +1786,7 @@ await test('编辑器：撰写页接入 EasyMDE，旧工具条下线', async () 
 await test('编辑器：页面编辑器同样接入 EasyMDE', async () => {
   await loginAdmin();
   const html = await call('GET', '/admin/page').then((r) => r.text());
-  assert.ok(html.includes('joe.admin-editor.min.js'), '页面编辑器也应可用');
+  assert.ok(html.includes('5iblog.admin-editor.min.js'), '页面编辑器也应可用');
 });
 
 await test('编辑器预览接口：用站点渲染器把 Markdown 渲染成 HTML', async () => {
@@ -1813,6 +1838,108 @@ await test('缓存策略：不再出现 60s 的 public 缓存头', async () => {
 await test('缓存策略：RSS 保持原有缓存（XML 不在「HTML 一律不缓存」内）', async () => {
   const r = await call('GET', '/feed/');
   assert.match(r.headers.get('Cache-Control') || '', /public/, 'feed 仍可缓存');
+});
+
+await test('文章自定义路径：/archives/自定义/ 与旧 ID 都可访问', async () => {
+  const saved = await call('POST', '/admin/post', {
+    form: {
+      type: 'post', title: '自定义路径文章', text: '路径正文',
+      status: 'publish', allowComment: '0', slug: 'memorable-path',
+    },
+  });
+  assert.equal(saved.status, 302);
+  const custom = await call('GET', '/archives/memorable-path/');
+  assert.equal(custom.status, 200);
+  const html = await custom.text();
+  assert.ok(html.includes('自定义路径文章'));
+  const cid = /data-cid="(\d+)"/.exec(html)?.[1];
+  assert.ok(cid, '文章页应输出 cid');
+  const old = await call('GET', `/archives/${cid}/`);
+  assert.equal(old.status, 200, '旧的文章 ID 路径应继续可访问');
+  assert.ok((await old.text()).includes('自定义路径文章'));
+  const feed = await (await call('GET', '/feed/')).text();
+  assert.ok(feed.includes('/archives/memorable-path/'), 'RSS 应使用自定义路径');
+});
+
+await test('文章访问密码：勾选清除后恢复公开', async () => {
+  await loginAdmin();
+  await call('POST', '/admin/post', {
+    form: {
+      type: 'post', title: '密码清除测试', text: '清除后正文',
+      status: 'publish', allowComment: '0', password: 'clear-me',
+    },
+  });
+  const cid = await latestPostCid();
+  const adminCookie = cookie;
+  cookie = '';
+  const locked = await call('GET', `/archives/${cid}/`);
+  assert.equal(locked.status, 200);
+  assert.ok((await locked.text()).includes('请输入访问密码'), '应显示密码表单');
+
+  cookie = adminCookie;
+  const saved = await call('POST', '/admin/post', {
+    form: {
+      type: 'post', cid: String(cid), title: '密码清除测试', text: '清除后正文',
+      status: 'publish', allowComment: '0', clearPassword: '1',
+    },
+  });
+  assert.equal(saved.status, 302);
+
+  cookie = '';
+  const open = await call('GET', `/archives/${cid}/`);
+  const html = await open.text();
+  assert.equal(open.status, 200);
+  assert.ok(html.includes('清除后正文'), '清除后应能直接看到正文');
+  assert.ok(!html.includes('请输入访问密码'), '不应再出现密码表单');
+  cookie = adminCookie;
+});
+
+await test('站点设置：传统分页在评论默认状态之后', async () => {
+  await loginAdmin();
+  const html = await (await call('GET', '/admin/settings')).text();
+  const iComment = html.indexOf('评论默认状态');
+  const iPaging = html.indexOf('传统分页');
+  assert.ok(iComment !== -1 && iPaging !== -1, '两个字段都应存在');
+  assert.ok(iComment < iPaging, `传统分页应在评论默认状态之后，实际 ${iComment}/${iPaging}`);
+});
+
+await test('页面排序：后台上下移动后前端导航按顺序展示', async () => {
+  await loginAdmin();
+  for (const [title, slug] of [['排序 A', 'ord-a'], ['排序 B', 'ord-b'], ['排序 C', 'ord-c']]) {
+    const res = await call('POST', '/admin/post', {
+      form: { type: 'page', title, slug, text: '页面正文', status: 'publish' },
+    });
+    assert.equal(res.status, 302);
+  }
+  const idx = (await globalThis.BLOG_KV.get('idx:posts', { type: 'json' })) || [];
+  const cidOf = (slug) => String((idx.find((e) => e.slug === slug) || {}).cid || '');
+  const a = cidOf('ord-a');
+  assert.ok(a, '应能解析排序页面的 cid');
+
+  // 初始按创建倒序 C,B,A；A 上移两次后应为 A,C,B
+  await call('POST', '/admin/page-order', { form: { cid: a, direction: 'up' } });
+  await call('POST', '/admin/page-order', { form: { cid: a, direction: 'up' } });
+  const html = await (await call('GET', '/')).text();
+  const pos = (slug) => html.indexOf(`href="/${slug}/"`);
+  assert.ok(pos('ord-a') >= 0 && pos('ord-b') >= 0 && pos('ord-c') >= 0, '导航缺少排序页面');
+  assert.ok(pos('ord-a') < pos('ord-c') && pos('ord-c') < pos('ord-b'),
+    `前端顺序应为 A,C,B，实际位置 ${['ord-a', 'ord-c', 'ord-b'].map(pos).join(',')}`);
+});
+
+await test('友链模式：输出参考站点的彩色三列卡片', async () => {
+  await loginAdmin();
+  const saved = await call('POST', '/admin/post', {
+    form: {
+      type: 'page', title: '友链样式', slug: 'friends-style',
+      text: '5i博客||https://example.com||https://example.com/avatar.png||一个互联网分享博客||#F072B6',
+      status: 'publish', field_mode: 'links',
+    },
+  });
+  assert.equal(saved.status, 302);
+  const html = await (await call('GET', '/friends-style/')).text();
+  for (const needle of ['blog_links__card', 'blog_links__title', 'blog_links__desc', 'blog_links__avatar', 'background:#F072B6', '一个互联网分享博客', 'https://example.com/avatar.png']) {
+    assert.ok(html.includes(needle), `友链卡片缺少 ${needle}`);
+  }
 });
 
 // ================= 汇总 =================

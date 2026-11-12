@@ -1,0 +1,1147 @@
+/*!
+ * Blog 主题布局补丁（本移植版自带 CSS 缺失的部分）
+ *
+ * 1) 侧栏两栏布局
+ *    主题自带的 5iblog.global.min.css 只给了 .blog_aside 的 padding/margin-left，
+ *    没有任何浮动或宽度规则；.blog_main 也没有布局规则。两者同在 .blog_container
+ *    下，于是竖排堆叠——文章详情页侧栏掉到文章下方，占满整行。
+ *    这里用 flex 补上：侧栏在左order: -1（侧栏在右order: 1），正文在右。
+ *    窄屏不用管：主题 5iblog.responsive.min.css 的 @media(max-width:992px) 里
+ *    已有 `html .blog_aside{display:none}`，display:none 的子项不参与 flex 布局，
+ *    .blog_main 的 flex:1 会自动占满整行。
+ *
+ * 2) 搜索联想的键盘高亮项
+ *    5iblog.search.js 切换 .active，主题 CSS 只定义了 :hover，键盘上下键选中没有视觉反馈。
+ */
+
+/* ---------- 侧栏两栏布局 ---------- */
+.blog_body {
+  display: flex;
+  align-items: flex-start;
+  column-gap: 15px;
+}
+
+.blog_body > .blog_main {
+  flex: 1 1 auto;
+  /* 正文里的长代码块/长单词不能把这一列撑破 */
+  min-width: 0;
+}
+
+.blog_body > .blog_aside {
+  /* DOM 里侧栏排在正文之后，用 order 把它挪到右边 */
+  order: 1;
+  flex: 0 0 250px;
+  width: 250px;
+  /* 主题原值 margin-left:15px 改由 column-gap 统一控制间距 */
+  margin-left: 0;
+  padding-bottom: 15px;
+}
+
+/* ---------- 搜索联想键盘高亮 ---------- */
+.blog_header__above-search .result .item.active {
+  background: var(--classD);
+}
+
+/* ---------- 侧边悬浮操作按钮（回到顶部 / 切换主题） ----------
+   按钮外观保持主题自带样式（40×40 白圆、图标 25px），不做覆盖。
+   原先这里加过 hover 上浮 + 放大到 46px，现已移除以对齐 5i.ink 的观感。 */
+
+/* 索引页标题栏右侧的「分类 / 标签」展开按钮与下拉面板（PC 端，移动端隐藏） */
+.blog_index__title-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  height: 40px;
+}
+/* 胶囊按钮：与旁边的纯文字 tab 拉开视觉层次，但仍用主题色板 */
+.blog_index__title-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  margin-left: 8px;
+  border: 1px solid var(--classC);
+  border-radius: 14px;
+  background: var(--classD);
+  color: var(--routine);
+  font-size: 13px;
+  line-height: 26px;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  transition: color 0.35s, background 0.35s, border-color 0.35s;
+}
+.blog_index__title-filter-btn .icon {
+  width: 13px;
+  height: 13px;
+  margin-right: 5px;
+  flex: none;
+  transition: transform 0.35s;
+}
+.blog_index__title-filter-btn:hover {
+  color: var(--theme);
+  border-color: var(--theme);
+}
+.blog_index__title-filter-btn.active {
+  color: #fff;
+  background: var(--theme);
+  border-color: var(--theme);
+}
+.blog_index__title-filter-panel {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  right: 0;
+  min-width: 180px;
+  max-width: 80vw;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 8px 0;
+  border: 1px solid var(--classC);
+  border-radius: var(--radius-inner);
+  background: var(--background);
+  box-shadow: var(--box-shadow);
+  /* 只隐藏滚动条外观，滚动本身保留（站长 2026-11-11 要求） */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.blog_index__title-filter-panel::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.blog_index__title-filter-panel[hidden] {
+  display: none;
+}
+.blog_index__title-filter-panel .slides {
+  display: block !important;
+}
+.blog_index__title-filter-panel .link {
+  display: block;
+  color: var(--routine);
+  font-size: 13px;
+  line-height: 20px;
+  padding: 8px 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.35s, background 0.35s;
+}
+.blog_index__title-filter-panel .link:hover {
+  color: var(--theme);
+  background: var(--classD);
+}
+@media (max-width: 768px) {
+  .blog_index__title-filter {
+    display: none;
+  }
+}
+
+/* 面包屑
+ *
+ * 原来 .blog_bread__bread 的样式只存在于 5iblog.post.min.css，
+ * 而分类/标签/搜索等归档页加载的是 5iblog.archive.min.css —— 那边一条都没有，
+ * 于是 li 退回块级布局、每个独占一行，看起来就是「换行」。
+ * 这里补齐全局样式（layout.css 是所有页面都加载的基础样式），
+ * 并保证单行不换行：过长时省略而不是折行。
+ */
+.blog_bread {
+  padding-top: 15px;
+}
+.blog_bread__bread {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.blog_bread__bread .line {
+  flex: none;
+  color: var(--seat);
+  padding: 0 8px;
+}
+.blog_bread__bread .item {
+  min-width: 0;
+  color: var(--minor);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.blog_bread__bread .item .link {
+  color: var(--routine);
+  transition: color 0.35s;
+}
+.blog_bread__bread .item .link:hover {
+  color: var(--theme);
+}
+
+/* ============================================================
+   文章详情 · 相关推荐
+   主题原版只给了 .item 的 overflow/radius/transition，卡片没有底色；
+   标题选择器写的是 .item h6，而模板渲染的是 <div class="title">，
+   导致标题从未生效样式。这里补齐卡片外观与标题排版。
+   ============================================================ */
+.blog_detail__related { padding-top: 15px; }
+
+.blog_detail__related-title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-left: 15px;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--main);
+}
+/* 用 flex 排 ::before，去掉原来的 top/bottom/left 绝对定位 */
+.blog_detail__related-title::before {
+  content: '';
+  flex: none;
+  width: 4px;
+  height: 1em;
+  margin-right: 10px;
+  border-radius: 2px;
+  background: var(--theme);
+}
+
+/* 自适应铺满：原版写死 4 列但只渲染 3 条，右侧空一格 */
+.blog_detail__related-content {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+}
+
+.blog_detail__related-content .item {
+  display: block;            /* <a> 默认 inline，overflow:hidden 圆角裁切会失效 */
+  background: var(--background);
+  border: 1px solid var(--classD);
+  overflow: hidden;
+  border-radius: var(--radius-inner);
+  transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+}
+.blog_detail__related-content .item:hover {
+  transform: translateY(-5px);
+  border-color: var(--classC);
+  box-shadow: 0 34px 20px -24px rgba(136, 161, 206, 0.3);
+}
+
+.blog_detail__related-content .item img {
+  display: block;            /* 去掉 img 基线留白 */
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  transition: transform 0.35s;
+}
+.blog_detail__related-content .item:hover img { transform: scale(1.06); }
+
+/* 对齐模板实际的 <div class="title">，两行截断替代原版的单行 nowrap */
+.blog_detail__related-content .item .title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--routine);
+  transition: color 0.25s;
+}
+.blog_detail__related-content .item:hover .title { color: var(--theme); }
+
+/* 管理员预览提示（隐藏文章） */
+.blog_detail__preview-banner{margin-bottom:15px;padding:10px 15px;border-radius:var(--radius-inner);border-left:4px solid #faa90e;background:rgba(250,169,14,.12);color:var(--routine);font-size:14px;line-height:1.6}
+/* 密码保护：密码错误提示 */
+.blog_detail__article-protected-error{margin-bottom:10px;color:#fe2d46;font-size:14px}
+
+/* ---------- 归档页 ---------- */
+.blog_page {
+  /* 不能覆盖 .blog_container 的 auto 边距，否则 max-width 下不会水平居中 */
+  margin: 0 auto;
+}
+.blog_archive-page .blog_main {
+  width: 100%;
+  /* 首页的 .blog_index 自带左右 15px 内边距；归档页没有这层，需要补齐，保持左右留白一致 */
+  padding-left: 15px;
+  padding-right: 15px;
+  box-sizing: border-box;
+}
+.blog_archive-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 0 0 16px;
+}
+.blog_archive-hero__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--routine);
+}
+.blog_archive-hero__title::after {
+  content: '';
+  display: block;
+  width: 42px;
+  height: 4px;
+  margin-top: 10px;
+  border-radius: 2px;
+  background: var(--theme);
+}
+.blog_archive-hero__sub {
+  margin: 10px 0 0;
+  color: var(--routine);
+  font-size: 13px;
+  opacity: 0.65;
+}
+/* 分类 / 标签筛选条 */
+.blog_archive-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 15px;
+  padding: 12px 15px;
+  background: var(--background);
+  border-radius: var(--radius-wrap);
+  box-shadow: var(--box-shadow);
+}
+.blog_archive-filters__label {
+  margin-left: 4px;
+  color: var(--routine);
+  font-size: 12px;
+  opacity: 0.5;
+}
+.blog_archive-filters__label:first-child { margin-left: 0; }
+.blog_archive-filters__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid var(--classC);
+  border-radius: 15px;
+  background: transparent;
+  color: var(--routine);
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.25s, background 0.25s, border-color 0.25s;
+}
+.blog_archive-filters__item span {
+  font-size: 11px;
+  opacity: 0.55;
+}
+.blog_archive-filters__item:hover,
+.blog_archive-filters__item.active {
+  border-color: var(--theme);
+  background: var(--theme);
+  color: #fff;
+}
+.blog_archive-filters__item:hover span,
+.blog_archive-filters__item.active span { opacity: 0.85; }
+
+/* 统计卡片右侧的分类分布 */
+.blog_census__basic-item.category {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+}
+.blog_archive-pie {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+}
+.blog_archive-pie__chart {
+  position: relative;
+  flex: 0 0 150px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: var(--classD);
+}
+.blog_archive-pie__chart::after {
+  content: '';
+  position: absolute;
+  inset: 26px;
+  border-radius: 50%;
+  background: var(--background);
+}
+.blog_archive-pie__center {
+  position: absolute;
+  inset: 26px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.blog_archive-pie__center strong {
+  color: var(--routine);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.blog_archive-pie__center span {
+  color: var(--routine);
+  font-size: 11px;
+  opacity: 0.6;
+}
+.blog_archive-pie__legend {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.blog_archive-pie__legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--routine);
+  font-size: 13px;
+}
+.blog_archive-pie__legend i {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.blog_archive-pie__legend span {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.blog_archive-pie__legend em {
+  color: var(--routine);
+  font-size: 12px;
+  font-style: normal;
+  opacity: 0.6;
+}
+.blog_archive-pie__empty {
+  width: 100%;
+  margin: 0;
+  color: var(--routine);
+  font-size: 13px;
+  opacity: 0.6;
+  text-align: center;
+}
+
+/* 文章归档（可折叠时间线，复用 census 的 .item/.head/.tail/.panel 结构） */
+.blog_census__filing .title { font-size: 15px; }
+.blog_census__filing .title span {
+  color: var(--minor, var(--routine));
+  font-size: 12px;
+  font-weight: 400;
+}
+.blog_census__filing .content .item .head { top: 16px; }
+.blog_census__filing .content .item .tail { top: 16px; }
+.blog_census__filing .content .item .wrapper { padding-bottom: 12px; }
+.blog_filing-year > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  user-select: none;
+}
+.blog_filing-year > summary::-webkit-details-marker { display: none; }
+.blog_filing-year > summary > span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.blog_filing-year > summary em {
+  color: var(--minor, var(--routine));
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+}
+.blog_filing-year[open] > summary .blog_filing-arrow {
+  transform: rotate(90deg) !important;
+}
+.blog_filing-body { padding-top: 8px; }
+.blog_filing-month {
+  margin: 14px 0 6px;
+  padding-left: 2px;
+  color: var(--routine);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+}
+.blog_filing-month:first-child { margin-top: 4px; }
+.blog_filing-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.blog_filing-article {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  transition: background 0.2s;
+}
+.blog_filing-article:hover { background: var(--classD); }
+.blog_filing-date {
+  flex: 0 0 30px;
+  color: var(--routine);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  opacity: 0.5;
+}
+.blog_filing-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--routine);
+  font-size: 14px;
+  text-decoration: none;
+}
+.blog_filing-article:hover .blog_filing-link { color: var(--theme); }
+.blog_filing-cat {
+  flex: 0 0 auto;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 9px;
+  background: var(--classD);
+  color: var(--theme);
+  font-size: 11px;
+}
+.blog_filing-meta {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  color: var(--routine);
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+.blog_archive-empty {
+  padding: 56px 20px;
+  text-align: center;
+}
+.blog_archive-empty__title {
+  margin: 0 0 8px;
+  color: var(--routine);
+  font-size: 16px;
+  font-weight: 600;
+}
+.blog_archive-empty__hint {
+  margin: 0;
+  color: var(--routine);
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+/* ---------- 关于页（兜底） ---------- */
+.blog_about__body {
+  color: var(--routine);
+  font-size: 14px;
+  line-height: 1.8;
+  overflow-wrap: break-word;
+}
+.blog_about__body p { margin: 0 0 10px; }
+.blog_about__body p:last-child { margin-bottom: 0; }
+.blog_about__body img { max-width: 100%; border-radius: var(--radius-inner); }
+.blog_about__stat {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--classC);
+  color: var(--routine);
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+@media (max-width: 992px) {
+  .blog_archive-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    padding-bottom: 15px;
+  }
+  .blog_census__basic { grid-template-columns: minmax(0, 1fr); }
+  .blog_archive-pie {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .blog_filing-cat,
+  .blog_filing-meta span:last-child { display: none; }
+}
+
+/* ---------- 页脚布局（桌面两列 / 手机居中单列） ---------- */
+.blog_footer .blog_container {
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 0;
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+.blog_footer__above {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.blog_footer__above-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.blog_footer__above-item em {
+  font-style: normal;
+  opacity: 0.45;
+}
+.blog_footer__above-item a { white-space: nowrap; }
+.blog_footer__below {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 1.8;
+  text-align: right;
+}
+.blog_footer__below-item { min-width: 0; }
+.blog_footer__below-item.run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  margin: 0;
+}
+.blog_footer__below-item.run .text { margin: 0 2px 0 0; }
+.blog_footer__below-item:last-child span {
+  display: block;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .blog_footer .blog_container {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  .blog_footer__above {
+    width: 100%;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    text-align: center;
+  }
+  .blog_footer__above-item {
+    justify-content: center;
+    line-height: 1.9;
+  }
+  .blog_footer__above-item:first-child em { display: none; }
+  .blog_footer__above-item a,
+  .blog_footer__above-item span { white-space: normal; }
+  .blog_footer__below {
+    width: 100%;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+  .blog_footer__below-item.run {
+    justify-content: center;
+    row-gap: 2px;
+    margin: 0;
+  }
+  .blog_footer__below-item:last-child {
+    padding: 0 2px;
+    font-size: 11px;
+    line-height: 1.8;
+  }
+}
+
+@media (max-width: 375px) {
+  .blog_footer__above,
+  .blog_footer__below { font-size: 11px; }
+  .blog_footer__below-item:last-child { font-size: 10px; }
+}
+
+/* PC 端页脚：全部收成一排，空间不足时自动换行 */
+@media (min-width: 769px) {
+  .blog_footer .blog_container {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 20px;
+    min-height: 65px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .blog_footer__above {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .blog_footer__above-item { gap: 6px; }
+  .blog_footer__below {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    font-size: 12px;
+    line-height: 1.6;
+    text-align: left;
+  }
+  .blog_footer__below-item.run {
+    justify-content: flex-start;
+  }
+  .blog_footer__below-item:last-child span { display: inline; }
+}
+
+/* ---------- 相关推荐：PC 3 列 / 手机 2 列（4 条刚好两排） ---------- */
+@media (min-width: 993px) {
+  .blog_detail__related-content {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* 桌面只展示 3 条；第 4 条留给手机端的 2×2 布局 */
+  .blog_detail__related-content .item:nth-child(n + 4) {
+    display: none;
+  }
+}
+
+/* ---------- 首页广告：一排 2-4 个（手机 2 列） ---------- */
+.blog_ad-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--ad-cols, 4), minmax(0, 1fr));
+  gap: 15px;
+  padding-top: 15px;
+}
+.blog_ad-grid .blog_index__ad-link { height: 100%; }
+.blog_ad-grid .blog_index__ad-link .image { height: 200px; }
+@media (max-width: 992px) {
+  .blog_ad-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding-top: 10px;
+  }
+  .blog_ad-grid .blog_index__ad-link .image { height: 120px; }
+}
+
+/* ---------- 文章页管理员编辑按钮：固定在右上角 ---------- */
+.blog_detail { position: relative; }
+/* 编辑按钮放在标题上方的分类行右侧，不再占用标题宽度 */
+.blog_detail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.blog_detail__head .blog_detail__category {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.blog_detail__edit {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--classD);
+  color: var(--routine);
+  font-size: 12px;
+  text-decoration: none;
+  transition: background 0.22s, color 0.22s, transform 0.22s;
+}
+.blog_detail__edit:hover {
+  background: var(--theme);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.blog_detail__edit i { font-size: 12px; }
+@media (max-width: 768px) {
+  .blog_detail__edit {
+    height: 28px;
+    padding: 0 10px;
+  }
+}
+
+/* iOS Safari：根背景与夜间模式同步，避免底部安全区露白 */
+html { background-color: #ffffff; }
+html[data-night='night'] { background-color: #121212; color-scheme: dark; }
+
+/* ---------- 便签留言墙 ---------- */
+.blog_wall {
+  display: block;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 15px 50px;
+}
+.blog_wall__head {
+  padding: 8px 0 22px;
+  text-align: center;
+}
+.blog_wall__head h1 {
+  margin: 0 0 10px;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--routine);
+}
+.blog_wall__head h1::after {
+  content: '';
+  display: block;
+  width: 42px;
+  height: 4px;
+  margin: 10px auto 0;
+  border-radius: 2px;
+  background: var(--theme);
+}
+.blog_wall__intro {
+  color: var(--routine);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.blog_wall__intro p { margin: 6px 0; }
+.blog_wall__intro h3 { margin: 6px 0; font-size: 15px; }
+.blog_wall__sub {
+  margin: 8px 0 0;
+  color: var(--routine);
+  font-size: 12px;
+  opacity: 0.6;
+}
+.blog_wall__posted {
+  max-width: 640px;
+  margin: 0 auto 18px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--classD);
+  color: var(--theme);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 留言表单：一张横放的便签 */
+.blog_wall__form {
+  max-width: 640px;
+  margin: 0 auto 32px;
+  padding: 20px;
+  border: 1px solid var(--classC);
+  border-radius: 12px;
+  background: var(--background);
+  box-shadow: var(--box-shadow);
+}
+.blog_wall__form-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--routine);
+}
+.blog_wall__form-head p {
+  margin: 0 0 14px;
+  color: var(--routine);
+  font-size: 12px;
+  opacity: 0.6;
+}
+.blog_wall__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.blog_wall__form input,
+.blog_wall__form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--classC);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--routine);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.blog_wall__form textarea {
+  margin-top: 10px;
+  resize: vertical;
+  line-height: 1.7;
+}
+.blog_wall__form input:focus,
+.blog_wall__form textarea:focus {
+  border-color: var(--theme);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.14);
+}
+.blog_wall__form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--routine);
+  font-size: 12px;
+  opacity: 0.75;
+}
+.blog_wall__form-foot button {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--theme);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.blog_wall__form-foot button:hover { opacity: 0.88; }
+.blog_wall__form-foot button:active { transform: translateY(1px); }
+.blog_wall__form-foot button:disabled { opacity: 0.55; cursor: default; }
+
+/* 便签墙 */
+.blog_wall__board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 20px;
+}
+@media (max-width: 992px) {
+  .blog_wall__board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.blog_wall__note {
+  --x: 0px;
+  --y: 0px;
+  --tilt: 0deg;
+  --note-bg: #fff3b0;
+  --note-ink: #5c4b27;
+  position: relative;
+  padding: 16px 15px 14px;
+  border-radius: 4px;
+  background: var(--note-bg);
+  color: var(--note-ink);
+  box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.35);
+  transform: translate(var(--x), var(--y)) rotate(var(--tilt));
+  transition: transform 0.2s var(--ease-out, cubic-bezier(.16, 1, .3, 1)),
+              box-shadow 0.2s var(--ease-out, cubic-bezier(.16, 1, .3, 1));
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  overflow-wrap: anywhere;
+}
+.blog_wall__note[data-tone='sun'] { --note-bg: #fff3b0; --note-ink: #5c4b27; }
+.blog_wall__note[data-tone='rose'] { --note-bg: #ffd9de; --note-ink: #6b3540; }
+.blog_wall__note[data-tone='mint'] { --note-bg: #c9f0d9; --note-ink: #2c5a42; }
+.blog_wall__note[data-tone='sky'] { --note-bg: #d3e8ff; --note-ink: #294a6b; }
+.blog_wall__note[data-tone='lilac'] { --note-bg: #e7dcff; --note-ink: #4b3a68; }
+.blog_wall__note.is-dragging {
+  cursor: grabbing;
+  z-index: 20;
+  transition: box-shadow 0.2s ease;
+  box-shadow: 0 20px 34px -14px rgba(0, 0, 0, 0.45);
+}
+.blog_wall__pin {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 54px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  transform: translateX(-50%) rotate(-2deg);
+}
+.blog_wall__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.blog_wall__meta .avatar {
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.blog_wall__meta strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.blog_wall__meta time {
+  display: block;
+  font-size: 11px;
+  opacity: 0.58;
+}
+.blog_wall__text {
+  font-size: 13.5px;
+  line-height: 1.75;
+}
+.blog_wall__text img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+.blog_wall__empty {
+  grid-column: 1 / -1;
+  padding: 50px 0;
+  color: var(--routine);
+  font-size: 14px;
+  text-align: center;
+  opacity: 0.6;
+}
+
+/* 深色模式：低饱和深色便签 */
+html[data-night='night'] .blog_wall__note[data-tone='sun'] { --note-bg: #3b3520; --note-ink: #e9e2c8; }
+html[data-night='night'] .blog_wall__note[data-tone='rose'] { --note-bg: #3a2228; --note-ink: #edd5d9; }
+html[data-night='night'] .blog_wall__note[data-tone='mint'] { --note-bg: #1f3428; --note-ink: #d3e9dc; }
+html[data-night='night'] .blog_wall__note[data-tone='sky'] { --note-bg: #1f2c3a; --note-ink: #d5e4f2; }
+html[data-night='night'] .blog_wall__note[data-tone='lilac'] { --note-bg: #2e253a; --note-ink: #e1d8f0; }
+html[data-night='night'] .blog_wall__pin { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.08); }
+
+@media (max-width: 768px) {
+  .blog_wall { padding: 14px 12px 36px; }
+  .blog_wall__head h1 { font-size: 24px; }
+  .blog_wall__board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .blog_wall__note {
+    padding: 12px;
+    transform: none;
+    cursor: default;
+    touch-action: auto;
+  }
+  .blog_wall__row { grid-template-columns: 1fr; }
+  .blog_wall__form { padding: 16px; }
+  .blog_wall__form input,
+  .blog_wall__form textarea { font-size: 16px; }
+  .blog_wall__form-foot { flex-wrap: wrap; }
+  .blog_wall__form-foot button { width: 100%; }
+}
+@media (max-width: 480px) {
+  .blog_wall__board { grid-template-columns: 1fr; }
+}
+
+.blog_wall__closed {
+  max-width: 640px;
+  margin: 0 auto 32px;
+  padding: 22px;
+  border: 1px dashed var(--classC);
+  border-radius: 12px;
+  color: var(--routine);
+  font-size: 13px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+/* ================================================================
+ * 长内容防溢出（2026-11-11）：手机上文章/评论里的长链接、无语言代码块、
+ * 宽表格会把整页撑出屏幕。逐项给正文容器加断行与滚动规则，再用
+ * overflow-x: clip 给整页兜底（clip 不创建滚动容器，不破坏吸顶头）。
+ * ================================================================ */
+html, body { overflow-x: clip; }
+
+html body .blog_detail__article { overflow-wrap: break-word; }
+html body .blog_detail__article a:not([class]) { overflow-wrap: anywhere; }
+html body .blog_detail__article pre { overflow-x: auto; }
+html body .blog_detail__article table td,
+html body .blog_detail__article table th { overflow-wrap: break-word; }
+html body .blog_detail__article iframe,
+html body .blog_detail__article embed,
+html body .blog_detail__article object { max-width: 100%; }
+
+html body .comment-list__item-contain { overflow-wrap: anywhere; }
+html body .blog_wall__text { overflow-wrap: anywhere; }
+
+/* ================================================================
+ * 首页「查看更多」动画交互（2026-11-11）：点击回弹、加载中转圈、
+ * 新追加的文章条目逐个淡入上浮（条目类由 5iblog.index.js 打标）。
+ * ================================================================ */
+html body .blog_load { transition: transform .15s ease, box-shadow .25s ease, opacity .25s ease; }
+html body .blog_load:hover { transform: translateY(-1px); }
+html body .blog_load:active { transform: scale(.97); }
+html body .blog_load[loading] {
+  opacity: .78;
+  pointer-events: none;
+  /* 胶囊尺寸不变（120×32）：加载内容压缩成单行，绝不换行溢出到胶囊外 */
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 13px;
+}
+html body .blog_load[loading]::before {
+  content: "";
+  display: inline-block;
+  width: 10px; height: 10px;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: blog-load-spin .7s linear infinite;
+}
+@keyframes blog-load-spin { to { transform: rotate(360deg); } }
+html body .blog_list .blog-item-enter { animation: blog-item-in .45s ease both; }
+@keyframes blog-item-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html body .blog_list .blog-item-enter,
+  html body .blog_load[loading]::before { animation: none; }
+}
+
+/* ================================================================
+ * 文章页留白（2026-11-11）：相关推荐与上一篇/下一篇、评论区原来
+ * 只有单边 15px 贴着排，整块补上下间距。
+ * ================================================================ */
+html body .blog_detail__related { margin-bottom: 22px; }
+html body .blog_post__pagination { margin: 2px 0 22px; }
+
+/* ================================================================
+ * 抽屉分类/标签胶囊排布（2026-11-11）：原来一行一个太占高，
+ * 改为可换行的胶囊标签，一排多个；手风琴展开逻辑（.slides 的
+ * display 由脚本控制）不动，仅去掉树形缩进的左边线。
+ * ================================================================ */
+html body .blog_header__slideout-menu .slides {
+  border-left: none;
+  padding: 8px 0 2px;
+}
+html body .blog_header__slideout-menu .slides li {
+  display: inline-block;
+  margin: 0 8px 8px 0;
+}
+html body .blog_header__slideout-menu .slides .link {
+  display: inline-block;
+  padding: 5px 13px;
+  border: 1px solid var(--classC);
+  border-radius: 999px;
+  background: var(--classD);
+  color: var(--routine);
+  font-size: 13px;
+  line-height: 1.55;
+}
+html body .blog_header__slideout-menu .slides .link.current {
+  color: var(--theme);
+  border-color: var(--theme);
+  font-size: 13px;
+}

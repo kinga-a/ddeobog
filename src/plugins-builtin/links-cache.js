@@ -1,32 +1,58 @@
 /**
- * 内置插件：友链缓存（links-cache）—— 对应 Joe 主题 friends.php 页面的数据源
- * 提供独立页面模板 [friends]（slug 为 friends 的页面正文按行解析 友链||URL||头像）
- * 同时演示 themeInit 钩子用法
+ * 内置插件：友链缓存（links-cache）—— 对应 Blog 主题 friends.php 页面的数据源
+ * 页面正文每行：名称||URL||头像||描述||背景色，字段 mode 设为 links 生效。
+ * 只有名称/URL 时也能工作；头像为空时用 weavatar 兜底。
  */
+import { escapeHtml } from '../render/markdown.js';
+
+const COLORS = [
+  '#F072B6', '#4C83FF', '#46c47c', '#f9bb3c', '#EA5455', '#7367F0',
+  '#ff9a9e', '#0396FF', '#FA742B', '#9F44D3', '#49C628', '#6fa3ef',
+];
+
+function safeUrl(value) {
+  const url = String(value || '').trim();
+  if (/^https?:\/\//i.test(url) || /^\//.test(url)) return escapeHtml(url);
+  return '#';
+}
+
+function safeColor(value, index) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : COLORS[index % COLORS.length];
+}
+
 export function register(api) {
   api.registerHook('renderContent', async (text, { post }) => {
-    if (post?.fields?.mode === 'links') {
-      // 友链页面：text 每行 "名称||https://...||头像URL"
+    if (post?.fields?.mode === 'links' && !String(text).includes('class="blog_links')) {
       const lines = String(text).split('\n').map((l) => l.trim()).filter(Boolean);
       const links = lines
         .map((l) => l.split('||').map((s) => s.trim()))
-        .filter((p) => p.length >= 2)
-        .map(([name, url, avatar]) => ({ name, url, avatar: avatar || '' }));
-      return `<div class="joe_links">
-  <ul class="joe_links__list">
+        .filter((p) => p.length >= 2 && p[0] && p[1])
+        .map(([name, url, avatar, desc, color], index) => ({
+          name,
+          url: safeUrl(url),
+          avatar: avatar || `https://weavatar.com/avatar/${encodeURIComponent(name)}?default=mp&size=100`,
+          desc: desc || '',
+          color: safeColor(color, index),
+        }));
+
+      return `<div class="blog_links">
+  <ul class="blog_links__list">
     ${links
       .map(
-        (l) => `<li class="item">
-      <a class="link" href="${l.url}" target="_blank" rel="noopener noreferrer">
-        <img class="avatar" src="${l.avatar || `https://weavatar.com/avatar/${encodeURIComponent(l.name)}?default=mp&size=100`}" alt="${l.name}" loading="lazy" />
-        <div class="info"><div class="name">${l.name}</div><div class="url">${l.url}</div></div>
+        (l) => `<li class="blog_links__item">
+      <a class="blog_links__card" href="${l.url}" target="_blank" rel="noopener noreferrer" style="background:${l.color}">
+        <span class="blog_links__title">${escapeHtml(l.name)}</span>
+        <div class="blog_links__content">
+          <div class="blog_links__desc">${escapeHtml(l.desc)}</div>
+          <img width="40" height="40" class="blog_links__avatar lazyload" src="${escapeHtml(l.avatar)}" alt="${escapeHtml(l.name)}" loading="lazy" />
+        </div>
       </a>
     </li>`
       )
       .join('')}
   </ul>
-</div>
-<style>.joe_links__list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:15px;list-style:none;padding:0}.joe_links__list .item .link{display:flex;align-items:center;padding:15px;border:1px solid var(--classB);border-radius:8px;text-decoration:none;color:var(--routine)}.joe_links__list .item .avatar{width:48px;height:48px;border-radius:50%;margin-right:12px}.joe_links__list .item .name{font-weight:600}.joe_links__list .item .url{font-size:12px;opacity:.6;word-break:break-all}</style>`;
+</div>`;
     }
     return text;
   });
@@ -34,7 +60,7 @@ export function register(api) {
 
 export const meta = {
   title: 'LinksCache',
-  desc: '友链页面渲染：正文每行 "名称||URL||头像"，字段 mode 设为 links 生效',
-  author: 'TypechoEdge',
-  version: '1.0.0',
+  desc: '友链页面：正文每行「名称||URL||头像||描述||颜色」，字段 mode 设为 links 生效',
+  author: '5iblog',
+  version: '1.1.0',
 };

@@ -12,7 +12,7 @@ import { hashPassword } from './auth/password.js';
 
 const PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18']);
-const SERVER_INFO = { name: 'typecho-edge-mcp', version: '1.0.0' };
+const SERVER_INFO = { name: '5iblog-mcp', version: '1.0.0' };
 
 // 不返回 Access-Control-Allow-Origin: *：MCP 客户端通常是服务端调用，
 // 去掉通配 CORS 可防止任意网页读取管理 API。同源调用不需要 CORS 头。
@@ -530,7 +530,7 @@ const TOOLS = [
           title: options.title || '',
           description: options.description || '',
           keywords: options.keywords || '',
-          theme: options.theme || 'joe',
+          theme: options.theme || '5iblog',
           pageSize: options.pageSize || 10,
           siteCreated: options.siteCreated || 0,
         },
@@ -734,7 +734,7 @@ async function dispatch(ctx, message) {
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
         instructions:
-          '你现在连接的是 TypechoEdge 博客。可以使用 list_posts/get_post/create_post/update_post/delete_post 管理文章，' +
+          '你现在连接的是 5iblog 博客。可以使用 list_posts/get_post/create_post/update_post/delete_post 管理文章，' +
           '使用 list_categories、list_tags 及其 create/update/delete 管理分类与标签，' +
           '使用 list_comments、set_comment_status、delete_comment 管理评论，还可以读取/修改站点基础信息与附件。',
       });
@@ -838,7 +838,7 @@ export function mcpClientExample(endpoint) {
   return JSON.stringify(
     {
       mcpServers: {
-        'typecho-edge': {
+        '5iblog': {
           url: `${endpoint}/mcp`,
           headers: { Authorization: 'Bearer <在后台生成的令牌>' },
         },

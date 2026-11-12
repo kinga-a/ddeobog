@@ -1,5 +1,5 @@
 /**
- * 前台控制器 —— Typecho 默认路由兼容
+ * 前台控制器 —— 5iblog 默认路由兼容
  *   /                      首页
  *   /page/[page]/          首页分页
  *   /archives/[cid]/       文章
@@ -10,17 +10,17 @@
  *   /search/[kw]/          搜索
  *   /feed/                 RSS/Atom
  *   /comment/[cid]         评论提交（POST）
- *   /joe/api               主题 API
+ *   /5iblog/api               主题 API
  *   /action/xxx            扩展 action（插件）
  */
 import { CONFIG } from '../config.js';
 import { currentUser, parseCookies } from '../auth/session.js';
 import { verifyPassword, randomHex } from '../auth/password.js';
-import * as theme from '../render/theme-joe.js';
+import * as theme from '../render/theme-5iblog.js';
 import { plainExcerpt } from '../render/markdown.js';
 import { escapeHtml, parseStickIds } from '../render/html.js';
 import { sameOrigin } from '../auth/session.js';
-import { handleJoeApi } from './joe-api.js';
+import { handleBlogApi } from './5iblog-api.js';
 import { runHooks } from '../plugins.js';
 import { IS_NODE, DEFAULT_PAGES, ensureDefaultPage } from '../default-pages.js';
 import {
@@ -57,7 +57,7 @@ const SNAP_MAX_BODY = 400_000; // KV 单值大小保险丝，过大页面不存
 function snapEligible(ctx) {
   if (ctx.request.method !== 'GET' || ctx.user) return false;
   const { path } = ctx;
-  if (path === '/joe/api' || path.startsWith('/comment/')) return false;
+  if (path === '/5iblog/api' || path === '/joe/api' || path.startsWith('/comment/')) return false;
   if (path === '/feed' || path === '/feed/' || path === '/sitemap.xml' || path === '/robots.txt') return false;
   // 关于/留言板是自愈路由：页面被删后靠访问时 ensureDefaultPage 重建，
   // 给它们吃快照会把「已删除」状态冻住、重建永不触发，故排除。
@@ -93,7 +93,7 @@ async function handleFrontendInner(ctx) {
   const method = request.method;
 
   // ---- 主题开放 API ----
-  if (path === '/joe/api') return handleJoeApi(ctx);
+  if (path === '/5iblog/api' || path === '/joe/api') return handleBlogApi(ctx);
 
   // ---- 评论提交 ----
   if (path.startsWith('/comment/')) return handleCommentPost(ctx);
@@ -115,7 +115,7 @@ async function handleFrontendInner(ctx) {
     if (!page && !IS_NODE) page = await ensureDefaultPage(db, 'guestbook');
     // 页面被删除 / Node 预览未创建时用内置文案兜底，避免导航链接 404
     page = page || DEFAULT_PAGES.guestbook;
-    if (page.status === 'publish' && ctx.options.joe?.JGuestbook_Wall === 'on') {
+    if (page.status === 'publish' && ctx.options.blog?.JGuestbook_Wall === 'on') {
       return html(await theme.renderGuestbookWall(ctx, page));
     }
   }
@@ -164,19 +164,26 @@ async function routeInner(ctx) {
 
   let match;
 
-  // /archives/[cid]/ —— GET 看文章，POST 提交文章密码
-  if ((match = path.match(/^\/archives\/(\d+)\/?$/))) {
-    const cid = parseInt(match[1], 10);
-    if (request.method === 'POST') return handlePostUnlock(ctx, cid);
+  // /archives/<cid|slug>/ —— GET 看文章，POST 提交文章密码
+  if ((match = path.match(/^\/archives\/([^/]+)\/?$/))) {
+    let key;
+    try {
+      key = decodeURIComponent(match[1]);
+    } catch {
+      return notFound(ctx);
+    }
+    // 纯数字优先按文章 ID；找不到再按路径匹配（兼容历史数字 slug）。
+    // 新建的自定义路径禁止纯数字，避免和 cid 路由歧义。
+    let post = /^\d+$/.test(key) ? await db.getContent(parseInt(key, 10)) : null;
+    if (!post) post = await db.getContentBySlug(key, 'post');
+    if (!post || post.type !== 'post') return notFound(ctx);
+    if (request.method === 'POST') return handlePostUnlock(ctx, post.cid);
 
-    const post = await db.getContent(cid);
-    if (post && post.type === 'post') {
-      if (post.status === 'publish') return renderSingle(ctx, post);
-      // 非 publish（hidden）只对已登录管理员开放预览，对外仍是 404。
-      if (await currentUser(db, request)) {
-        ctx.postPreview = true;
-        return renderSingle(ctx, post);
-      }
+    if (post.status === 'publish') return renderSingle(ctx, post);
+    // 非 publish（hidden）只对已登录管理员开放预览，对外仍是 404。
+    if (await currentUser(db, request)) {
+      ctx.postPreview = true;
+      return renderSingle(ctx, post);
     }
     return notFound(ctx);
   }
@@ -364,8 +371,12 @@ async function renderSingle(ctx, post) {
     preloaded: { cats, tags, author, prev, next, views, agree, related, commentsHtml },
   });
 
-  // 插件钩子：内容渲染前
-  post.text = await runHooks('renderContent', post.text, { post, ctx });
+  // 插件钩子：内容渲染前。插件可以返回改写后的 Markdown，也可以直接返回 HTML
+  // （例如 mode=links 的友链卡片）；HTML 结果跳过 Markdown 渲染，避免被转义成文本。
+  const originalText = post.text;
+  const renderedText = String((await runHooks('renderContent', originalText, { post, ctx })) ?? originalText);
+  post.text = renderedText;
+  post.contentIsRenderedHtml = renderedText !== originalText && /<(div|section|style|ul|li|p|article)\b/i.test(renderedText);
   // 管理员预览的隐藏文章、用 cookie 解锁的密码文章都走这里，
   // 所以不能缓存——html() 默认已给 no-store，这里不再单独设头。
   return html(await theme.renderPost(ctx));
@@ -443,8 +454,9 @@ async function handlePostUnlock(ctx, cid) {
     return new Response(null, {
       status: 303,
       headers: {
-        Location: `/archives/${post.cid}/`,
-        'Set-Cookie': `${CONFIG.POST_PWD_COOKIE}=${encodeURIComponent(token)}; Path=/archives/${post.cid}/; HttpOnly; SameSite=Lax; Max-Age=${CONFIG.POST_PWD_TTL}`,
+        Location: theme.permalink(post),
+        // 同时兼容 /archives/<cid>/ 和 /archives/<slug>/，Cookie 放到目录级
+        'Set-Cookie': `${CONFIG.POST_PWD_COOKIE}=${encodeURIComponent(token)}; Path=/archives/; HttpOnly; SameSite=Lax; Max-Age=${CONFIG.POST_PWD_TTL}`,
         'Cache-Control': 'no-store',
       },
     });
@@ -455,16 +467,16 @@ async function handlePostUnlock(ctx, cid) {
 
 function renderProtected(ctx, post, opts = {}) {
   const body = opts.locked
-    ? '<p class="joe_detail__article-protected-error">尝试次数过多，请 10 分钟后再试。</p>'
-    : `${opts.wrong ? '<p class="joe_detail__article-protected-error">密码不正确，请重新输入。</p>' : ''}
-    <form class="joe_detail__article-protected" method="post" action="/archives/${post.cid}/">
+    ? '<p class="blog_detail__article-protected-error">尝试次数过多，请 10 分钟后再试。</p>'
+    : `${opts.wrong ? '<p class="blog_detail__article-protected-error">密码不正确，请重新输入。</p>' : ''}
+    <form class="blog_detail__article-protected" method="post" action="${theme.permalink(post)}">
       <div class="contain">
         <input class="password" type="password" name="password" placeholder="请输入访问密码..." required autofocus />
         <button class="submit" type="submit">确定</button>
       </div>
     </form>`;
-  ctx.contentBody = `<div class="joe_container joe_protected_page"><div class="joe_main joe_post"><div class="joe_detail">
-    <h1 class="joe_detail__title">${escapeHtml(post.title)}</h1>
+  ctx.contentBody = `<div class="blog_container blog_protected_page"><div class="blog_main blog_post"><div class="blog_detail">
+    <h1 class="blog_detail__title">${escapeHtml(post.title)}</h1>
     ${body}
   </div></div></div>`;
   return html(simpleLayout(ctx, `密码保护 - ${ctx.options.title}`), {
@@ -475,11 +487,11 @@ function renderProtected(ctx, post, opts = {}) {
 /** 密码保护页的最小布局（不加载主题侧栏/页脚） */
 function simpleLayout(ctx, title) {
   // 复用 renderPost 的布局路径：这里直接输出简单页
-  const a = (p) => `/usr/themes/joe/${p}`;
+  const a = (p) => `/usr/themes/5iblog/${p}`;
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <link href="${a('assets/css/joe.mode.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.normalize.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.global.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.post.min.css')}" rel="stylesheet"><link href="${a('assets/css/joe.refine.css')}" rel="stylesheet">
-  </head><body><div id="Joe">${ctx.contentBody}</div></body></html>`;
+  <link href="${a('assets/css/5iblog.mode.min.css')}" rel="stylesheet"><link href="${a('assets/css/5iblog.normalize.min.css')}" rel="stylesheet"><link href="${a('assets/css/5iblog.global.min.css')}" rel="stylesheet"><link href="${a('assets/css/5iblog.post.min.css')}" rel="stylesheet"><link href="${a('assets/css/5iblog.refine.css')}" rel="stylesheet">
+  </head><body><div id="Blog">${ctx.contentBody}</div></body></html>`;
 }
 
 async function renderArchive(ctx, { type, slug, page, titleFor, labelFor, baseUrlFor, authorId, keywords }) {
@@ -551,7 +563,7 @@ async function handleCommentPost(ctx) {
   const post = await db.getContent(cid);
   // 便签留言墙开启时，/guestbook/ 页面即使关闭了普通评论区仍允许贴留言
   const wallEnabled =
-    !!post && post.type === 'page' && post.slug === 'guestbook' && ctx.options.joe?.JGuestbook_Wall === 'on';
+    !!post && post.type === 'page' && post.slug === 'guestbook' && ctx.options.blog?.JGuestbook_Wall === 'on';
   if (!post || (!post.allowComment && !wallEnabled)) return commentError('当前页面不可评论');
 
   const form = await request.formData().catch(() => null);
@@ -625,13 +637,13 @@ async function handleCommentPost(ctx) {
 
   await runHooks('commentPost', { cid, author, text }, ctx);
   if (status === 'waiting') {
-    // 待审评论不在前台出现，若按成功协议（含 Joe 标记）返回，前端会刷新
-    // 页面、评论者只会看到自己的评论「消失」。改走提示协议：不含 Joe
+    // 待审评论不在前台出现，若按成功协议（含 Blog 标记）返回，前端会刷新
+    // 页面、评论者只会看到自己的评论「消失」。改走提示协议：不含 Blog
     // 标记，前端会把 .container 里的文案弹给评论者看。
     return commentNotice();
   }
-  // Joe 前端约定：响应 HTML 含 "Joe" 即视为成功（刷新页面）
-  return new Response('<!DOCTYPE html><html><body><div id="Joe">ok</div></body></html>', {
+  // Blog 前端约定：响应 HTML 含 "Blog" 即视为成功（刷新页面）
+  return new Response('<!DOCTYPE html><html><body><div id="Blog">ok</div></body></html>', {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
 }
@@ -670,8 +682,8 @@ ${items
   .map(
     (p) => `  <entry>
     <title>${escapeHtml(p.title)}</title>
-    <id>${siteUrl}/archives/${p.cid}/</id>
-    <link rel="alternate" href="${siteUrl}/archives/${p.cid}/" />
+    <id>${siteUrl}${theme.permalink(p)}</id>
+    <link rel="alternate" href="${siteUrl}${theme.permalink(p)}" />
     <published>${new Date(p.created * 1000).toISOString()}</published>
     <updated>${new Date(p.modified * 1000).toISOString()}</updated>
     <summary>${escapeHtml(plainExcerpt(p.text, 200))}</summary>
@@ -700,7 +712,7 @@ async function handleSitemap(ctx) {
   const body = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${url(`${site}/`, null, 'daily', '1.0')}
-${posts.items.map((p) => url(`${site}/archives/${p.cid}/`, p.modified, 'weekly', '0.8')).join('\n')}
+${posts.items.map((p) => url(`${site}${theme.permalink(p)}`, p.modified, 'weekly', '0.8')).join('\n')}
 ${pages.items.map((p) => url(`${site}/${encodeURIComponent(p.slug)}/`, p.modified, 'monthly', '0.6')).join('\n')}
 ${cats.filter((m) => m.count > 0).map((m) => url(`${site}/category/${encodeURIComponent(m.slug)}/`, null, 'weekly', '0.5')).join('\n')}
 ${tags.filter((m) => m.count > 0).map((m) => url(`${site}/tag/${encodeURIComponent(m.slug)}/`, null, 'weekly', '0.5')).join('\n')}

@@ -39,7 +39,7 @@
 | Edge 安装流程 | `node tools/edge-install-check.mjs` 通过（安装、默认页面、删除后自愈重建） |
 | 构建产物测试 | `node test-bundle.mjs` 8 / 8 |
 | 请求体限制 | 上传上限 950 KB < 平台 1 MB，符合 |
-| 存储绑定 | KV `BLOG_KV`；Blob `@edgeone/pages-blob`（`typecho-uploads`），与 skill 的绑定方式一致 |
+| 存储绑定 | KV `BLOG_KV`；Blob `@edgeone/pages-blob`（`5iblog-uploads`），与 skill 的绑定方式一致 |
 | 函数请求日志 | 已实现（`src/logging.js` + `main.js`），默认 `info`；重新部署后可在控制台函数日志/实时日志查看 |
 
 ### 本次修复的检查工具
@@ -70,7 +70,7 @@
 
 ## 五、部署前建议
 
-- 在 EdgeOne 控制台确认 `BLOG_KV` 命名空间与 `typecho-uploads` Blob 存储已绑定到项目。
+- 在 EdgeOne 控制台确认 `BLOG_KV` 命名空间与 `5iblog-uploads` Blob 存储已绑定到项目。
 - 使用 `EDGEONE_API_TOKEN` + 项目名执行一次 preview 部署，验证 KV/Blob 实际读写；本地 SQLite 路径不依赖这两个绑定。
 - 部署后检查 `/admin/login`、`/install`（应 403）、评论提交、上传附件、MCP（如启用）。
 - 若要继续安全批实现，先完成设计文档审阅，再进入实现计划。

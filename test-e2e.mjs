@@ -112,7 +112,7 @@ await test('HTTP: 安装后 /install 已关闭（安全）', async () => {
 await test('HTTP: 首页渲染', async () => {
   const r = await get('/');
   assert.equal(r.status, 200);
-  assert.ok(r.text.includes('joe_header'));
+  assert.ok(r.text.includes('blog_header'));
 });
 
 await test('HTTP: 登录后台', async () => {
@@ -135,7 +135,7 @@ await test('HTTP: 文章页渲染（含 Markdown）', async () => {
 });
 
 await test('HTTP: 静态资源可直接取到', async () => {
-  const r = await get('/usr/themes/joe/assets/style.css');
+  const r = await get('/usr/themes/5iblog/assets/style.css');
   assert.ok(r.status === 200 || r.status === 404, `异常状态 ${r.status}`);
 });
 

@@ -11,7 +11,7 @@ import { readdir, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as esbuild from 'esbuild';
 
-const DIR = 'usr/themes/joe/assets/js';
+const DIR = 'usr/themes/5iblog/assets/js';
 
 const files = (await readdir(DIR)).filter((f) => f.endsWith('.js') && !f.endsWith('.min.js'));
 if (files.length === 0) throw new Error(`${DIR} 下没有找到 .js 源文件`);

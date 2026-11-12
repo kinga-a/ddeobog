@@ -1,7 +1,7 @@
 # 后台组件规范（重构基线）
 
 - 版本：v1.0（2026-11-11）
-- 适用范围：TypechoEdge `/admin` 全部页面
+- 适用范围：5iblog `/admin` 全部页面
 - 目标：在不改变现有信息架构的前提下，补齐令牌、统一组件尺寸与状态、满足 WCAG 2.1 AA
 - 配套文件：`docs/admin-ui-review.md`（问题与证据）、`docs/admin-ui-tokens.css`（可落地基线）
 

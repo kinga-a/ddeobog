@@ -102,7 +102,7 @@ pass('/about/ 200 且包含「关于本站」');
 const wall = await req('/guestbook/');
 if (wall.res.status !== 200) fail(`/guestbook/ 期望 200，实际 ${wall.res.status}`);
 if (!wall.body.includes('留言板')) fail('/guestbook/ 未渲染留言板');
-if (!wall.body.includes('joe_wall__board')) fail('/guestbook/ 默认未启用便签墙');
+if (!wall.body.includes('blog_wall__board')) fail('/guestbook/ 默认未启用便签墙');
 pass('/guestbook/ 200、包含「留言板」且默认便签墙');
 
 // ---- 3. 导航常显留言板 ----
@@ -142,7 +142,7 @@ pass('删除后访问 /about/ 自动重建且不重复');
 
 await removePage('guestbook');
 const wall2 = await req('/guestbook/');
-if (wall2.res.status !== 200 || !wall2.body.includes('joe_wall__board'))
+if (wall2.res.status !== 200 || !wall2.body.includes('blog_wall__board'))
   fail('删除后 /guestbook/ 未能自动重建便签墙');
 pass('删除后访问 /guestbook/ 自动重建');
 

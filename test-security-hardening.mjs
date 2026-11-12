@@ -91,7 +91,7 @@ await test('蜜罐：填写 hp_site 不写库且返回静默提示', async () =>
   const res = await postComment('bot@test.com', '蜜罐内容', { form: { hp_site: 'http://spam.example.com' } });
   const html = await res.text();
   assert.equal(res.status, 200);
-  assert.ok(!html.includes('id="Joe"'), '蜜罐命中不应返回 Joe 成功标记');
+  assert.ok(!html.includes('id="Blog"'), '蜜罐命中不应返回 Blog 成功标记');
   assert.ok(html.includes('审核通过后显示'), '应返回与待审一致的静默提示');
   assert.equal(commentCount(), before, '蜜罐命中不应写入评论');
   const events = JSON.parse(globalThis.BLOG_KV.map.get('sec:events'));
@@ -102,13 +102,13 @@ await test('正常评论成功，重复内容不重复写库', async () => {
   clearRateKeys();
   const before = commentCount();
   const first = await postComment('dup@test.com', '重复内容测试');
-  assert.ok((await first.text()).includes('id="Joe"'), '首次评论应成功');
+  assert.ok((await first.text()).includes('id="Blog"'), '首次评论应成功');
   const afterFirst = commentCount();
   assert.equal(afterFirst, before + 1);
 
   const second = await postComment('dup@test.com', '重复内容测试');
   const html = await second.text();
-  assert.ok(!html.includes('id="Joe"'), '重复内容不应返回成功标记');
+  assert.ok(!html.includes('id="Blog"'), '重复内容不应返回成功标记');
   assert.ok(html.includes('审核通过后显示'), '重复内容应静默提示');
   assert.equal(commentCount(), afterFirst, '重复内容不应写库');
   const events = JSON.parse(globalThis.BLOG_KV.map.get('sec:events'));
@@ -120,12 +120,12 @@ await test('频率限制：第 6 条静默拒绝，前 5 条正常', async () =>
   const before = commentCount();
   for (let i = 1; i <= 5; i += 1) {
     const res = await postComment('rate@test.com', `限流测试 ${i}`);
-    assert.ok((await res.text()).includes('id="Joe"'), `第 ${i} 条应成功`);
+    assert.ok((await res.text()).includes('id="Blog"'), `第 ${i} 条应成功`);
   }
   const sixth = await postComment('rate@test.com', '限流测试 6');
   const html = await sixth.text();
   assert.equal(sixth.status, 200, '前端兼容策略：限流也返回 200 静默提示');
-  assert.ok(!html.includes('id="Joe"'), '第 6 条不应返回成功标记');
+  assert.ok(!html.includes('id="Blog"'), '第 6 条不应返回成功标记');
   assert.ok(html.includes('审核通过后显示'), '第 6 条应返回静默提示');
   assert.equal(commentCount(), before + 5, '第 6 条不应写库');
   const events = JSON.parse(globalThis.BLOG_KV.map.get('sec:events'));
@@ -141,7 +141,7 @@ await test('管理员豁免频率限制', async () => {
   clearRateKeys();
   for (let i = 1; i <= 6; i += 1) {
     const res = await postComment('admin@test.com', `管理员评论 ${i}`);
-    assert.ok((await res.text()).includes('id="Joe"'), `管理员第 ${i} 条应成功`);
+    assert.ok((await res.text()).includes('id="Blog"'), `管理员第 ${i} 条应成功`);
   }
 });
 

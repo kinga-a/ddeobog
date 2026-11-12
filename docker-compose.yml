@@ -1,8 +1,8 @@
 services:
   blog:
     build: .
-    image: typecho-edge-sqlite:local
-    container_name: typecho-edge-sqlite
+    image: 5iblog-sqlite:local
+    container_name: 5iblog-sqlite
     restart: unless-stopped
     ports:
       - "8080:8080"

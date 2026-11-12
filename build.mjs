@@ -63,6 +63,7 @@ rmSync('public', { recursive: true, force: true });
 mkdirSync('public', { recursive: true });
 cpSync('usr', 'public/usr', { recursive: true });
 if (existsSync('_headers')) cpSync('_headers', 'public/_headers');
+if (existsSync('_redirects')) cpSync('_redirects', 'public/_redirects');
 
 console.log('Bundle size:', (code.length / 1024).toFixed(1), 'KB');
 console.log('✓ edge-functions/[[default]].js  (catch-all)');
