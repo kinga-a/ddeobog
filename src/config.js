@@ -19,5 +19,5 @@ export const CONFIG = {
   // 默认主题
   DEFAULT_THEME: '5iblog',
   // 版本
-  VERSION: '1.7.6',
+  VERSION: '1.7.7',
 };

@@ -410,11 +410,13 @@ tbody tr:hover td { background: var(--surface-2); }
 tbody tr:last-child td { border-bottom: 0; }
 
 /* 表格操作列：按钮并排、间距一致 */
-td form { display: inline-flex; margin: 0 6px 0 0; }
+td form { display: inline-flex; margin: 0 6px 0 0; vertical-align: middle; }
 td form:last-child { margin-right: 0; }
-td a.btn { margin-right: 6px; }
+td a.btn { margin-right: 6px; vertical-align: middle; }
 td a.btn:last-child { margin-right: 0; }
 td:last-child { white-space: nowrap; }
+/* 页面列表：排序列显示序号，操作列放上移/下移与编辑/删除 */
+.order-pos { color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .cell-strong { color: var(--ink); font-weight: 600; }
 
 /* ---------- 按钮 ---------- */
@@ -568,6 +570,15 @@ input[type="checkbox"], input[type="radio"] {
 
 .row { display: flex; gap: 14px; flex-wrap: wrap; }
 .row .item { flex: 1; min-width: 220px; }
+
+/* 自定义字段：网格排列，行列统一留白，避免相邻输入框贴在一起 */
+.fields-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.fields-grid .item { min-width: 0; margin-bottom: 0; }
+.fields-grid input[type="text"] { max-width: none; }
 
 .hint {
   margin-top: 6px;
@@ -1777,6 +1788,10 @@ body.auth {
   .card table td:last-child::before { display: none; }
   .card table td form { margin: 0 8px 0 0; }
   .card table td form:last-child { margin-right: 0; }
+  /* 页面列表操作列：上移/下移 + 编辑/删除保持同一排 */
+  .card table td.page-ops { flex-wrap: nowrap; gap: 6px; }
+  .card table td.page-ops form { margin: 0; }
+  .card table td.page-ops form:last-child { margin-right: 0; }
 
   /* 分类/标签页同为卡片：改名/删除在卡内成行，不需要横向空间 */
   .metas__scroll { overflow: visible; }
@@ -1830,6 +1845,7 @@ body.auth {
 
 
   .row .item { min-width: 100%; }
+  .fields-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   input, select, textarea { max-width: none; }
 
   .quickacts { gap: 8px 10px; }

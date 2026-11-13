@@ -999,8 +999,8 @@ async function pagesList(ctx) {
     <td data-label="标题"><a href="/${p.slug}/" target="_blank">${esc(p.title)}</a></td>
     <td data-label="路径"><code>/${p.slug}/</code></td>
     <td data-label="状态"><span class="badge ${p.status === 'publish' ? 'green' : ''}">${p.status === 'publish' ? '公开' : p.status}</span></td>
-    <td data-label="排序">
-      <span class="order-pos">${i + 1}</span>
+    <td data-label="排序"><span class="order-pos">${i + 1}</span></td>
+    <td data-label="操作" class="page-ops">
       <form method="post" action="/admin/page-order" style="display:inline">
         <input type="hidden" name="cid" value="${p.cid}">
         <input type="hidden" name="direction" value="up">
@@ -1011,8 +1011,6 @@ async function pagesList(ctx) {
         <input type="hidden" name="direction" value="down">
         <button class="btn sm" type="submit" title="下移" aria-label="下移" ${i === total - 1 ? 'disabled' : ''}>↓</button>
       </form>
-    </td>
-    <td>
       <a class="btn sm" href="/admin/page?cid=${p.cid}">编辑</a>
       <form method="post" action="/admin/delete" style="display:inline" data-confirm="确定删除该页面？">
         <input type="hidden" name="cid" value="${p.cid}">
@@ -1125,12 +1123,10 @@ async function postEditor(ctx, kind) {
     ${isPage ? '' : `<div class="item"><label>所属分类</label><div>${catChecks || '<span class="hint">暂无分类，可先在「分类/标签」中创建</span>'}</div></div>
     <div class="item"><label>标签（逗号分隔，自动创建）</label><input type="text" name="tags" value="${esc(tagNames)}" placeholder="生活, 技术"></div>`}
     <div class="item"><label>自定义字段</label>
-      <div class="row">
+      <div class="fields-grid">
         <div class="item"><input type="text" name="field_thumb" value="${esc(post?.fields?.thumb || '')}" placeholder="缩略图 URL（thumb）"></div>
         <div class="item"><input type="text" name="field_abstract" value="${esc(post?.fields?.abstract || '')}" placeholder="摘要（abstract）"></div>
         <div class="item"><input type="text" name="field_mode" value="${esc(post?.fields?.mode || '')}" placeholder="特殊模式（mode，如 links）"></div>
-      </div>
-      <div class="row">
         <div class="item"><input type="text" name="field_keywords" value="${esc(post?.fields?.keywords || '')}" placeholder="SEO 关键词（keywords，逗号分隔）"></div>
         <div class="item"><input type="text" name="field_description" value="${esc(post?.fields?.description || '')}" placeholder="SEO 描述（description）"></div>
       </div>
